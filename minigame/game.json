@@ -1,0 +1,18 @@
+{
+  "deviceOrientation": "portrait",
+  "showStatusBar": false,
+  "networkTimeout": {
+    "request": 10000,
+    "connectSocket": 10000,
+    "uploadFile": 10000,
+    "downloadFile": 10000
+  },
+  "subpackages": [
+    { "name": "images", "root": "subpkg_images/" },
+    { "name": "kitchen", "root": "subpkg_kitchen/" }
+  ],
+  "subPackages": [
+    { "name": "images", "root": "subpkg_images/" },
+    { "name": "kitchen", "root": "subpkg_kitchen/" }
+  ]
+}

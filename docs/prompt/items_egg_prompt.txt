@@ -1,0 +1,12 @@
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading. Whole unprocessed ingredients only: whole tomato not slice, whole garlic bulb not cloves spread, whole ginger knob. NO TEXT, no labels, no watermark, no grid lines.
+
+A 3x2 even grid on solid #FF00FF magenta. Five items plus one empty magenta cell:
+
+1 whole red tomato with stem, 1x1.
+2 whole garlic bulb, papery white, 1x1.
+3 whole ginger knob, 1x1.
+4 two whole brown eggs together reading as 1x1 cluster.
+5 a rectangular block of fresh tofu, 2x1.
+6 empty magenta.
+
+Game icons, centered, no crossing edges.

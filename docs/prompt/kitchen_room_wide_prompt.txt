@@ -1,0 +1,13 @@
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading, gentle highlights. Readable silhouette at 64px. Bright clean kitchen lighting, not grimy, no horror, no photorealism, no pixel art, no neon. NO TEXT, no labels, no numbers, no captions, no watermark, no UI chrome.
+
+CAMERA AND LAYOUT LOCKED to the reference: same eye height, same 3/4 view, large door on the LEFT, short left wall, ONE rectangular room. Back wall is one continuous flat wall. Window on the far-right wall. Do NOT pull the camera back. Do NOT stretch the left wall. NO dividing wall, NO pillar, NO L-shaped alcove.
+
+STYLE CHANGE — premium white modern home kitchen (still the same cartoon, not photoreal):
+- Smooth white / warm-white painted walls, no wallpaper, no peeling
+- White ceiling, slim light-oak or pale-wood trim (not heavy dark-brown Victorian molding)
+- FLOOR MUST CHANGE: wide pale oak wood planks in perspective, clean and expensive-looking, not terracotta tiles, not orange
+- Modern flush door on the left: warm white or light oak, simple panel, slim champagne-gold knob, still clearly a door
+- Far-right window: larger, cleaner, light-wood or slim frame, warm daylight, bare sill, no plant
+- Airy, upgraded, high-end apartment kitchen. Still cozy cartoon, not cold hospital, not warehouse.
+
+Architecture only. Door has only a knob, nothing hanging. NO hooks, NO bags, NO furniture, NO people. Full frame, no letterbox, no UI.

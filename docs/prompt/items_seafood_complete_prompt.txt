@@ -1,0 +1,13 @@
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading, gentle highlights, warm wood and paper colors. Whole unprocessed seafood only, never fillets, never sushi slices. NO TEXT, no labels, no numbers, no captions, no watermark, no UI chrome.
+
+A 2-column 2-row grid of 4 equal cells on solid white. Each cell ONE complete isolated object, generous white margin, nothing touching cell edges, no neighboring object fragments.
+
+Top-left: two whole closed clams / 花蛤, overlapping slightly, both shells fully visible, beige-gold concentric rings. Complete pair.
+
+Top-right: one whole raw shrimp, side view, C-curve, full head, long antennae, full tail fan, orange-grey, anatomical tiny eye OK. Complete shrimp, no crop.
+
+Bottom-left: one whole FRESH hairtail / belt fish / 带鱼, very long thin silver ribbon body, gentle S-curve, full head and full tail ribbon all inside the cell, like a long ribbon fish, NOT a short sardine. Anatomical fish eye OK.
+
+Bottom-right: one whole fresh yellow croaker / 黄鱼, golden body, full tail fin, full head, horizontal, complete fish. Anatomical fish eye OK.
+
+White background. Do not cut off tails, antennae, or shell edges.

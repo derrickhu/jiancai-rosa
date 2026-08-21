@@ -1,0 +1,21 @@
+Edit the attached WeChat mini-game icon. Keep the same night-market mood: dark teal dusk, hanging warm bulb, faint crates, wet-ground reflection. Keep the same cartoon style: thick dark-brown outlines, 2-3 step cel shading, chunky sticker, not photoreal.
+
+REPLACE the tomato with ONE exaggerated cartoon fish:
+- Whole unprocessed fish, never sliced.
+- Strong C-curve / jumping arc, mid-leap, energetic.
+- HUGE staring bulging round eye, comically wide awake.
+- Bright silver-gold body so it pops on the dark background.
+- Simple fins, readable at 48px.
+
+CHANGE the hand:
+- Make the peach cartoon hand MUCH LARGER, filling more of the lower left.
+- Move it CLOSER to the fish. Fingertips almost touch the fish body. About-to-catch, not a big empty gap.
+- Bright orange sweater cuff.
+
+CRITICAL HAND ANATOMY:
+- Exactly FIVE digits: 1 thumb + 4 fingers.
+- Count them. Not 4. Not 6.
+
+Keep hand + fish inside the center 70% circular safe zone. Background fills the square edge to edge.
+
+NO TEXT, no letters, no Chinese, no numbers, no watermark, no UI.

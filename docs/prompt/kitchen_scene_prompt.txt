@@ -1,0 +1,13 @@
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading, gentle highlights, warm wood and paper colors. Whole unprocessed ingredients only: never sliced, never cross-section, never plated garnish cuts. Readable silhouette at 64px. Warm market-kitchen lighting, slightly golden, tidy not grimy, no horror, no photorealism, no pixel art, no neon. NO TEXT, no labels, no numbers, no captions, no watermark, no UI chrome.
+
+Vertical 9:16 full-bleed illustration of a small Chinese home kitchen, 3/4 view looking inward. Back wall cream paper (#F3E2C6), warm floor tiles. Composition must leave clear clickable props with space between them:
+
+- Center-back: a cream refrigerator, door slightly ajar showing faint vegetable silhouettes, a paper recipe clip on the door.
+- Center-front: a large worn wooden cutting board on the table, empty, inviting.
+- Right: a gas stove with a wok and a hint of steam, no flame text.
+- Left-front: a bamboo basket and a small mechanical scale on the table.
+- Left wall: an empty hanging vegetable basket on a hook.
+- Fridge foot: a white foam cooler box.
+- Far left: a wooden door / exit with a cloth shopping bag hanging on the handle.
+
+No people, no mascot, no phones, no modern UI. Full frame, no letterbox, no border.

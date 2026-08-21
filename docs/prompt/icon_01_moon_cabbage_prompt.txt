@@ -1,0 +1,14 @@
+Square 1:1 WeChat mini-game avatar / app icon.
+
+Composition rules:
+- Main subject locked in the CENTER 70% circular safe zone. Nothing important near corners or edges.
+- Background paints EDGE TO EDGE. Full-bleed color. No white margin, no transparent edge, no black frame, no fake phone bezel, no circular crop already applied, no sticker cutout.
+- One hero silhouette, readable at 48px. Maximum two supporting props.
+- Warm dusk market mood: indigo-to-amber night sky or deep teal stall light. Not neon, not photoreal, not pixel art, not horror.
+
+Hard bans: NO text, NO letters, NO Chinese characters, NO numbers, NO watermark, NO logo badge, NO QR code, NO store badge, NO HOT/NEW ribbon, NO UI chrome, NO speech bubble.
+
+Style: cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading, gentle highlights, warm wood and paper colors. Graphic logo clarity, like a premium casual-game app icon.
+
+Theme A — Moon cradling cabbage:
+A large warm crescent moon in the center, holding a plump whole napa cabbage as if it is a leftover treasure. Tiny paper-lantern glow behind the cabbage. Deep dusk indigo sky filling the entire square, soft amber rim light. Whole vegetable only, never sliced. Big, centered, icon-simple.

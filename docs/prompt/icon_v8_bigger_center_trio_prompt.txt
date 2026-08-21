@@ -1,0 +1,17 @@
+Edit the attached WeChat mini-game icon.
+
+KEEP:
+- Exactly ONE simple cute cartoon hand from the lower left: smooth peach skin, rounded fingers, no knuckles, no nails, no horror, orange ribbed cuff.
+- Exactly FIVE digits: 1 thumb + 4 fingers.
+- Night-market dusk, hanging warm bulb, faint crates.
+- The same three foods: red tomato, gold jumping fish with huge staring eyes, green bok choy.
+
+CHANGE the foods:
+- Make the tomato + fish + bokchoy cluster MUCH LARGER. They are the visual center of the icon.
+- Pack them TIGHTER together, almost touching, one tight bunch in the exact middle of the square.
+- The three colors must stay easy to tell apart: red / gold-silver / green.
+- Hand stays a bit lower and does not cover the foods. The hand reaches toward the big center cluster, about to scoop it.
+
+Do not add a second hand. Do not shrink the foods. Center 70% circle holds the food cluster.
+
+NO TEXT, no letters, no numbers, no watermark.

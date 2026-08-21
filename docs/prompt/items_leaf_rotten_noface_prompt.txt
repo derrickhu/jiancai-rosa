@@ -1,0 +1,15 @@
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading, gentle highlights, warm wood and paper colors. Whole unprocessed ingredients only: never sliced, never cross-section, never plated garnish cuts. Readable silhouette at 64px. Warm market-kitchen lighting, slightly golden, tidy not grimy, no horror, no photorealism, no pixel art, no neon. NO TEXT, no labels, no numbers, no captions, no watermark, no UI chrome.
+
+CRITICAL: these are ordinary vegetables, NOT characters. NO faces, NO eyes, NO pupils, NO eyebrows, NO mouths, NO blush, NO kawaii expression. No anthropomorphic food.
+
+A 2-column 2-row grid of 4 equal cells on solid white. Each cell one isolated whole vegetable, centered, large but with generous white margin so NOTHING touches the cell edge.
+
+Top-left: whole bok choy, same shape as a normal bok choy (white stems, green leaves), but ROTTEN: limp yellow-brown outer leaves, brown mushy spots, drooping, still a complete readable bok choy. No face.
+
+Top-right: whole round butterhead lettuce, same leafy-ball shape, ROTTEN: yellowed outer leaves, brown spots, wilted, complete. No face.
+
+Bottom-left: whole napa cabbage, tall pale-green head, ROTTEN: yellow limp outer leaves, brown spots, still a complete cabbage head. No face.
+
+Bottom-right: a small tied bunch of cilantro / coriander, same bunch silhouette, ROTTEN: yellow-brown limp leaves, drooping stems, still a small herb bunch. No face, no giant root ball, no creature.
+
+White background only. One object per cell, fully inside the cell.

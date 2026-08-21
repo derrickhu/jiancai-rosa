@@ -1,0 +1,14 @@
+Square 1:1 WeChat mini-game avatar / app icon.
+
+Composition rules:
+- Main subject locked in the CENTER 70% circular safe zone. Nothing important near corners or edges.
+- Background paints EDGE TO EDGE. Full-bleed color. No white margin, no transparent edge, no black frame, no fake phone bezel, no circular crop already applied, no sticker cutout.
+- One hero silhouette, readable at 48px. Maximum two supporting props.
+- Warm dusk market mood: indigo-to-amber night sky or deep teal stall light. Not neon, not photoreal, not pixel art, not horror.
+
+Hard bans: NO text, NO letters, NO Chinese characters, NO numbers, NO watermark, NO logo badge, NO QR code, NO store badge, NO HOT/NEW ribbon, NO UI chrome, NO speech bubble.
+
+Style: cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading, gentle highlights. Whole unprocessed ingredients only.
+
+Theme D — Bargain-hunt treasure moment:
+A pair of cute cartoon hands lift one glowing premium red tomato out of a small pile of leafy greens. The tomato is the hero, large and sparkling as a lucky leftover find. Warm paper-lantern light from above. Full-bleed dusk indigo background. Keep the pile small so the tomato silhouette stays readable at 48px. No face, no stall architecture.

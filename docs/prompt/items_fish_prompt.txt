@@ -1,0 +1,14 @@
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading. Whole seafood only, never fillets or sushi slices. NO TEXT, no labels, no watermark, no grid lines.
+
+A 4x2 even grid on solid #FF00FF magenta. Seven items plus one empty cell:
+
+1 small whole silver fish, vertical 1x2.
+2 whole belt fish / hairtail, very long thin 1x4, curved slightly but inside cell.
+3 whole raw shrimp, 1x1.
+4 two whole clams, 1x1.
+5 whole live crab from above, 2x2, claws tucked.
+6 whole yellow croaker, horizontal 2x1, golden.
+7 a larger whole wild yellow croaker, 2x3, more impressive, still whole fish.
+8 empty magenta.
+
+Game icons, centered, no crossing edges. Magenta background only. Entire silhouette inside the cell: tails, antennae, shells must not be cropped.

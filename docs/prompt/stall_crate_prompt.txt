@@ -1,0 +1,9 @@
+A large overflowing wicker vegetable basket as a tap-to-draw hotspot for a WeChat mini-game stall scene.
+
+Composition: one round woven brown basket, slightly elevated front view, packed high with mixed produce (bok choy, cabbage, corn, eggplant, tomato, garlic). The pile should feel anonymous and plentiful — a crate of leftover market goods, not a labeled still life.
+
+Style: clean 2D cartoon, bold outlines, saturated kitchen colors, soft studio lighting. No text, numbers, watermark, price tags, or store badges.
+
+Background: solid white or empty so it can be cut out. Basket and vegetables must be fully inside the frame, no crop through the rim.
+
+Purpose: player taps this crate to randomly pop one vegetable onto the table.

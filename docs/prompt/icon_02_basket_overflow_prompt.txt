@@ -1,0 +1,14 @@
+Square 1:1 WeChat mini-game avatar / app icon.
+
+Composition rules:
+- Main subject locked in the CENTER 70% circular safe zone. Nothing important near corners or edges.
+- Background paints EDGE TO EDGE. Full-bleed color. No white margin, no transparent edge, no black frame, no fake phone bezel, no circular crop already applied, no sticker cutout.
+- One hero silhouette, readable at 48px. Maximum two supporting props.
+- Warm dusk market mood: indigo-to-amber night sky or deep teal stall light. Not neon, not photoreal, not pixel art, not horror.
+
+Hard bans: NO text, NO letters, NO Chinese characters, NO numbers, NO watermark, NO logo badge, NO QR code, NO store badge, NO HOT/NEW ribbon, NO UI chrome, NO speech bubble.
+
+Style: cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading, gentle highlights, warm wood and paper colors. Whole unprocessed ingredients only.
+
+Theme B — Overflowing market basket:
+One large round bamboo vegetable basket centered, overflowing with whole leftover produce: bok choy, tomato, a coiled hairtail fish peeking out. Golden dusk backlight, paper lantern glow from behind. Background is a full-bleed warm dusk market sky, not a scene. Basket is the single hero shape.

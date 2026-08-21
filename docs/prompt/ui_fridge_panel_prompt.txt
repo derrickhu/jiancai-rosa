@@ -1,0 +1,10 @@
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading, gentle highlights, warm wood and paper colors. Warm golden kitchen lighting, tidy not grimy, no photorealism, no pixel art, no neon. NO TEXT, no labels, no numbers, no captions, no watermark, no UI chrome, no buttons, no icons, no food, no jars, no bottles, no shelves, no grid, no rack, no ridges.
+
+A single vertical VINTAGE CREAM REFRIGERATOR used as a game backpack panel, isolated on a flat solid WHITE background. Front view, centered, filling most of the height. The PAGE IS THE FRIDGE SHAPE.
+
+Composition like an RPG inventory window:
+- TOP 18%: a cream freezer/header band, empty, reserved for title and category tabs. No writing.
+- MIDDLE 62%: a LARGE FLAT SOLID mint-green (#B8D4C8) interior cavity. Completely empty and smooth. NO glass shelves, NO shelf lines, NO back-panel ridges, NO door bins. This is a blank rectangle so a scrollable item grid can be drawn on top.
+- BOTTOM 16%: a cream kickplate/footer band, empty, reserved for sell and close buttons. No writing.
+
+Do NOT show a big open door on the left. At most a very thin left-edge hint of a door, or no door at all. The interior cavity is the main face of the fridge, framed by a thick cream rounded shell, dark-brown outline, tiny round brass handle on the right edge. Rounded retro silhouette, two small feet at the bottom. Isolated object, lots of white around it, no kitchen, no floor, no cabinets. Full frame.

@@ -1,0 +1,217 @@
+import { EventBus } from '@/core/EventBus';
+import { Platform } from '@/core/PlatformService';
+import { EV } from '@/config/events';
+import { SaveManager } from './SaveManager';
+import {
+  RECIPES,
+  STAMINA_MAX,
+  addStamina,
+  buyFurnUpgrade,
+  buyHouseUpgrade,
+  cookRecipe,
+  COOK_LEVEL_MAX,
+  clampCookLevel,
+  fridgeRoom,
+  fridgeOwnCap,
+  foamExtraCap,
+  furnLevel,
+  grantCookXp,
+  houseLevel,
+  ingestExtract,
+  noteDex,
+  regenStamina,
+  sellItems,
+  spendStamina,
+  todayKey,
+  type KitchenSave,
+  type RecipeId,
+} from '@/sim/kitchen';
+import { furnLabel, houseLabel, type FurnId } from '@/sim/kitchenLayout';
+import type { ExtractedItem } from '@/sim/run';
+
+class KitchenManagerClass {
+  private _cookFx: { xp: number; levels: number } | null = null;
+  pendingHaul: ExtractedItem[] | null = null;
+
+  get save(): KitchenSave {
+    return SaveManager.data;
+  }
+
+  consumeCookFx(): { xp: number; levels: number } | null {
+    const fx = this._cookFx;
+    this._cookFx = null;
+    return fx;
+  }
+
+  emit(): void {
+    EventBus.emit(EV.kitchenChanged, this.save);
+  }
+
+  canGoMarket(): boolean {
+    return regenNow().stamina > 0;
+  }
+
+  startRun(): boolean {
+    const { save, error } = spendStamina(this.save);
+    if (error) {
+      Platform.showToast(error);
+      return false;
+    }
+    SaveManager.replace(save);
+    this.emit();
+    return true;
+  }
+
+  refundStamina(): void {
+    SaveManager.replace(addStamina(this.save, 1));
+    this.emit();
+  }
+
+  watchAdStamina(): void {
+    Platform.showRewardedVideo(() => {
+      SaveManager.replace(addStamina(this.save, 1));
+      this.emit();
+      Platform.showToast('体力 +1');
+    });
+  }
+
+  receiveExtract(items: ExtractedItem[]): { needsPick: boolean } {
+    if (items.length <= fridgeRoom(this.save)) {
+      this.pendingHaul = null;
+      SaveManager.replace(ingestExtract(this.save, items));
+      this.emit();
+      return { needsPick: false };
+    }
+    this.pendingHaul = items;
+    return { needsPick: true };
+  }
+
+  unpackNeed(): number {
+    const haul = this.pendingHaul ?? [];
+    return Math.max(0, haul.length - fridgeRoom(this.save));
+  }
+
+  commitUnpack(sellHaulUids: string[], sellFridgeUids: string[]): { error?: string; gained: number; kept: number } {
+    const haul = this.pendingHaul ?? [];
+    const need = this.unpackNeed();
+    const picked = sellHaulUids.length + sellFridgeUids.length;
+    if (picked < need) return { error: `再卖掉 ${need - picked} 件才能装下`, gained: 0, kept: 0 };
+    const haulSet = new Set(sellHaulUids);
+    const keep = haul.filter((it) => !haulSet.has(it.uid));
+    const soldHaul = haul.filter((it) => haulSet.has(it.uid));
+    const fridgeSold = sellItems(this.save, sellFridgeUids);
+    const gold = soldHaul.reduce((sum, it) => sum + it.sell, 0);
+    let save = noteDex(fridgeSold.save, haul);
+    save = ingestExtract({ ...save, money: save.money + gold }, keep);
+    this.pendingHaul = null;
+    SaveManager.replace(save);
+    this.emit();
+    return { gained: fridgeSold.gained + gold, kept: keep.length };
+  }
+
+  fridgeRoom(): number {
+    return fridgeRoom(this.save);
+  }
+
+  trySpend(amount: number): boolean {
+    if (amount <= 0) return true;
+    if (this.save.money < amount) {
+      Platform.showToast(`差 ${amount - this.save.money} 金币，先回家卖点菜`);
+      return false;
+    }
+    SaveManager.replace({ ...this.save, money: this.save.money - amount });
+    this.emit();
+    return true;
+  }
+
+  sell(uids: string[]): void {
+    if (!uids.length) {
+      Platform.showToast('先点选冰箱里的食材');
+      return;
+    }
+    const rotten = this.save.fridge.filter((it) => uids.includes(it.uid) && it.quality === 'rotten');
+    const { save, gained } = sellItems(this.save, uids);
+    SaveManager.replace(save);
+    this.emit();
+    if (gained > 0) Platform.showToast(`卖出 ${gained} 金币`);
+    else if (rotten.length === uids.length) Platform.showToast('坏了卖不掉，扔掉了');
+    else Platform.showToast('这些卖不掉');
+  }
+
+  cook(recipeId: RecipeId): void {
+    const { save, error, xp, levels } = cookRecipe(this.save, recipeId);
+    if (error) {
+      Platform.showToast(error);
+      return;
+    }
+    if ((xp ?? 0) > 0) this._cookFx = { xp: xp ?? 0, levels: levels ?? 0 };
+    SaveManager.replace(save);
+    this.emit();
+    const name = RECIPES.find((r) => r.id === recipeId)?.name ?? '菜';
+    if ((levels ?? 0) > 0) Platform.showToast(`${name} 出锅，厨艺升到 ${save.level} 级`, 'success');
+    else if ((xp ?? 0) > 0) Platform.showToast(`${name} 出锅，+${xp} 经验`, 'success');
+    else Platform.showToast(`${name} 出锅，放进冰箱了`, 'success');
+  }
+
+  gmAddCookXp(amount: number): void {
+    const { save, levels } = grantCookXp(this.save, amount);
+    SaveManager.replace(save);
+    this.emit();
+    Platform.showToast(levels > 0 ? `厨艺升到 ${save.level} 级` : `经验 +${amount}`);
+  }
+
+  gmNudgeCookLevel(delta: number): void {
+    const level = clampCookLevel(this.save.level + delta);
+    SaveManager.replace({ ...this.save, level, xp: 0 });
+    this.emit();
+    Platform.showToast(`厨艺 ${level}/${COOK_LEVEL_MAX}`);
+  }
+
+  upgrade(id: FurnId): void {
+    const { save, error } = buyFurnUpgrade(this.save, id);
+    if (error) {
+      Platform.showToast(error);
+      return;
+    }
+    SaveManager.replace(save);
+    this.emit();
+    const lv = furnLevel(save, id);
+    if (id === 'fridge') Platform.showToast(`冰箱 ${lv + 1} 级 · 容量 ${fridgeOwnCap(lv)}`, 'success');
+    else if (id === 'foam') Platform.showToast(`${furnLabel(id, lv)} · 扩容 +${foamExtraCap(lv)}`, 'success');
+    else Platform.showToast(`升到 ${lv + 1} 级`, 'success');
+  }
+
+  upgradeHouse(): void {
+    const { save, error } = buyHouseUpgrade(this.save);
+    if (error) {
+      Platform.showToast(error);
+      return;
+    }
+    SaveManager.replace(save);
+    this.emit();
+    Platform.showToast(`装修成${houseLabel(houseLevel(save))}`, 'success');
+  }
+
+  allowGodPickToday(): boolean {
+    return this.save.dailyGodPickDate !== todayKey();
+  }
+
+  markGodPickToday(): void {
+    SaveManager.replace({ ...this.save, dailyGodPickDate: todayKey() });
+  }
+
+  staminaLabel(): string {
+    const s = regenNow();
+    return `体力 ${s.stamina}/${STAMINA_MAX}`;
+  }
+}
+
+function regenNow(): KitchenSave {
+  const next = regenStamina(SaveManager.data);
+  if (next.stamina !== SaveManager.data.stamina || next.staminaAt !== SaveManager.data.staminaAt) {
+    SaveManager.replace(next);
+  }
+  return SaveManager.data;
+}
+
+export const KitchenManager = new KitchenManagerClass();

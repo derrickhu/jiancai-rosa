@@ -1,0 +1,13 @@
+Square 1:1 WeChat mini-game avatar.
+
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading with only 2-3 flat color steps. Chunky sticker, not a painting, not photoreal, not 3D.
+
+Idea: one exaggerated cartoon hand REACHING for one vegetable. Hand and vegetable are BRIGHT. Background is FLAT dusk-dark night color, edge to edge.
+
+Composition:
+- Hand + vegetable locked in the CENTER 70% circular safe zone. Wrist may touch the circle edge; fingers and vegetable must not sit in corners.
+- Background is a FLAT dark dusk color, no stars, no clouds, no lanterns, no stall, no room.
+- Only two bright shapes: hand and one whole vegetable.
+- Readable at 48px.
+
+Hard bans: NO text, NO letters, NO Chinese, NO numbers, NO watermark, NO logo, NO QR, NO UI, NO face, NO extra props.

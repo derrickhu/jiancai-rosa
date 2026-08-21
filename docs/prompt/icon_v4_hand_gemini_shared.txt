@@ -1,0 +1,23 @@
+Square 1:1 WeChat mini-game avatar, 1024 look.
+
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading with 2-3 flat color steps. Chunky sticker, not photoreal, not 3D render, not painterly.
+
+CRITICAL HAND ANATOMY:
+- Exactly ONE human hand.
+- Exactly FIVE digits total: 1 thumb + 4 fingers (index, middle, ring, pinky).
+- Count the fingers before finishing. If the count is 4 or 6, redraw.
+- No extra thumb. No fused fingers. No six-finger glove.
+
+Composition:
+- Exaggerated bright peach cartoon hand reaches UP from the bottom toward ONE bright vegetable.
+- Bright orange sweater cuff #E07A3A.
+- Hand and vegetable are the bright heroes, locked in the CENTER 70% circular safe zone.
+- Background paints EDGE TO EDGE. No white margin, no frame.
+
+Background is dusk / 天黑, but NOT a flat fill:
+- Deep indigo-to-warm-plum night gradient.
+- One out-of-focus warm market hanging bulb or paper-lantern glow.
+- Soft vignette and a faint wooden stall-edge or wet-ground hint at the bottom.
+- Keep it atmospheric, not a full street scene. No stars field, no crowds, no architecture filling the frame.
+
+Hard bans: NO text, NO letters, NO Chinese, NO numbers, NO watermark, NO logo, NO QR, NO UI, NO face.

@@ -1,0 +1,14 @@
+Square 1:1 WeChat mini-game avatar / app icon.
+
+Match the attached game art: cozy casual cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading with only 2-3 flat color steps, warm wood and paper colors. Chunky cute sticker, not a painting.
+
+Composition:
+- Subject locked in the CENTER 70% circular safe zone.
+- Background is a FLAT bright color, painted EDGE TO EDGE. No white margin, no transparent edge, no frame.
+- ONE hero object. Optional one tiny accent. Readable at 48px.
+
+Lighting: high-key sunny kitchen. Bright, warm, clean.
+
+Forbidden: night sky, indigo, stars, clouds, lanterns, fireflies, architecture, hands, faces, photoreal, 3D render, leaf veins, waxy specular scatter, painterly texture, grimy market, neon, pixel art.
+
+Hard bans: NO text, NO letters, NO Chinese, NO numbers, NO watermark, NO logo badge, NO QR, NO UI.

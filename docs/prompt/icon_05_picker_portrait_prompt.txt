@@ -1,0 +1,14 @@
+Square 1:1 WeChat mini-game avatar / app icon.
+
+Composition rules:
+- Main subject locked in the CENTER 70% circular safe zone. Nothing important near corners or edges.
+- Background paints EDGE TO EDGE. Full-bleed color. No white margin, no transparent edge, no black frame, no fake phone bezel, no circular crop already applied, no sticker cutout.
+- One hero silhouette, readable at 48px. Maximum two supporting props.
+- Warm dusk market mood: indigo-to-amber night sky or deep teal stall light. Not neon, not photoreal, not pixel art, not horror.
+
+Hard bans: NO text, NO letters, NO Chinese characters, NO numbers, NO watermark, NO logo badge, NO QR code, NO store badge, NO HOT/NEW ribbon, NO UI chrome, NO speech bubble.
+
+Style: cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading, gentle highlights. Cute character-head icon like 保卫萝卜 / 蛋仔: face fills the safe circle.
+
+Theme E — Night market picker portrait:
+A cute East-Asian young woman, head-and-shoulders only, centered. Soft bangs, warm skin, slight smile, holding a small paper lantern near her cheek. A whole bok choy and tomato tucked beside her shoulder as leftover finds. Full-bleed dusk amber-indigo background. Face stays inside the center 70%. No full body, no stall, no text on clothes.

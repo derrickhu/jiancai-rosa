@@ -1,0 +1,647 @@
+import { displayName, getItem, GOD_PICK, sellPrice, type Quality } from './items';
+import { nextUid, type ExtractedItem } from './run';
+import {
+  FURN_IDS,
+  FURN_MAX_LEVEL,
+  HOUSE_MAX_LEVEL,
+  clampFurnLevel,
+  clampHouseLevel,
+  furnLabel,
+  houseFurnCap,
+  houseLabel,
+  minHouseForFurn,
+  type FurnId,
+} from './kitchenLayout';
+
+export const STAMINA_MAX = 5;
+export const STAMINA_REGEN_MS = 30 * 60 * 1000;
+export const FRIDGE_BASE = 8;
+/** 冰箱内部 0–9 级的格数。双门 / 法式质变多跳一档。 */
+export const FRIDGE_CAP = [8, 10, 12, 14, 16, 20, 24, 28, 32, 36];
+/** 泡沫箱内部 0–9 级额外格数。水桶不加，保温箱起跳得更明显。 */
+export const FOAM_CAP = [0, 2, 3, 4, 6, 8, 10, 12, 14, 18];
+export const UPGRADE_BASKET_I = 80;
+export const UPGRADE_BASKET_II = 200;
+export const UPGRADE_FRIDGE = 60;
+
+export function emptyFurnLevels(): Record<FurnId, number> {
+  return { fridge: 0, cook: 0, table: 0, basket: 0, foam: 0, recipe: 0 };
+}
+
+export function furnLevel(save: KitchenSave, id: FurnId): number {
+  return clampFurnLevel(save.furnLevels?.[id] ?? 0);
+}
+
+export function houseLevel(save: KitchenSave): number {
+  return clampHouseLevel(save.houseLevel ?? 0);
+}
+
+export type FridgeKind = 'food' | 'dish';
+
+export interface FridgeItem {
+  uid: string;
+  kind?: FridgeKind;
+  defId: string;
+  quality: Quality;
+  inspected: boolean;
+  freshness: number;
+  /** 熟菜出锅时记下的售价。 */
+  value?: number;
+}
+
+export function fridgeKind(it: FridgeItem): FridgeKind {
+  return it.kind === 'dish' ? 'dish' : 'food';
+}
+
+export function fridgeItemName(it: FridgeItem): string {
+  if (fridgeKind(it) === 'dish') {
+    return RECIPES.find((r) => r.id === it.defId)?.name ?? '熟菜';
+  }
+  return displayName(it.defId, it.inspected, it.quality);
+}
+
+export function fridgeItemPrice(it: FridgeItem): number {
+  if (fridgeKind(it) === 'dish') return Math.max(0, it.value ?? 0);
+  return sellPrice(it.defId, it.quality, it.inspected, it.freshness);
+}
+
+export function fridgeItemBlurb(it: FridgeItem): string {
+  if (fridgeKind(it) === 'dish') {
+    return RECIPES.find((r) => r.id === it.defId)?.blurb ?? '刚出锅，还冒着热气。';
+  }
+  if (it.quality === 'rotten') {
+    return getItem(it.defId).blurbRotten ?? '放久了，连自己都认不出自己。';
+  }
+  if (it.defId === GOD_PICK.id && !it.inspected) return getItem('smallfish').blurb;
+  return getItem(it.defId).blurb;
+}
+
+export interface KitchenSave {
+  version: 1;
+  money: number;
+  stamina: number;
+  staminaAt: number;
+  fridge: FridgeItem[];
+  /** @deprecated 由 furnLevels.basket 迁移 */
+  basketLevel: number;
+  /** @deprecated 由 furnLevels.fridge / foam 迁移 */
+  fridgeExtra: boolean;
+  furnLevels: Record<FurnId, number>;
+  /** 房屋 0 陋屋 / 1 精装屋 / 2 雅致屋。大件家具升级受这一档限制。 */
+  houseLevel: number;
+  dexSeen: string[];
+  dexInspected: string[];
+  recipesCooked: RecipeId[];
+  dailyGodPickDate: string;
+  lastSeenAt: number;
+  /** 厨艺等级 1–15。做菜加经验，出门选点和家具门槛都看它。 */
+  level: number;
+  /** 本级经验。满级后条停在满。 */
+  xp: number;
+}
+
+export function todayKey(now = Date.now()): string {
+  const d = new Date(now);
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
+export function defaultSave(now = Date.now()): KitchenSave {
+  return {
+    version: 1,
+    money: 0,
+    stamina: STAMINA_MAX,
+    staminaAt: now,
+    fridge: [],
+    basketLevel: 0,
+    fridgeExtra: false,
+    furnLevels: emptyFurnLevels(),
+    houseLevel: 0,
+    dexSeen: [],
+    dexInspected: [],
+    recipesCooked: [],
+    dailyGodPickDate: '',
+    lastSeenAt: now,
+    level: 1,
+    xp: 0,
+  };
+}
+
+export function normalizeSave(raw: Partial<KitchenSave> | null, now = Date.now()): KitchenSave {
+  const base = defaultSave(now);
+  if (!raw) return base;
+  const next: KitchenSave = {
+    ...base,
+    ...raw,
+    version: 1,
+    level: clampCookLevel(typeof raw.level === 'number' && raw.level > 0 ? raw.level : 1),
+    xp: typeof raw.xp === 'number' && raw.xp > 0 ? Math.floor(raw.xp) : 0,
+    fridge: migrateFridgeItems(raw.fridge),
+    furnLevels: migrateFurnLevels(raw),
+    houseLevel: 0,
+    dexSeen: Array.isArray(raw.dexSeen) ? raw.dexSeen : [],
+    dexInspected: Array.isArray(raw.dexInspected) ? raw.dexInspected : [],
+    recipesCooked: Array.isArray(raw.recipesCooked)
+      ? raw.recipesCooked.filter((id): id is RecipeId => RECIPES.some((r) => r.id === id))
+      : [],
+  };
+  next.basketLevel = next.furnLevels.basket;
+  next.fridgeExtra = next.furnLevels.fridge > 0 || next.furnLevels.foam > 0;
+  next.houseLevel = migrateHouseLevel(raw);
+  return next;
+}
+
+function migrateFridgeItems(raw: unknown): FridgeItem[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((it) => {
+    const row = it as FridgeItem;
+    return {
+      ...row,
+      kind: row.kind === 'dish' ? 'dish' as const : 'food' as const,
+    };
+  });
+}
+
+function migrateHouseLevel(raw: Partial<KitchenSave>): number {
+  if (typeof raw.houseLevel === 'number') return clampHouseLevel(raw.houseLevel);
+  const furn = migrateFurnLevels(raw);
+  let need = 0;
+  for (const id of FURN_IDS) {
+    need = Math.max(need, minHouseForFurn(id, furn[id]));
+  }
+  return need;
+}
+
+function migrateFurnLevels(raw: Partial<KitchenSave>): Record<FurnId, number> {
+  const next = emptyFurnLevels();
+  const src = raw.furnLevels;
+  if (src && typeof src === 'object') {
+    for (const id of FURN_IDS) {
+      if (typeof src[id] === 'number') next[id] = clampFurnLevel(src[id]);
+    }
+  }
+  if (typeof raw.basketLevel === 'number' && next.basket === 0) {
+    next.basket = clampFurnLevel(raw.basketLevel);
+  }
+  if (raw.fridgeExtra) {
+    if (next.fridge === 0) next.fridge = 1;
+    if (next.foam === 0) next.foam = 1;
+  }
+  return next;
+}
+
+export function fridgeOwnCap(level: number): number {
+  return FRIDGE_CAP[clampFurnLevel(level)] ?? FRIDGE_BASE;
+}
+
+export function foamExtraCap(level: number): number {
+  return FOAM_CAP[clampFurnLevel(level)] ?? 0;
+}
+
+export function fridgeCap(save: KitchenSave): number {
+  return fridgeOwnCap(furnLevel(save, 'fridge')) + foamExtraCap(furnLevel(save, 'foam'));
+}
+
+export function fridgeRoom(save: KitchenSave): number {
+  return Math.max(0, fridgeCap(save) - save.fridge.length);
+}
+
+export function regenStamina(save: KitchenSave, now = Date.now()): KitchenSave {
+  if (save.stamina >= STAMINA_MAX) return { ...save, staminaAt: now };
+  const elapsed = Math.max(0, now - save.staminaAt);
+  const gained = Math.floor(elapsed / STAMINA_REGEN_MS);
+  if (gained <= 0) return save;
+  const stamina = Math.min(STAMINA_MAX, save.stamina + gained);
+  const leftover = elapsed % STAMINA_REGEN_MS;
+  return { ...save, stamina, staminaAt: now - leftover };
+}
+
+export function decayFridge(save: KitchenSave, now = Date.now()): KitchenSave {
+  const hours = Math.floor(Math.max(0, now - save.lastSeenAt) / (60 * 60 * 1000));
+  if (hours <= 0) return { ...save, lastSeenAt: now };
+  const fridge = save.fridge
+    .map((it) => ({ ...it, freshness: it.freshness - hours }))
+    .filter((it) => it.freshness > 0);
+  return { ...save, fridge, lastSeenAt: now };
+}
+
+export function noteDex(save: KitchenSave, items: ExtractedItem[]): KitchenSave {
+  const dexSeen = new Set(save.dexSeen);
+  const dexInspected = new Set(save.dexInspected);
+  for (const it of items) {
+    dexSeen.add(it.inspected ? it.defId : (it.defId === 'wild_yellowfish' ? 'smallfish' : it.defId));
+    if (it.inspected) dexInspected.add(it.defId);
+  }
+  return { ...save, dexSeen: [...dexSeen], dexInspected: [...dexInspected] };
+}
+
+export function ingestExtract(save: KitchenSave, items: ExtractedItem[], now = Date.now()): KitchenSave {
+  const incoming: FridgeItem[] = items.map((it) => ({
+    uid: it.uid,
+    kind: 'food',
+    defId: it.defId,
+    quality: it.quality,
+    inspected: it.inspected,
+    freshness: it.freshness,
+  }));
+  const next = noteDex(save, items);
+  return {
+    ...next,
+    fridge: [...next.fridge, ...incoming],
+    dailyGodPickDate: items.some((it) => it.defId === 'wild_yellowfish') ? todayKey(now) : save.dailyGodPickDate,
+  };
+}
+
+export function sellItems(save: KitchenSave, uids: string[]): { save: KitchenSave; gained: number } {
+  let gained = 0;
+  const remain: FridgeItem[] = [];
+  for (const it of save.fridge) {
+    if (!uids.includes(it.uid)) {
+      remain.push(it);
+      continue;
+    }
+    gained += fridgeItemPrice(it);
+  }
+  return { save: { ...save, fridge: remain, money: save.money + gained }, gained };
+}
+
+export type RecipeId = 'stirfry' | 'tomato_egg' | 'garlic_shrimp';
+
+export interface RecipeDef {
+  id: RecipeId;
+  name: string;
+  desc: string;
+  /** 左侧分类。新菜谱入库必须写。 */
+  group: string;
+  /** 熟菜进冰箱后给玩家看的闲话。新菜谱入库必须写。 */
+  blurb: string;
+  /** 每次做成功给的厨艺经验。 */
+  xp: number;
+  /** 这道菜第一次做再加的经验。 */
+  firstXp: number;
+  match: (items: FridgeItem[]) => boolean;
+  cook: (items: FridgeItem[]) => number;
+}
+
+function isVeg(id: string): boolean {
+  return !!getItem(id).vegetable;
+}
+
+export const RECIPES: RecipeDef[] = [
+  {
+    id: 'stirfry',
+    name: '清炒时蔬',
+    desc: '任意 2 个干蔬菜',
+    group: '家常',
+    blurb: '两把绿叶子进锅，出来就是“今晚吃素”。',
+    xp: 8,
+    firstXp: 4,
+    match: (items) => items.length === 2 && items.every((it) => isVeg(it.defId) && getItem(it.defId).zone === 'dry'),
+    cook: (items) => {
+      let sum = items.reduce((s, it) => s + sellPrice(it.defId, it.quality, it.inspected, it.freshness), 0);
+      sum = Math.round(sum * 1.4);
+      if (items.some((it) => it.defId === 'cilantro')) sum = Math.round(sum * 1.1);
+      return sum;
+    },
+  },
+  {
+    id: 'tomato_egg',
+    name: '番茄炒蛋',
+    desc: '番茄 1 + 鸡蛋 1',
+    group: '家常',
+    blurb: '中式厨房的起手式。红黄一碰，连外卖都要让路。',
+    xp: 16,
+    firstXp: 8,
+    match: (items) => {
+      if (items.length !== 2) return false;
+      const ids = items.map((it) => it.defId).sort().join(',');
+      return ids === 'egg,tomato';
+    },
+    cook: (items) => {
+      let sum = items.reduce((s, it) => s + sellPrice(it.defId, it.quality, it.inspected, it.freshness), 0);
+      sum = Math.round(sum * 1.8);
+      if (items.every((it) => it.freshness >= 2)) sum = Math.round(sum * 1.2);
+      return sum;
+    },
+  },
+  {
+    id: 'garlic_shrimp',
+    name: '蒜蓉虾',
+    desc: '大蒜 1 + 虾 1',
+    group: '水产',
+    blurb: '蒜末噼啪一响，虾就同意被你卖掉。',
+    xp: 28,
+    firstXp: 14,
+    match: (items) => {
+      if (items.length !== 2) return false;
+      const ids = items.map((it) => it.defId).sort().join(',');
+      return ids === 'garlic,shrimp';
+    },
+    cook: (items) => {
+      let sum = items.reduce((s, it) => s + sellPrice(it.defId, it.quality, it.inspected, it.freshness), 0);
+      sum = Math.round(sum * 2.0);
+      const shrimp = items.find((it) => it.defId === 'shrimp');
+      if (shrimp && shrimp.inspected && shrimp.quality === 'premium') sum += 20;
+      return sum;
+    },
+  },
+];
+
+export interface RecipeNeed {
+  label: string;
+  have: number;
+  need: number;
+  /** 材料图标用的食材 id。 */
+  iconId: string;
+}
+
+function usableFoods(save: KitchenSave): FridgeItem[] {
+  return save.fridge.filter((it) => fridgeKind(it) === 'food' && it.quality !== 'rotten');
+}
+
+function freshest(list: FridgeItem[]): FridgeItem | undefined {
+  return [...list].sort((a, b) => b.freshness - a.freshness)[0];
+}
+
+export function recipeNeeds(save: KitchenSave, recipeId: RecipeId): RecipeNeed[] {
+  const foods = usableFoods(save);
+  if (recipeId === 'tomato_egg') {
+    return [
+      { label: '番茄', iconId: 'tomato', have: foods.filter((it) => it.defId === 'tomato').length, need: 1 },
+      { label: '鸡蛋', iconId: 'egg', have: foods.filter((it) => it.defId === 'egg').length, need: 1 },
+    ];
+  }
+  if (recipeId === 'garlic_shrimp') {
+    return [
+      { label: '大蒜', iconId: 'garlic', have: foods.filter((it) => it.defId === 'garlic').length, need: 1 },
+      { label: '虾', iconId: 'shrimp', have: foods.filter((it) => it.defId === 'shrimp').length, need: 1 },
+    ];
+  }
+  const veg = foods.filter((it) => isVeg(it.defId) && getItem(it.defId).zone === 'dry').length;
+  return [{ label: '干蔬菜', iconId: 'bokchoy', have: veg, need: 2 }];
+}
+
+export function pickRecipeFoods(save: KitchenSave, recipeId: RecipeId): FridgeItem[] {
+  const foods = usableFoods(save);
+  if (recipeId === 'tomato_egg') {
+    const tomato = freshest(foods.filter((it) => it.defId === 'tomato'));
+    const egg = freshest(foods.filter((it) => it.defId === 'egg'));
+    return tomato && egg ? [tomato, egg] : [];
+  }
+  if (recipeId === 'garlic_shrimp') {
+    const garlic = freshest(foods.filter((it) => it.defId === 'garlic'));
+    const shrimp = freshest(foods.filter((it) => it.defId === 'shrimp'));
+    return garlic && shrimp ? [garlic, shrimp] : [];
+  }
+  const veg = foods
+    .filter((it) => isVeg(it.defId) && getItem(it.defId).zone === 'dry')
+    .sort((a, b) => b.freshness - a.freshness);
+  return veg.length >= 2 ? veg.slice(0, 2) : [];
+}
+
+export function recipeCanCook(save: KitchenSave, recipeId: RecipeId): boolean {
+  return pickRecipeFoods(save, recipeId).length > 0;
+}
+
+export function cookRecipe(
+  save: KitchenSave,
+  recipeId: RecipeId,
+  uids?: string[],
+): { save: KitchenSave; error?: string; xp?: number; levels?: number } {
+  const recipe = RECIPES.find((r) => r.id === recipeId);
+  if (!recipe) return { save, error: '未知菜谱' };
+  const items = uids?.length
+    ? save.fridge.filter((it) => uids.includes(it.uid))
+    : pickRecipeFoods(save, recipeId);
+  if (!items.length) return { save, error: `材料不够：${recipe.desc}` };
+  if (items.some((it) => it.quality === 'rotten')) return { save, error: '坏了，不能下锅' };
+  if (!recipe.match(items)) return { save, error: `材料不对：${recipe.desc}` };
+  const value = recipe.cook(items);
+  const used = new Set(items.map((it) => it.uid));
+  const dish: FridgeItem = {
+    uid: nextUid('d'),
+    kind: 'dish',
+    defId: recipeId,
+    quality: 'fresh',
+    inspected: true,
+    freshness: 4,
+    value,
+  };
+  const first = !save.recipesCooked.includes(recipeId);
+  const recipesCooked = first ? [...save.recipesCooked, recipeId] : save.recipesCooked;
+  const gained = recipe.xp + (first ? recipe.firstXp : 0);
+  const next = grantCookXp(
+    {
+      ...save,
+      fridge: [...save.fridge.filter((it) => !used.has(it.uid)), dish],
+      recipesCooked,
+    },
+    gained,
+  );
+  return { save: next.save, xp: next.gained, levels: next.levels };
+}
+
+export function upgradeCost(id: FurnId, fromLevel: number): number {
+  const lv = clampFurnLevel(fromLevel);
+  const base: Record<FurnId, number> = {
+    fridge: 50,
+    cook: 45,
+    table: 35,
+    basket: 40,
+    foam: 30,
+    recipe: 25,
+  };
+  return Math.round(base[id] * Math.pow(1.38, lv));
+}
+
+export const HOUSE_UPGRADE_COST = [200, 520];
+/** 陋屋→精装屋要厨艺 4，精装屋→雅致屋要厨艺 8。 */
+export const HOUSE_COOK_NEED = [4, 8];
+export const COOK_LEVEL_MAX = 15;
+/** COOK_XP_TO_NEXT[当前厨艺] = 升到下一级所需。 */
+export const COOK_XP_TO_NEXT = [0, 12, 24, 40, 56, 76, 100, 128, 160, 200, 248, 300, 360, 428, 500];
+
+/**
+ * 升到「玩家看到的下一级家具」所需厨艺。下标是当前内部等级 0–8。
+ * 烹饪台最严，菜篮从 3 级（内部 1）起卡厨艺。
+ */
+const FURN_COOK_NEED: Record<FurnId, number[]> = {
+  table: [1, 1, 3, 4, 6, 7, 8, 10, 12],
+  fridge: [1, 1, 3, 4, 5, 6, 7, 9, 11],
+  basket: [1, 2, 3, 4, 5, 6, 7, 9, 11],
+  foam: [1, 1, 3, 4, 5, 6, 7, 9, 11],
+  cook: [1, 1, 1, 1, 1, 1, 1, 1, 1],
+  recipe: [1, 1, 1, 1, 1, 1, 1, 1, 1],
+};
+
+export function clampCookLevel(level: number): number {
+  if (!Number.isFinite(level)) return 1;
+  return Math.max(1, Math.min(COOK_LEVEL_MAX, Math.floor(level)));
+}
+
+export function cookLevel(save: KitchenSave): number {
+  return clampCookLevel(save.level);
+}
+
+export function cookXp(save: KitchenSave): number {
+  return Math.max(0, Math.floor(save.xp ?? 0));
+}
+
+export function xpToNext(level: number): number {
+  const lv = clampCookLevel(level);
+  if (lv >= COOK_LEVEL_MAX) return 0;
+  return COOK_XP_TO_NEXT[lv] ?? 0;
+}
+
+export function cookXpView(save: KitchenSave): {
+  level: number;
+  xp: number;
+  need: number;
+  fill: number;
+  maxed: boolean;
+  text: string;
+} {
+  const level = cookLevel(save);
+  const maxed = level >= COOK_LEVEL_MAX;
+  const need = maxed ? (COOK_XP_TO_NEXT[COOK_LEVEL_MAX - 1] ?? 500) : xpToNext(level);
+  const xp = maxed ? need : Math.min(cookXp(save), need);
+  return {
+    level,
+    xp,
+    need,
+    fill: need > 0 ? xp / need : 1,
+    maxed,
+    text: maxed ? '已满级' : `${xp}/${need}`,
+  };
+}
+
+export function recipeXp(save: KitchenSave, recipeId: RecipeId): number {
+  const recipe = RECIPES.find((r) => r.id === recipeId);
+  if (!recipe) return 0;
+  const first = !save.recipesCooked.includes(recipeId);
+  return recipe.xp + (first ? recipe.firstXp : 0);
+}
+
+export function grantCookXp(save: KitchenSave, amount: number): { save: KitchenSave; gained: number; levels: number } {
+  const gained = Math.max(0, Math.floor(amount));
+  if (gained <= 0) return { save, gained: 0, levels: 0 };
+  let level = cookLevel(save);
+  let xp = cookXp(save);
+  let levels = 0;
+  if (level >= COOK_LEVEL_MAX) {
+    const full = COOK_XP_TO_NEXT[COOK_LEVEL_MAX - 1] ?? 500;
+    return { save: { ...save, level: COOK_LEVEL_MAX, xp: full }, gained, levels: 0 };
+  }
+  xp += gained;
+  while (level < COOK_LEVEL_MAX) {
+    const need = xpToNext(level);
+    if (need <= 0 || xp < need) break;
+    xp -= need;
+    level += 1;
+    levels += 1;
+  }
+  if (level >= COOK_LEVEL_MAX) xp = COOK_XP_TO_NEXT[COOK_LEVEL_MAX - 1] ?? 500;
+  return { save: { ...save, level, xp }, gained, levels };
+}
+
+export function furnCookNeed(id: FurnId, fromLevel: number): number {
+  const lv = clampFurnLevel(fromLevel);
+  return FURN_COOK_NEED[id]?.[lv] ?? 1;
+}
+
+export function houseCookNeed(fromLevel: number): number {
+  const h = clampHouseLevel(fromLevel);
+  if (h >= HOUSE_MAX_LEVEL) return 1;
+  return HOUSE_COOK_NEED[h] ?? 1;
+}
+
+export function houseUpgradeCost(fromLevel: number): number {
+  const h = clampHouseLevel(fromLevel);
+  if (h >= HOUSE_MAX_LEVEL) return 0;
+  return HOUSE_UPGRADE_COST[h];
+}
+
+export type HouseUpgradeState =
+  | { status: 'max' }
+  | { status: 'ready'; cost: number }
+  | { status: 'blocked'; cost: number; error: string };
+
+export function houseUpgradeState(save: KitchenSave): HouseUpgradeState {
+  const level = houseLevel(save);
+  if (level >= HOUSE_MAX_LEVEL) return { status: 'max' };
+  const cost = houseUpgradeCost(level);
+  const need = houseCookNeed(level);
+  if (cookLevel(save) < need) {
+    return { status: 'blocked', cost, error: `厨艺 ${need} 级才能升` };
+  }
+  if (save.money < cost) return { status: 'blocked', cost, error: `差 ${cost - save.money} 金币` };
+  return { status: 'ready', cost };
+}
+
+export function buyHouseUpgrade(save: KitchenSave): { save: KitchenSave; error?: string } {
+  const state = houseUpgradeState(save);
+  if (state.status === 'max') return { save, error: '屋子已经最大了' };
+  if (state.status === 'blocked') return { save, error: state.error };
+  const level = houseLevel(save);
+  return { save: { ...save, money: save.money - state.cost, houseLevel: level + 1 } };
+}
+
+export type FurnUpgradeState =
+  | { status: 'max' }
+  | { status: 'ready'; cost: number }
+  | { status: 'blocked'; cost: number; error: string };
+
+export function furnUpgradeState(save: KitchenSave, id: FurnId): FurnUpgradeState {
+  const level = furnLevel(save, id);
+  if (level >= FURN_MAX_LEVEL) return { status: 'max' };
+  const cost = upgradeCost(id, level);
+  const cap = houseFurnCap(houseLevel(save), id);
+  if (level >= cap) {
+    const need = minHouseForFurn(id, level + 1);
+    return {
+      status: 'blocked',
+      cost,
+      error: `先把屋子装修到${houseLabel(need)}，才能升级${furnLabel(id, level)}`,
+    };
+  }
+  const cookNeed = furnCookNeed(id, level);
+  if (cookLevel(save) < cookNeed) {
+    return { status: 'blocked', cost, error: `厨艺 ${cookNeed} 级才能升` };
+  }
+  if (save.money < cost) return { status: 'blocked', cost, error: `差 ${cost - save.money} 金币` };
+  return { status: 'ready', cost };
+}
+
+export function buyFurnUpgrade(save: KitchenSave, id: FurnId): { save: KitchenSave; error?: string } {
+  const state = furnUpgradeState(save, id);
+  if (state.status === 'max') return { save, error: '已经最高级了' };
+  if (state.status === 'blocked') return { save, error: state.error };
+  const level = furnLevel(save, id);
+  const cost = state.cost;
+  const furnLevels = { ...save.furnLevels, [id]: level + 1 };
+  return {
+    save: {
+      ...save,
+      money: save.money - cost,
+      furnLevels,
+      basketLevel: furnLevels.basket,
+      fridgeExtra: furnLevels.fridge > 0 || furnLevels.foam > 0,
+    },
+  };
+}
+
+export function buyUpgrade(save: KitchenSave, kind: 'basket1' | 'basket2' | 'fridge'): { save: KitchenSave; error?: string } {
+  if (kind === 'fridge') return buyFurnUpgrade(save, 'fridge');
+  return buyFurnUpgrade(save, 'basket');
+}
+
+export function spendStamina(save: KitchenSave, now = Date.now()): { save: KitchenSave; error?: string } {
+  const next = regenStamina(save, now);
+  if (next.stamina <= 0) return { save: next, error: '没有体力了' };
+  const stamina = next.stamina - 1;
+  return { save: { ...next, stamina, staminaAt: stamina >= STAMINA_MAX ? now : next.staminaAt } };
+}
+
+export function addStamina(save: KitchenSave, n = 1, now = Date.now()): KitchenSave {
+  const next = regenStamina(save, now);
+  return { ...next, stamina: Math.min(STAMINA_MAX + 3, next.stamina + n) };
+}

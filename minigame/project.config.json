@@ -1,0 +1,12 @@
+{
+  "description": "微信开发者工具请打开仓库根目录（根 project.config.json 的 miniprogramRoot 指向此处）",
+  "appid": "wx41ac821080ff87f9",
+  "projectname": "jiancai-rosa",
+  "compileType": "game",
+  "libVersion": "latest",
+  "setting": {
+    "es6": true,
+    "minified": true,
+    "urlCheck": false
+  }
+}

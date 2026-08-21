@@ -1,0 +1,24 @@
+Edit the attached WeChat mini-game icon into a SHARP, clean 1:1 game avatar.
+
+STRICT COUNT — exactly THREE foods, no extras:
+1) one red tomato
+2) one gold jumping fish with huge staring eyes
+3) one green bok choy
+ZERO extra bok choy heads. ZERO extra tomatoes. ZERO extra fish. If you want to add a fourth vegetable, do not.
+
+LAYOUT:
+- The three sit in the visual CENTER.
+- Each one is LARGE, about the same visual weight.
+- Spread them a little: three separate readable silhouettes, slight overlap at most, NOT a crowded pile, NOT many leaves stuffed together.
+- Tomato left, fish top-center, bok choy right. Colors clearly red / gold / green.
+
+HAND:
+- Exactly ONE simple peach cartoon hand from lower left, smooth rounded fingers, no knuckles, no nails, orange cuff.
+- Five digits only. Hand is smaller than the food trio, reaching toward them, not covering them.
+
+STYLE:
+- Crisp clean outlines, high-resolution, no blur, no pixelation, no compression mush.
+- Night-market dusk, hanging bulb, faint crates, full-bleed background.
+- Thick dark-brown outlines, 2-3 step cel shading.
+
+NO TEXT, no letters, no numbers, no watermark.
