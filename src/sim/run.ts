@@ -9,14 +9,14 @@ import {
   type StallId,
 } from './items';
 import type { MarketId } from './destinations';
-import { PACK_FULL, PACK_RATE, clampPack, emptyPacking } from './packing';
+import { PACK_FULL, PACK_RATE, STALL_FEE, clampPack } from './packing';
+import { FAVOR_PACK_RATE, FREEBIE_STALLS, MARKET_PLAN, type CardKind } from './marketEvents';
+import { buildMarketMap, mapStallNodes, type MapNode, type MarketMap } from './marketMap';
+import { mulberry32, newSeed, rngInt, rngPick, type Rng } from './rng';
 import type { BasketItem, BasketState } from './basket';
 
-export const RUN_SECONDS = 150;
-export const DIM_AT = 30;
-export const WASH_AT = 10;
-
-export type RunMode = 'overview' | 'rummage';
+/** 天色（步数）管全局，实时只留在摊内老板装箱。 */
+export type RunMode = 'map' | 'rummage';
 export type ExtractKind = 'safe' | 'messy';
 
 export interface PileItem {
@@ -31,16 +31,46 @@ export interface PileItem {
   drawn: boolean;
 }
 
+/** 走过一张事件卡的战果。场景据此弹对话或拾取窗，不再只发一条 toast。 */
+export interface RunEventLog {
+  nodeId: string;
+  kind: CardKind;
+  /** 弹窗正文。事件卡是一句人话，白捡是一句旁白。 */
+  text: string;
+  /** 白捡到的东西；没捡到东西的卡是 null */
+  gain: { defId: string; quality: Quality; taken: boolean } | null;
+}
+
 export interface RunState {
-  timeLeft: number;
-  packing: Record<StallId, number>;
-  paid: StallId[];
-  mode: RunMode;
+  seed: number;
   marketId: MarketId;
-  currentStall: StallId | null;
-  piles: Record<StallId, PileItem[]>;
+  mode: RunMode;
+  map: MarketMap;
+  stepsMax: number;
+  stepsLeft: number;
+  /** 已经站上的卡，null 表示还在巷口没迈第一步 */
+  atNodeId: string | null;
+  /** 这一层能点的卡 */
+  options: string[];
+  visited: string[];
+  /** 空摊看清的下层卡，无视明牌 */
+  peeked: string[];
+  /** 正在翻的摊位卡 */
+  currentNodeId: string | null;
+  /** nodeId → 这摊的货。摊位卡各自一堆，同类摊不共享。 */
+  piles: Record<string, PileItem[]>;
+  packing: Record<string, number>;
+  paid: string[];
+  /** 街坊人情：下一摊免摊位费 */
+  freePass: boolean;
+  /** 街坊人情拖住的摊，老板装箱慢 */
+  slowNodes: string[];
   ended: boolean;
   extract?: ExtractResult;
+  /** 路线页那行事件回执 */
+  note: string;
+  /** 最近一张事件卡的战果，给弹窗用 */
+  lastEvent?: RunEventLog;
 }
 
 export interface ExtractedItem {
@@ -66,65 +96,124 @@ export function nextUid(prefix = 'i'): string {
   return `${prefix}${_uidSeq.toString(36)}`;
 }
 
-function randInt(min: number, max: number): number {
-  return min + Math.floor(Math.random() * (max - min + 1));
-}
-
-function rollQuality(): Quality {
-  const r = Math.random();
+function rollQuality(rng: Rng): Quality {
+  const r = rng();
   if (r < 0.18) return 'rotten';
   if (r < 0.62) return 'common';
   if (r < 0.88) return 'fresh';
   return 'premium';
 }
 
-function pick<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
+export function createRun(opts: { allowGodPick: boolean; marketId?: MarketId; seed?: number }): RunState {
+  const marketId = opts.marketId ?? 'xiangko';
+  const seed = opts.seed ?? newSeed();
+  const map = buildMarketMap(marketId, seed);
+  const plan = MARKET_PLAN[marketId];
+  // 单独一条 rng：改品质规则不该把地图布局也换掉
+  const rng = mulberry32((seed ^ 0x9E3779B9) >>> 0);
 
-export function createRun(opts: { allowGodPick: boolean; marketId?: MarketId }): RunState {
-  const piles = {} as Record<StallId, PileItem[]>;
-
-  for (const stall of STALLS) {
-    const pool = itemsForStall(stall.id);
-    const n = randInt(stall.count[0], stall.count[1]);
+  const piles: Record<string, PileItem[]> = {};
+  const packing: Record<string, number> = {};
+  for (const node of mapStallNodes(map)) {
+    const stall = STALLS.find((s) => s.id === node.stall)!;
+    const bonus = node.kind === 'paystall' ? 2 : 0;
+    const pool = itemsForStall(node.stall!);
+    const n = rngInt(rng, stall.count[0] + bonus, stall.count[1] + bonus);
     const list: PileItem[] = [];
     for (let i = 0; i < n; i++) {
-      const def = pick(pool);
+      const def = rngPick(rng, pool);
       list.push({
         uid: nextUid('p'),
         defId: def.id,
-        quality: rollQuality(),
+        quality: rollQuality(rng),
         revealed: false,
         inspected: false,
         washed: false,
         drawn: false,
       });
     }
-    piles[stall.id] = list;
+    piles[node.id] = list;
+    packing[node.id] = 0;
   }
 
-  if (opts.allowGodPick && Math.random() < 0.85) {
-    const fish = piles.fish;
-    const host = fish.find((it) => it.defId === 'smallfish') ?? pick(fish);
-    if (host) {
-      host.defId = GOD_PICK.id;
-      host.disguiseId = 'smallfish';
-      host.quality = 'god';
+  if (opts.allowGodPick && rng() < 0.85) {
+    const fishNodes = mapStallNodes(map).filter((n) => n.stall === 'fish');
+    if (fishNodes.length) {
+      const host = piles[rngPick(rng, fishNodes).id];
+      const victim = host?.find((it) => it.defId === 'smallfish') ?? (host?.length ? rngPick(rng, host) : null);
+      if (victim) {
+        victim.defId = GOD_PICK.id;
+        victim.disguiseId = 'smallfish';
+        victim.quality = 'god';
+      }
     }
   }
 
   return {
-    timeLeft: RUN_SECONDS,
-    packing: emptyPacking(),
-    paid: [],
-    mode: 'overview',
-    marketId: opts.marketId ?? 'xiangko',
-    currentStall: null,
+    seed,
+    marketId,
+    mode: 'map',
+    map,
+    stepsMax: plan.steps,
+    stepsLeft: plan.steps,
+    atNodeId: null,
+    options: map.layers[0].slice(),
+    visited: [],
+    peeked: [],
+    currentNodeId: null,
     piles,
+    packing,
+    paid: [],
+    freePass: false,
+    slowNodes: [],
     ended: false,
     extract: undefined,
+    note: '天还没黑，挑条路走。',
   };
+}
+
+export function hasGodPick(state: RunState): boolean {
+  return Object.values(state.piles).some((list) => list.some((it) => it.defId === GOD_PICK.id));
+}
+
+/** 摊位费：第一摊白翻，人情也白翻，之后按摊型收。收费摊按卡上的标价。 */
+export function nodeFee(state: RunState, node: MapNode): number {
+  if (!node.stall) return 0;
+  if (state.paid.includes(node.id)) return 0;
+  if (state.freePass) return 0;
+  if (node.kind === 'paystall') return node.fee;
+  return state.paid.length === 0 ? 0 : STALL_FEE[node.stall];
+}
+
+/** 天色不够、钱不够、厨艺不够都拦在这。看得见进不去，别把卡藏起来。 */
+export function cardBlock(
+  state: RunState,
+  node: MapNode,
+  money: number,
+  cookLevel: number,
+  /** 预览前方的卡时跳过天色判定，那时候剩几步还说不准 */
+  ignoreSteps = false,
+): string | null {
+  if (!ignoreSteps && node.steps > state.stepsLeft) return '天色不够了';
+  if (node.cookNeed > cookLevel) return `厨艺 ${node.cookNeed} 级才认得`;
+  const fee = nodeFee(state, node);
+  if (fee > money) return `差 ${fee - money} 金币`;
+  return null;
+}
+
+export function currentNode(state: RunState): MapNode | null {
+  return state.currentNodeId ? state.map.nodes[state.currentNodeId] ?? null : null;
+}
+
+export function currentStallId(state: RunState): StallId | null {
+  return currentNode(state)?.stall ?? null;
+}
+
+export function packRate(state: RunState, nodeId: string): number {
+  const node = state.map.nodes[nodeId];
+  if (!node?.stall) return 0;
+  const slow = state.slowNodes.includes(nodeId) ? FAVOR_PACK_RATE : 1;
+  return PACK_RATE[node.stall] * slow;
 }
 
 export function visibleDefId(item: PileItem): string {
@@ -132,35 +221,24 @@ export function visibleDefId(item: PileItem): string {
   return item.defId;
 }
 
+/** 只在摊内跑：老板一边装箱，桌上没挑走的就归他。 */
 export function tickRun(state: RunState, dt: number, _interacting: boolean): RunState {
-  if (state.ended) return state;
-  let timeLeft = Math.max(0, state.timeLeft - dt);
+  if (state.ended || state.mode !== 'rummage' || !state.currentNodeId) return state;
+  const id = state.currentNodeId;
   const packing = { ...state.packing };
   const piles = { ...state.piles };
-
-  if (state.mode === 'rummage' && state.currentStall) {
-    const id = state.currentStall;
-    packing[id] = clampPack(packing[id] + dt * PACK_RATE[id]);
-    if (packing[id] >= PACK_FULL) {
-      piles[id] = piles[id].map((it) => (it.washed ? it : { ...it, washed: true }));
-    }
+  packing[id] = clampPack((packing[id] ?? 0) + dt * packRate(state, id));
+  if (packing[id] >= PACK_FULL) {
+    piles[id] = (piles[id] ?? []).map((it) => (it.washed ? it : { ...it, washed: true }));
   }
+  return { ...state, packing, piles };
+}
 
-  if (timeLeft <= WASH_AT) {
-    const washChance = dt * 2;
-    if (Math.random() < washChance) {
-      const stallIds = STALLS.map((s) => s.id);
-      const stall = pick(stallIds);
-      const ground = piles[stall].filter((it) => !it.washed);
-      if (ground.length) {
-        const victim = pick(ground);
-        piles[stall] = piles[stall].map((it) => (it.uid === victim.uid ? { ...it, washed: true } : it));
-      }
-    }
-  }
-
-  const ended = timeLeft <= 0 ? true : state.ended;
-  return { ...state, timeLeft, packing, piles, ended };
+/** 白捡的货：地上躺着的只会是叶菜根茎蛋豆，不会是活蟹。 */
+export function rollFreebie(rng: Rng): { defId: string; quality: Quality } {
+  const stall = rngPick(rng, FREEBIE_STALLS);
+  const def = rngPick(rng, itemsForStall(stall));
+  return { defId: def.id, quality: rng() < 0.7 ? 'common' : 'fresh' };
 }
 
 export function settleExtract(kind: ExtractKind, basket: BasketState): ExtractResult {
@@ -186,8 +264,9 @@ export function settleExtract(kind: ExtractKind, basket: BasketState): ExtractRe
   return { kind, items, lost: 0 };
 }
 
+/** 主动收工是 safe，天黑被赶出来是 messy。 */
 export function decideExtract(state: RunState, voluntary: boolean): ExtractKind {
-  if (!voluntary || state.timeLeft <= 0) return 'messy';
+  if (!voluntary || state.stepsLeft <= 0) return 'messy';
   return 'safe';
 }
 
@@ -198,5 +277,15 @@ export function pileToBasketDraft(item: PileItem): Omit<BasketItem, 'x' | 'y' | 
     quality: item.quality,
     inspected: item.inspected,
     freshness: initialFreshness(item.quality),
+  };
+}
+
+export function freebieToBasketDraft(defId: string, quality: Quality): Omit<BasketItem, 'x' | 'y' | 'rot' | 'pinned' | 'dampened'> {
+  return {
+    uid: nextUid('f'),
+    defId,
+    quality,
+    inspected: false,
+    freshness: initialFreshness(quality),
   };
 }

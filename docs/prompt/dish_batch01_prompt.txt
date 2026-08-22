@@ -1,0 +1,11 @@
+STYLE from _style_block.txt. Cozy casual mobile-game cartoon, medium-thick #2A2018 outlines, soft cel shading. NO photorealism, NO photo, NO TEXT.
+
+Each image is one finished Chinese home dish, top-down, round cream plate, solid white background.
+1 smashed_cucumber: smashed whole cucumbers with garlic and cilantro, cold salad, glossy.
+2 lettuce_salad: torn butter lettuce with minced garlic, cold.
+3 garlic_bokchoy: stir-fried whole-leaf bok choy with golden garlic bits.
+4 vinegar_cabbage: glossy stir-fried napa cabbage, pale green, ginger.
+5 vinegar_potato: home-style shredded potato stir-fry, pale gold, ginger sheen.
+6 pepper_potato: green pepper strips mixed with shredded potato.
+7 braised_eggplant: glossy dark-brown Chinese braised eggplant, garlic.
+8 tomato_tofu: red tomato sauce tumbled with soft white tofu cubes.

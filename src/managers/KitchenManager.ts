@@ -11,9 +11,8 @@ import {
   cookRecipe,
   COOK_LEVEL_MAX,
   clampCookLevel,
-  fridgeRoom,
   fridgeOwnCap,
-  foamExtraCap,
+  fridgeRoom,
   furnLevel,
   grantCookXp,
   houseLevel,
@@ -26,7 +25,10 @@ import {
   type KitchenSave,
   type RecipeId,
 } from '@/sim/kitchen';
+import { foamWetCols, outingDryCells } from '@/sim/basket';
 import { furnLabel, houseLabel, type FurnId } from '@/sim/kitchenLayout';
+import type { CardKind } from '@/sim/marketEvents';
+import type { MarketId } from '@/sim/destinations';
 import type { ExtractedItem } from '@/sim/run';
 
 class KitchenManagerClass {
@@ -177,7 +179,12 @@ class KitchenManagerClass {
     this.emit();
     const lv = furnLevel(save, id);
     if (id === 'fridge') Platform.showToast(`冰箱 ${lv + 1} 级 · 容量 ${fridgeOwnCap(lv)}`, 'success');
-    else if (id === 'foam') Platform.showToast(`${furnLabel(id, lv)} · 扩容 +${foamExtraCap(lv)}`, 'success');
+    else if (id === 'foam') {
+      Platform.showToast(`${furnLabel(id, lv)} · 出门湿区 ${foamWetCols(lv)} 列`, 'success');
+    }
+    else if (id === 'basket') {
+      Platform.showToast(`${furnLabel(id, lv)} · 出门干区 ${outingDryCells(lv)} 格`, 'success');
+    }
     else Platform.showToast(`升到 ${lv + 1} 级`, 'success');
   }
 
@@ -190,6 +197,17 @@ class KitchenManagerClass {
     SaveManager.replace(save);
     this.emit();
     Platform.showToast(`装修成${houseLabel(houseLevel(save))}`, 'success');
+  }
+
+  /** 明牌：这个菜场走过这种卡，下次直接写名字。 */
+  cardSeen(marketId: MarketId, kind: CardKind): boolean {
+    return this.save.seenCards.includes(`${marketId}:${kind}`);
+  }
+
+  markCardSeen(marketId: MarketId, kind: CardKind): void {
+    const key = `${marketId}:${kind}`;
+    if (this.save.seenCards.includes(key)) return;
+    SaveManager.replace({ ...this.save, seenCards: [...this.save.seenCards, key] });
   }
 
   allowGodPickToday(): boolean {

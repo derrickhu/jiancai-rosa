@@ -32,8 +32,11 @@ import {
   cookXpView,
   furnCookNeed,
   cookLevel,
+  bagDryCols,
+  bagRows,
   fridgeOwnCap,
-  foamExtraCap,
+  foamWetCols,
+  tableUnlockNext,
   layoutFor,
   saveGmLayout,
   clampHouseLevel,
@@ -624,7 +627,7 @@ export class KitchenScene implements Scene {
       { id: 'door', nx: door.nx, ny: door.ny + 0.12, nw: door.nw, nh: door.nh - 0.12, label: '出门' },
       ...(basket ? [{ id: 'basket' as const, ...basket, label: furnLabel('basket', this._viewLevel('basket')) }] : []),
       ...(fridge ? [{ id: 'fridge' as const, ...fridge, label: '冰箱' }] : []),
-      ...(foam ? [{ id: 'foam' as const, ...foam, label: '扩容' }] : []),
+      ...(foam ? [{ id: 'foam' as const, ...foam, label: furnLabel('foam', this._viewLevel('foam')) }] : []),
       ...(table ? [{ ...table, id: 'board' as const, label: '烹饪' }] : []),
     ];
   }
@@ -798,7 +801,7 @@ export class KitchenScene implements Scene {
     const state = furnUpgradeState(save, id);
     const rect = this._furnSpriteRect(id);
     const w = Game.designWidth;
-    const cardW = 236;
+    const cardW = 252;
     const cardH = 148;
     let x = rect.x + rect.w / 2 + this._pan.x - cardW / 2;
     let y = rect.y + this._pan.y - cardH - 58;
@@ -835,22 +838,31 @@ export class KitchenScene implements Scene {
     panel.endFill();
     card.addChild(panel);
 
+    const shown = lv + 1;
     const name = makeLabel(furnLabel(id, lv), 28, 0x2A2018, { fontWeight: '700' });
     name.position.set(18, 16);
     card.addChild(name);
+    const grade = makeLabel(`${shown}级`, 20, 0x8A6A40);
+    grade.position.set(18 + name.width + 8, 22);
+    card.addChild(grade);
     const cookNeed = furnCookNeed(id, lv);
     const capLine = (() => {
+      if (state.status === 'max') return '已满级';
+      const nextShown = lv + 2;
       if (id === 'fridge') {
-        const cur = fridgeOwnCap(lv);
-        const next = state.status === 'max' ? cur : fridgeOwnCap(lv + 1);
-        return state.status === 'max' ? `已满级 · 容量 ${cur}` : `${lv + 1} 级 · 容量 ${cur}→${next}`;
+        return `${nextShown}级容量  ${fridgeOwnCap(lv)}→${fridgeOwnCap(lv + 1)}`;
       }
       if (id === 'foam') {
-        const cur = foamExtraCap(lv);
-        const next = state.status === 'max' ? cur : foamExtraCap(lv + 1);
-        return state.status === 'max' ? `已满级 · 扩容 +${cur}` : `${lv + 1} 级 · 扩容 +${cur}→+${next}`;
+        const rows = bagRows(furnLevel(save, 'basket'));
+        return `${nextShown}级容量  ${foamWetCols(lv)}×${rows}→${foamWetCols(lv + 1)}×${rows}`;
       }
-      return state.status === 'max' ? '已满级' : cookNeed > 1 ? `${lv + 1} 级 · 要厨艺 ${cookNeed}` : `${lv + 1} 级`;
+      if (id === 'basket') {
+        return `${nextShown}级容量  ${bagDryCols(lv)}×${bagRows(lv)}→${bagDryCols(lv + 1)}×${bagRows(lv + 1)}`;
+      }
+      if (id === 'table') {
+        return `${nextShown}级  解锁 ${tableUnlockNext(lv)} 本菜谱`;
+      }
+      return `${nextShown}级`;
     })();
     const level = makeLabel(capLine, 20, 0x8A6A40);
     level.position.set(18, 52);

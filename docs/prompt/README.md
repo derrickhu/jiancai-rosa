@@ -18,12 +18,23 @@
 | `kitchen_fridge_lv6_9_prompt.txt` | 冰箱 6–9：加大并换色（蓝/银对开） | 1:1 |
 | `hud_coin_prompt.txt` / `hud_stamina_prompt.txt` | 顶栏货币/体力图标 | 1:1 |
 | `icon_wechat_shared.txt` / `icon_01`–`icon_05_*` | 微信小游戏头像《天黑请捡漏》五风格 | 1:1 |
-| `market_overview_prompt.txt` | 市集总览 | 9:16 |
+| `loading_bg_prompt.txt` | 启动页夜市底图（圆月+街上果蔬水产，无字） | 9:16 |
+| `title_logo_prompt.txt` | 标题字「扫荡菜场」：扫荡张狂、菜场果蔬笔画 | 16:9 |
+| `market_overview_prompt.txt` | 旧：市集总览（外层换卡片路线后只当选点缩略图） | 9:16 |
+| `market_route_bg_prompt.txt` | 卡片路线底图（中间一列压暗留空给卡片） | 9:16 |
+| `market_card_frame_prompt.txt` | 路线卡框（木框+纸面，入库前把纸面抠成透明窗口） | 3:4 |
+| `market_cards_prompt.txt` | 12 格卡面缩略图集（4×3，四摊+事件+背面） | 1:1 |
+| `market_freebie_bundle_prompt.txt` | 白捡卡面重画：地上一个扎口布包，看不出内容（单格贴回图集第 6 格） | 3:4 |
+| `npc_market_busts_prompt.txt` | 事件对话半身像两连（巷口张婶、收摊摊主），平灰底待抠 | 4:3 |
+| `ui_event_gain_prompt.txt` | 白捡弹窗壳体（木框奶油纸，顶角白菜大蒜） | 3:4 |
+| `ui_event_talk_prompt.txt` | 事件对话壳体（挂牌木框奶油纸，两侧灯笼） | 16:9 |
 | `stall_rummage_*_prompt.txt` | 四摊翻堆底 | 4:3 |
 | `stall_pile_*_prompt.txt` | 四摊遮挡堆（点堆抽取） | 1:1 |
 | `items_leaf_prompt.txt` 等 | 食材表 | 4:3 |
 | `dishes_prompt.txt` | 三道熟菜共用风格 | 1:1 |
-| `dish_stirfry_prompt.txt` / `dish_tomato_egg_prompt.txt` / `dish_garlic_shrimp_prompt.txt` | 装盘成品菜 | 1:1 |
+| `dish_stirfry_prompt.txt` / `dish_tomato_egg_prompt.txt` / `dish_garlic_shrimp_prompt.txt` | 装盘成品菜（旧三道） | 1:1 |
+| `dish_new_shared.txt` / `dish_batch01_prompt.txt` | 五十本里其余装盘菜 | 1:1 |
+| `items_new_clean_prompt.txt` | 新食材干净态（按占格比例） | 随 w×h |
 | `ui_fridge_panel_prompt.txt` | 冰箱形背包页（纯色腔体，顶栏/底栏留空） | 9:16 |
 | `ui_fridge_btn_prompt.txt` | 冰箱页配套按钮板（奶油/砖红/胡桃） | 16:9 |
 | `ui_cook_panel_prompt.txt` | 烹饪页菜谱书：布面精装+空白纸页，标题程序叠字 | 9:16 |

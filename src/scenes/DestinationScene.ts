@@ -192,7 +192,7 @@ export class DestinationScene implements Scene {
     if (unlocked) {
       const go = makeSlicedButton({
         label: '出发',
-        width: 200,
+        width: 168,
         height: 48,
         skin: 'terracotta',
         onReady: () => {
@@ -202,10 +202,11 @@ export class DestinationScene implements Scene {
       go.position.set(x + 236, y + 136);
       go.on('pointertap', () => this._depart(market));
       root.addChild(go);
+      root.addChild(this._staminaCost(x + 416, y + 136, market.staminaCost, KitchenManager.save.stamina < market.staminaCost));
     } else {
       const need = makeSlicedButton({
         label: `厨艺 ${market.unlockLevel} 解锁`,
-        width: 200,
+        width: 168,
         height: 48,
         skin: 'wood',
         onReady: () => {
@@ -215,6 +216,7 @@ export class DestinationScene implements Scene {
       need.eventMode = 'none';
       need.position.set(x + 236, y + 136);
       root.addChild(need);
+      root.addChild(this._staminaCost(x + 416, y + 136, market.staminaCost, false));
       root.eventMode = 'static';
       root.cursor = 'pointer';
       root.hitArea = new PIXI.Rectangle(x, y, width, height);
@@ -222,6 +224,37 @@ export class DestinationScene implements Scene {
         Platform.showToast(`${market.name} · 厨艺 ${market.unlockLevel} 解锁`);
       });
     }
+    return root;
+  }
+
+  /** 出发钮右边：包子图 + 消耗。不够就数字发红。 */
+  private _staminaCost(x: number, y: number, cost: number, short: boolean): PIXI.Container {
+    const root = new PIXI.Container();
+    const chip = new PIXI.Graphics();
+    chip.lineStyle(2, 0x8B5A2B, 1);
+    chip.beginFill(0xFFF6EA);
+    chip.drawRoundedRect(0, 0, 118, 48, 24);
+    chip.endFill();
+    root.addChild(chip);
+
+    const icon = HUD_ICON.stamina;
+    whenTextureReady(icon, () => {
+      if (this.container.parent) this.relayout();
+    });
+    const tex = gameTexture(icon);
+    if (isTextureReady(tex)) {
+      const sp = new PIXI.Sprite(tex);
+      fitSpriteInBox(sp, 40, 40);
+      sp.anchor.set(0.5);
+      sp.position.set(28, 24);
+      root.addChild(sp);
+    }
+
+    const n = makeLabel(`-${cost}`, 24, short ? 0xC46A3A : 0x3A3228, { fontWeight: '700' });
+    n.anchor.set(0, 0.5);
+    n.position.set(52, 24);
+    root.addChild(n);
+    root.position.set(x, y);
     return root;
   }
 

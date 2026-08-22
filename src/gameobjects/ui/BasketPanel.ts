@@ -86,16 +86,17 @@ export class BasketPanel extends PIXI.Container {
     panel.eventMode = 'none';
     this._root.addChild(panel);
 
-    const title = makeLabel(this.placingUid ? '点绿色格放下' : '菜篮', 30, 0xF4EFE6);
+    const title = makeLabel(this.placingUid ? '点绿色格放下' : '出门篮 · 左湿右干', 30, 0xF4EFE6);
     title.position.set(panelX + 20, panelY + 14);
     this._root.addChild(title);
 
     const hint = makeLabel(
       this.placingUid && placingDef
         ? `正在摆：${displayName(placingDef.id, pile!.inspected, pile!.quality)}  ${shapeLabel(placingDef.id, this.placingRot)}  ·  绿格可放`
-        : `左 ${basket.wetCols} 列湿区` + (basket.insulatedBottom ? ' · 底行保温' : ' · 点格子里的菜可旋转'),
+        : `左 ${basket.wetCols} 列湿区（泡沫箱）· 右干区（塑料袋）` + (basket.insulatedBottom ? ' · 底行保温' : ''),
       18,
       0xC9B8A4,
+      { wordWrap: true, breakWords: true, wordWrapWidth: panelW - 40 },
     );
     hint.position.set(panelX + 20, panelY + 52);
     this._root.addChild(hint);

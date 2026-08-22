@@ -22,21 +22,48 @@ export interface BasketState {
   items: BasketItem[];
 }
 
-export function createBasket(level: number): BasketState {
-  const lv = Math.max(0, Math.min(9, Math.floor(level)));
-  const table: Array<{ cols: number; rows: number; wetCols: number; insulatedBottom: boolean }> = [
-    { cols: 6, rows: 5, wetCols: 2, insulatedBottom: false },
-    { cols: 6, rows: 5, wetCols: 2, insulatedBottom: false },
-    { cols: 6, rows: 6, wetCols: 2, insulatedBottom: false },
-    { cols: 6, rows: 6, wetCols: 2, insulatedBottom: true },
-    { cols: 7, rows: 6, wetCols: 2, insulatedBottom: true },
-    { cols: 7, rows: 6, wetCols: 3, insulatedBottom: true },
-    { cols: 7, rows: 7, wetCols: 3, insulatedBottom: true },
-    { cols: 8, rows: 7, wetCols: 3, insulatedBottom: true },
-    { cols: 8, rows: 7, wetCols: 3, insulatedBottom: true },
-    { cols: 8, rows: 8, wetCols: 3, insulatedBottom: true },
-  ];
-  return { ...table[lv], items: [] };
+/** 塑料袋/菜篮：出门干区列数。 */
+export const BAG_DRY_COLS = [4, 4, 4, 4, 5, 5, 5, 5, 6, 6];
+/** 塑料袋/菜篮：出门共用行数。 */
+export const BAG_ROWS = [5, 5, 6, 6, 6, 6, 7, 7, 7, 8];
+/** 泡沫箱/水桶：出门湿区列数。 */
+export const FOAM_WET_COLS = [2, 2, 2, 3, 3, 3, 4, 4, 4, 5];
+
+function clampBagLevel(level: number): number {
+  return Math.max(0, Math.min(9, Math.floor(level)));
+}
+
+export function bagDryCols(basketLevel: number): number {
+  return BAG_DRY_COLS[clampBagLevel(basketLevel)] ?? 4;
+}
+
+export function bagRows(basketLevel: number): number {
+  return BAG_ROWS[clampBagLevel(basketLevel)] ?? 5;
+}
+
+export function foamWetCols(foamLevel: number): number {
+  return FOAM_WET_COLS[clampBagLevel(foamLevel)] ?? 2;
+}
+
+export function outingDryCells(basketLevel: number): number {
+  return bagDryCols(basketLevel) * bagRows(basketLevel);
+}
+
+export function outingWetCells(foamLevel: number, basketLevel: number): number {
+  return foamWetCols(foamLevel) * bagRows(basketLevel);
+}
+
+export function createBasket(basketLevel: number, foamLevel = 0): BasketState {
+  const dryCols = bagDryCols(basketLevel);
+  const wetCols = foamWetCols(foamLevel);
+  const rows = bagRows(basketLevel);
+  return {
+    cols: wetCols + dryCols,
+    rows,
+    wetCols,
+    insulatedBottom: clampBagLevel(basketLevel) >= 3,
+    items: [],
+  };
 }
 
 export function footprint(def: ItemDef, rot: 0 | 1): { w: number; h: number } {

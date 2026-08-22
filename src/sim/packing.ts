@@ -22,10 +22,7 @@ export function clampPack(value: number): number {
   return Math.max(0, Math.min(PACK_FULL, value));
 }
 
-export function emptyPacking(): Record<StallId, number> {
-  return { leaf: 0, root: 0, egg: 0, fish: 0 };
-}
-
-export function stallPacked(packing: Record<StallId, number>, id: StallId): boolean {
-  return packing[id] >= PACK_FULL;
+/** 装箱按路线节点记，同类摊的两张卡各装各的。 */
+export function stallPacked(packing: Record<string, number>, id: string): boolean {
+  return (packing[id] ?? 0) >= PACK_FULL;
 }

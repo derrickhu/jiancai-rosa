@@ -1,0 +1,11 @@
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading, gentle highlights, warm wood and paper colors. Readable silhouette at 64px. Warm market-kitchen lighting, slightly golden, tidy not grimy, no horror, no photorealism, no pixel art, no neon. NO TEXT, no labels, no numbers, no captions, no watermark, no UI chrome.
+
+Replacement thumbnail for a "closing-time street market" card, single vertical 3:4 panel, same style as the other market card thumbnails (leafy stall, root stall, egg stall, dead end).
+
+SUBJECT — SOMETHING LEFT ON THE GROUND, CONTENTS UNKNOWN: an otherwise empty patch of wet flagstone alley ground at closing time. In the middle of the pool of warm lamp light sits one small closed parcel: a faded blue-grey cloth bundle knotted at the top with hemp string, sitting on a folded sheet of plain brown paper. The bundle is completely closed — nothing inside is visible, no vegetable leaf, no fish tail, no produce poking out, no transparency. Slightly rounded lumpy silhouette so it reads as "something is in there" without saying what.
+
+The rest of the panel is bare ground: damp stone slabs with soft reflected lamp light, one faint puddle, a swept-aside stray leaf or two far from the bundle, deep soft shadow at the panel edges. No people, no faces, no hands, no animals, no stall, no crates, no baskets, no visible vegetables, no coins.
+
+Mood: quiet lucky find, nobody around, the bundle is the only thing worth looking at. Composition centered, bundle occupying roughly the middle third of the panel so it stays readable when scaled down to 90px wide.
+
+Reminder: NO TEXT anywhere, no writing on the paper, no numbers, no watermark. Do not reveal what is inside the bundle.

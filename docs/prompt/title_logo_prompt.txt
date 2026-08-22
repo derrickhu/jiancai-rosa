@@ -1,0 +1,18 @@
+Horizontal one-line game title. EXACTLY four Simplified Chinese characters left to right: 扫荡菜场
+Solid MAGENTA #FF00FF background, edge to edge. Casual mobile-game cartoon, medium-thick #2A2018 outlines, soft cel shading. No English, no extra glyphs, no frame, no watermark.
+
+KEEP 扫荡 exactly like the attached orange wild poster letters: terracotta, slightly tilted, a few ink ticks. Do not restyle 扫荡.
+
+菜: COPY the attached vegetable-letter 菜. The WHOLE character is built from produce, and still reads as 菜:
+- 艹 = two bok-choy heads
+- middle horizontal = cucumber / tomato
+- lower 采 = celery stalk + potatoes
+Chunky sticker veggies, not a pile around a written letter.
+
+场: NOT vegetables. This glyph is a WOODEN MARKET STALL / COUNTER that still reads as 场.
+- Left 土 radical = stacked wood crates or short counter legs forming 土
+- Top-right stroke = stall awning beam / hanging cloth
+- Right body = a small wooden stall table with one warm bulb, plank grain, maybe one empty basket on the counter
+Dark walnut and honey wood, same cartoon outlines. Instantly readable as 场, not a random booth drawing.
+
+Even spacing. One line. Magenta only in the background.

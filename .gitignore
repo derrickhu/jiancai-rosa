@@ -8,6 +8,8 @@
 node_modules/
 minigame/index.html
 .tmp_qc_*/
+.tmp_loading/
+.tmp_mapcheck/
 
 .env
 .env.*

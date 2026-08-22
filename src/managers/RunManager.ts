@@ -1,17 +1,26 @@
 import { EventBus } from '@/core/EventBus';
 import { EV } from '@/config/events';
 import {
+  cardBlock,
   createBasket,
   createRun,
   displayName,
   decideExtract,
+  freebieToBasketDraft,
+  hasGodPick,
+  isMysteryCard,
+  mulberry32,
+  newSeed,
+  nodeFee,
+  rngPick,
   shapeLabel,
   pileToBasketDraft,
   place,
   removeItem,
+  rollFreebie,
   settleExtract,
+  EVENT_VOICE,
   stallPacked,
-  STALL_FEE,
   PACK_FULL,
   tickRun,
   tryAutoPlace,
@@ -20,29 +29,47 @@ import {
   type BasketItem,
   type BasketState,
   type ExtractResult,
+  type MapNode,
   type PileItem,
+  type Rng,
+  type RunEventLog,
   type RunState,
-  type StallId,
 } from '@/sim';
 import { KitchenManager } from './KitchenManager';
 import type { MarketId } from '@/sim';
 import { Platform } from '@/core/PlatformService';
 
+/** 路线页一张卡要显示的全部信息。 */
+export interface RouteOption {
+  node: MapNode;
+  /** 明牌了没。没明牌只画背面。 */
+  revealed: boolean;
+  /** 进不去的理由，null 表示能点 */
+  blocked: string | null;
+  fee: number;
+  left: number;
+}
+
 class RunManagerClass {
   run: RunState | null = null;
   basket: BasketState = createBasket(0);
   interacting = false;
+  private _rng: Rng = mulberry32(1);
 
   start(marketId: MarketId = 'xiangko'): boolean {
     if (!KitchenManager.startRun()) return false;
+    const seed = newSeed();
+    this._rng = mulberry32((seed ^ 0x5BF03635) >>> 0);
     this.run = createRun({
       allowGodPick: KitchenManager.allowGodPickToday(),
       marketId,
+      seed,
     });
-    if (this.run.piles.fish.some((it) => it.defId === 'wild_yellowfish')) {
-      KitchenManager.markGodPickToday();
-    }
-    this.basket = createBasket(furnLevel(KitchenManager.save, 'basket'));
+    if (hasGodPick(this.run)) KitchenManager.markGodPickToday();
+    this.basket = createBasket(
+      furnLevel(KitchenManager.save, 'basket'),
+      furnLevel(KitchenManager.save, 'foam'),
+    );
     this.emit();
     return true;
   }
@@ -57,70 +84,247 @@ class RunManagerClass {
     return !!this.run && !this.run.ended;
   }
 
+  /** 只有摊内在跑表：老板一边装箱。路线页是从容决策，不催。 */
   tick(dt: number): void {
     if (!this.run || this.run.ended) return;
-    const prevSec = Math.ceil(this.run.timeLeft);
-    const prevPack = this.run.currentStall ? Math.floor(this.run.packing[this.run.currentStall]) : 0;
+    if (this.run.mode !== 'rummage' || !this.run.currentNodeId) return;
+    const id = this.run.currentNodeId;
+    const prevPack = Math.floor(this.run.packing[id] ?? 0);
     const prevLeft = countGround(this.run);
     this.run = tickRun(this.run, dt, this.interacting);
-    const nextPack = this.run.currentStall ? Math.floor(this.run.packing[this.run.currentStall]) : 0;
-    if (this.run.currentStall && prevPack < PACK_FULL && nextPack >= PACK_FULL) {
+    const nextPack = Math.floor(this.run.packing[id] ?? 0);
+    if (prevPack < PACK_FULL && nextPack >= PACK_FULL) {
       Platform.showToast('这摊剩的装上车了');
     }
-    const dirty =
-      this.run.ended
-      || Math.ceil(this.run.timeLeft) !== prevSec
-      || nextPack !== prevPack
-      || countGround(this.run) !== prevLeft;
-    if (this.run.ended) {
+    if (nextPack !== prevPack || countGround(this.run) !== prevLeft) this.emit();
+  }
+
+  /** 这一层能点的卡。 */
+  options(): RouteOption[] {
+    const run = this.run;
+    if (!run || run.ended) return [];
+    return run.options.map((id) => this.describe(run, id, false));
+  }
+
+  /**
+   * 当前一排 + 前方几排。前方的按 next 顺推，所以只看得见自己走得到的卡。
+   * 排与排之间的连线交给视图画，「选了左边右边就过不去」得让人在点之前就看见。
+   */
+  routeRows(depth = 3): RouteOption[][] {
+    const run = this.run;
+    if (!run || run.ended || run.mode !== 'map') return [];
+    const rows: RouteOption[][] = [];
+    let ids = run.options.slice();
+    for (let i = 0; i < depth && ids.length; i++) {
+      rows.push(ids.map((id) => this.describe(run, id, i > 0)));
+      const nextIds: string[] = [];
+      ids.forEach((id) => {
+        run.map.nodes[id].next.forEach((nid) => {
+          if (!nextIds.includes(nid)) nextIds.push(nid);
+        });
+      });
+      ids = nextIds;
+    }
+    return rows;
+  }
+
+  /** ahead 为真时不算天色门槛：前方的卡等你走到跟前，步数早变了。 */
+  private describe(run: RunState, id: string, ahead: boolean): RouteOption {
+    const node = run.map.nodes[id];
+    return {
+      node,
+      revealed:
+        !isMysteryCard(node.kind)
+        || run.peeked.includes(id)
+        || KitchenManager.cardSeen(run.marketId, node.kind),
+      blocked: cardBlock(run, node, KitchenManager.save.money, KitchenManager.save.level, ahead),
+      fee: nodeFee(run, node),
+      left: node.stall ? (run.piles[id] ?? []).filter((it) => !it.washed).length : 0,
+    };
+  }
+
+  stepsLabel(): string {
+    if (!this.run) return '天色';
+    return `${this.run.stepsLeft}/${this.run.stepsMax}`;
+  }
+
+  enterNode(id: string): void {
+    const run = this.run;
+    if (!run || run.ended || run.mode !== 'map') return;
+    if (!run.options.includes(id)) return;
+    const node = run.map.nodes[id];
+    const block = cardBlock(run, node, KitchenManager.save.money, KitchenManager.save.level);
+    if (block) {
+      Platform.showToast(block);
+      return;
+    }
+
+    const fee = nodeFee(run, node);
+    if (fee > 0 && !KitchenManager.trySpend(fee)) return;
+    KitchenManager.markCardSeen(run.marketId, node.kind);
+
+    const favored = !!node.stall && run.freePass;
+    let next: RunState = {
+      ...run,
+      stepsLeft: Math.max(0, run.stepsLeft - node.steps),
+      atNodeId: id,
+      options: node.next.slice(),
+      visited: [...run.visited, id],
+      freePass: favored ? false : run.freePass,
+    };
+
+    if (node.stall) {
+      this.run = {
+        ...next,
+        mode: 'rummage',
+        currentNodeId: id,
+        paid: next.paid.includes(id) ? next.paid : [...next.paid, id],
+        slowNodes: favored ? [...next.slowNodes, id] : next.slowNodes,
+        note: '摊上还剩一堆，慢慢翻。',
+      };
+      if (fee > 0) Platform.showToast(`买下这摊剩货 ${fee} 金币`);
+      else if (favored) Platform.showToast('街坊打过招呼，这摊白翻，老板也不急');
+      else Platform.showToast('街坊情分，这摊剩的给你翻');
       this.emit();
+      return;
+    }
+
+    next = this.resolveEvent(next, node);
+    this.run = next;
+    this.emit();
+    this.checkDayEnd();
+  }
+
+  /** 整层的卡全进不去（常见是钱不够又碰上整层摊位）。得留条路，不然卡死。 */
+  allBlocked(): boolean {
+    const run = this.run;
+    if (!run || run.ended || run.mode !== 'map' || !run.options.length) return false;
+    return this.options().every((opt) => !!opt.blocked);
+  }
+
+  bypass(): void {
+    const run = this.run;
+    if (!run || !this.allBlocked()) return;
+    const merged: string[] = [];
+    run.options.forEach((id) => {
+      run.map.nodes[id].next.forEach((nid) => {
+        if (!merged.includes(nid)) merged.push(nid);
+      });
+    });
+    this.run = {
+      ...run,
+      stepsLeft: Math.max(0, run.stepsLeft - 1),
+      options: merged,
+      note: '这几处都进不去，绕过去了一段。',
+    };
+    Platform.showToast('绕开这一层，耗一步天色');
+    this.emit();
+    this.checkDayEnd();
+  }
+
+  /** 从摊面退回路线。天色可能已经在进摊那一步用完了。 */
+  leaveStall(): void {
+    if (!this.run || this.run.ended) return;
+    this.run = { ...this.run, mode: 'map', currentNodeId: null, note: '出了摊，接着挑路。' };
+    this.emit();
+    this.checkDayEnd();
+  }
+
+  /** 事件结算只写进 state，话由弹窗去说，别再叠 toast。 */
+  private resolveEvent(state: RunState, node: MapNode): RunState {
+    const log = (text: string, gain: RunEventLog['gain'] = null): RunEventLog => ({
+      nodeId: node.id,
+      kind: node.kind,
+      text,
+      gain,
+    });
+    const voice = (): string => {
+      const lines = EVENT_VOICE[node.kind]?.lines;
+      return lines?.length ? rngPick(this._rng, lines) : '';
+    };
+
+    switch (node.kind) {
+      case 'freebie': {
+        const { defId, quality } = rollFreebie(this._rng);
+        const name = displayName(defId, false, quality);
+        const placed = tryAutoPlace(this.basket, freebieToBasketDraft(defId, quality));
+        if (!placed) {
+          return {
+            ...state,
+            note: '地上有货，可篮子塞不下。',
+            lastEvent: log('篮子实在挤不出地方，只能看它躺在那儿。', { defId, quality, taken: false }),
+          };
+        }
+        this.basket = { ...this.basket, items: [...this.basket.items, placed] };
+        return {
+          ...state,
+          note: `地上捡到一份${name}。`,
+          lastEvent: log('摊主收筐时漏下的，还新鲜着，捡回去。', { defId, quality, taken: true }),
+        };
+      }
+      case 'deadend':
+        return { ...state, note: '死胡同，天色白耗了一步。', lastEvent: log(voice()) };
+      case 'empty':
+        return {
+          ...state,
+          peeked: [...state.peeked, ...node.next],
+          note: '摊上收干净了，倒是看清了前面的路。',
+          lastEvent: log(voice()),
+        };
+      case 'favor':
+        return {
+          ...state,
+          freePass: true,
+          note: '街坊打了招呼，下一摊白翻，老板还慢慢收。',
+          lastEvent: log(voice()),
+        };
+      case 'fork':
+        return { ...state, note: '路分成两条，这一步没耗天色。' };
+      default:
+        return state;
+    }
+  }
+
+  /** 天黑被赶出来是 messy，逛到街尾从容回家算 safe。 */
+  private checkDayEnd(): void {
+    const run = this.run;
+    if (!run || run.ended || run.mode === 'rummage') return;
+    if (run.stepsLeft <= 0) {
+      Platform.showToast('天黑了，收摊');
       this.extract(false);
       return;
     }
-    if (dirty) this.emit();
-  }
-
-  openStall(id: StallId): void {
-    if (!this.run || this.run.ended) return;
-    if (stallPacked(this.run.packing, id)) {
-      Platform.showToast('这摊已经装走了');
-      return;
+    if (run.options.length === 0) {
+      Platform.showToast('逛到街尾了，回家');
+      this.extract(true);
     }
-    if (!this.run.paid.includes(id)) {
-      const fee = this.run.paid.length === 0 ? 0 : STALL_FEE[id];
-      if (!KitchenManager.trySpend(fee)) return;
-      this.run = { ...this.run, paid: [...this.run.paid, id] };
-      if (fee > 0) Platform.showToast(`买下这摊剩货 ${fee} 金币`);
-      else Platform.showToast('街坊情分，这摊剩的给你翻');
-    }
-    this.run = { ...this.run, mode: 'rummage', currentStall: id };
-    this.emit();
-  }
-
-  backToOverview(): void {
-    if (!this.run || this.run.ended) return;
-    this.run = { ...this.run, mode: 'overview', currentStall: null };
-    this.emit();
   }
 
   currentPile(): PileItem[] {
-    if (!this.run?.currentStall) return [];
-    return this.run.piles[this.run.currentStall].filter((it) => !it.washed && it.drawn);
+    if (!this.run?.currentNodeId) return [];
+    return (this.run.piles[this.run.currentNodeId] ?? []).filter((it) => !it.washed && it.drawn);
   }
 
   crateLeft(): PileItem[] {
-    if (!this.run?.currentStall) return [];
-    return this.run.piles[this.run.currentStall].filter((it) => !it.washed && !it.drawn);
+    if (!this.run?.currentNodeId) return [];
+    return (this.run.piles[this.run.currentNodeId] ?? []).filter((it) => !it.washed && !it.drawn);
+  }
+
+  currentPacked(): boolean {
+    if (!this.run?.currentNodeId) return false;
+    return stallPacked(this.run.packing, this.run.currentNodeId);
   }
 
   drawFromCrate(uid?: string): PileItem | null {
-    if (!this.run?.currentStall) return null;
+    if (!this.run?.currentNodeId) return null;
     const crate = this.crateLeft();
     if (!crate.length) {
       Platform.showToast('筐里空了');
       return null;
     }
-    const item = uid ? crate.find((it) => it.uid === uid) ?? crate[Math.floor(Math.random() * crate.length)] : crate[Math.floor(Math.random() * crate.length)];
+    const item = uid
+      ? crate.find((it) => it.uid === uid) ?? crate[Math.floor(Math.random() * crate.length)]
+      : crate[Math.floor(Math.random() * crate.length)];
     this.patchPile(item.uid, { drawn: true, revealed: true });
     this.emit();
     return this.findPile(item.uid) ?? item;
@@ -218,7 +422,10 @@ class RunManagerClass {
 
   clear(): void {
     this.run = null;
-    this.basket = createBasket(furnLevel(KitchenManager.save, 'basket'));
+    this.basket = createBasket(
+      furnLevel(KitchenManager.save, 'basket'),
+      furnLevel(KitchenManager.save, 'foam'),
+    );
     this.emit();
   }
 
@@ -232,8 +439,8 @@ class RunManagerClass {
 
   private findPile(uid: string): PileItem | undefined {
     if (!this.run) return undefined;
-    for (const stall of Object.values(this.run.piles)) {
-      const found = stall.find((it) => it.uid === uid && !it.washed);
+    for (const list of Object.values(this.run.piles)) {
+      const found = list.find((it) => it.uid === uid && !it.washed);
       if (found) return found;
     }
     return undefined;
@@ -242,8 +449,8 @@ class RunManagerClass {
   private patchPile(uid: string, patch: Partial<PileItem>): void {
     if (!this.run) return;
     const piles = { ...this.run.piles };
-    (Object.keys(piles) as StallId[]).forEach((sid) => {
-      piles[sid] = piles[sid].map((it) => (it.uid === uid ? { ...it, ...patch } : it));
+    Object.keys(piles).forEach((nid) => {
+      piles[nid] = piles[nid].map((it) => (it.uid === uid ? { ...it, ...patch } : it));
     });
     this.run = { ...this.run, piles };
   }
@@ -251,8 +458,8 @@ class RunManagerClass {
   private removeFromPile(uid: string): void {
     if (!this.run) return;
     const piles = { ...this.run.piles };
-    (Object.keys(piles) as StallId[]).forEach((sid) => {
-      piles[sid] = piles[sid].filter((it) => it.uid !== uid);
+    Object.keys(piles).forEach((nid) => {
+      piles[nid] = piles[nid].filter((it) => it.uid !== uid);
     });
     this.run = { ...this.run, piles };
   }

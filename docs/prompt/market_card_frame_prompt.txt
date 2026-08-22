@@ -1,0 +1,14 @@
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading, gentle highlights, warm wood and paper colors. Warm market-kitchen lighting, slightly golden, tidy not grimy, no horror, no photorealism, no pixel art, no neon. NO TEXT, no labels, no numbers, no captions, no watermark.
+
+A single vertical game card BLANK backing plate, 3:4 portrait, centred, filling the whole image edge to edge.
+
+Structure from top to bottom:
+- A rounded-rectangle card with generously rounded corners.
+- Outer edge: a medium-thick dark warm brown outline, plus a narrow warm wood border band just inside it, like a thin wooden picture frame.
+- Top area: a horizontal title bar band across the full card width, slightly darker warm wood or kraft paper tone, COMPLETELY EMPTY with no writing at all, about one fifth of the card height, separated from the area below by a thin dark line.
+- Main area below the title bar: one large clean flat empty panel of pale cream paper (#F6EDE0 to #FFF8F0), very subtly textured like soft paper, no illustration inside, no pattern, no ornament, no icons. This area must stay plain and unobstructed so artwork can be composited on top later.
+- Very soft warm drop shadow just outside the card edge.
+
+Background outside the card: flat neutral mid-grey, plain, so the card silhouette is easy to isolate.
+
+The card must be perfectly upright, symmetric, not tilted, not in perspective, not held by hands, no stack of cards, only one single card. NO TEXT, NO SYMBOLS, NO DECORATIVE CORNER FLOURISHES, NO ILLUSTRATION inside the paper area.

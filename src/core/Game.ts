@@ -56,21 +56,29 @@ class GameClass {
     canvas.width = realWidth;
     canvas.height = realHeight;
 
+    const baseOpts = {
+      view: canvas,
+      width: realWidth,
+      height: realHeight,
+      backgroundColor: 0x2C261F,
+      resolution: 1,
+      antialias: true,
+      preserveDrawingBuffer: true,
+      preferWebGLVersion: 1,
+    };
+
     let renderer: PIXI.IRenderer | null = null;
     let app: PIXI.Application | null = null;
     try {
-      app = new PIXI.Application({
-        view: canvas,
-        width: realWidth,
-        height: realHeight,
-        backgroundColor: 0x2C261F,
-        resolution: 1,
-        antialias: true,
-        preserveDrawingBuffer: true,
-        preferWebGLVersion: 1,
-      } as any);
+      app = new PIXI.Application(baseOpts as any);
     } catch (e) {
       console.error('[Game] new PIXI.Application 失败:', e);
+      try {
+        app = new PIXI.Application({ ...baseOpts, forceCanvas: true, antialias: false } as any);
+        console.warn('[Game] 已降级到 Canvas 渲染');
+      } catch (eCanvas) {
+        console.error('[Game] Canvas Application 也失败:', eCanvas);
+      }
     }
 
     if (app && app.stage && app.ticker && app.renderer) {
@@ -105,6 +113,7 @@ class GameClass {
             backgroundColor: 0x2C261F,
             resolution: 1,
             preferWebGLVersion: 1,
+            forceCanvas: true,
           } as any);
         } catch (e3) {
           console.error('[Game] autoDetectRenderer 失败:', e3);
@@ -132,7 +141,7 @@ class GameClass {
     });
 
     try {
-      const evtSys = (this.app.renderer as any).events;
+      const evtSys = (this.app?.renderer as any)?.events;
       if (evtSys && evtSys.domElement) {
         const dom = evtSys.domElement;
         evtSys.mapPositionToPoint = (point: any, x: number, y: number) => {

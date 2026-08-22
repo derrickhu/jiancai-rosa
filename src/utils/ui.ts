@@ -215,6 +215,8 @@ export function fillRect(g: PIXI.Graphics, x: number, y: number, w: number, h: n
 
 export const HUD_ICON = {
   clock: 'subpkg_images/hud_clock.png',
+  coin: 'subpkg_images/hud_coin.png',
+  stamina: 'subpkg_images/hud_stamina.png',
   fridge: 'subpkg_images/hud_fridge.png',
   basket: 'subpkg_images/hud_basket.png',
   destBanner: 'subpkg_images/ui_dest_banner.png',

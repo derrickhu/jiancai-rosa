@@ -16,10 +16,8 @@ import {
 export const STAMINA_MAX = 5;
 export const STAMINA_REGEN_MS = 30 * 60 * 1000;
 export const FRIDGE_BASE = 8;
-/** 冰箱内部 0–9 级的格数。双门 / 法式质变多跳一档。 */
+/** 冰箱内部 0–9 级的格数。回家后干湿饭菜都进这些格，不分仓。 */
 export const FRIDGE_CAP = [8, 10, 12, 14, 16, 20, 24, 28, 32, 36];
-/** 泡沫箱内部 0–9 级额外格数。水桶不加，保温箱起跳得更明显。 */
-export const FOAM_CAP = [0, 2, 3, 4, 6, 8, 10, 12, 14, 18];
 export const UPGRADE_BASKET_I = 80;
 export const UPGRADE_BASKET_II = 200;
 export const UPGRADE_FRIDGE = 60;
@@ -98,6 +96,8 @@ export interface KitchenSave {
   level: number;
   /** 本级经验。满级后条停在满。 */
   xp: number;
+  /** 明牌记忆：走过的卡型，存 `菜场:卡型`。地图每局重生，所以不记节点 id。 */
+  seenCards: string[];
 }
 
 export function todayKey(now = Date.now()): string {
@@ -123,6 +123,7 @@ export function defaultSave(now = Date.now()): KitchenSave {
     lastSeenAt: now,
     level: 1,
     xp: 0,
+    seenCards: [],
   };
 }
 
@@ -143,6 +144,7 @@ export function normalizeSave(raw: Partial<KitchenSave> | null, now = Date.now()
     recipesCooked: Array.isArray(raw.recipesCooked)
       ? raw.recipesCooked.filter((id): id is RecipeId => RECIPES.some((r) => r.id === id))
       : [],
+    seenCards: Array.isArray(raw.seenCards) ? raw.seenCards : [],
   };
   next.basketLevel = next.furnLevels.basket;
   next.fridgeExtra = next.furnLevels.fridge > 0 || next.furnLevels.foam > 0;
@@ -193,12 +195,8 @@ export function fridgeOwnCap(level: number): number {
   return FRIDGE_CAP[clampFurnLevel(level)] ?? FRIDGE_BASE;
 }
 
-export function foamExtraCap(level: number): number {
-  return FOAM_CAP[clampFurnLevel(level)] ?? 0;
-}
-
 export function fridgeCap(save: KitchenSave): number {
-  return fridgeOwnCap(furnLevel(save, 'fridge')) + foamExtraCap(furnLevel(save, 'foam'));
+  return fridgeOwnCap(furnLevel(save, 'fridge'));
 }
 
 export function fridgeRoom(save: KitchenSave): number {
@@ -416,7 +414,7 @@ export function cookRecipe(
   if (items.some((it) => it.quality === 'rotten')) return { save, error: '坏了，不能下锅' };
   if (!recipe.match(items)) return { save, error: `材料不对：${recipe.desc}` };
   const value = recipe.cook(items);
-  const used = new Set(items.map((it) => it.uid));
+  const usedIds = new Set(items.map((it) => it.uid));
   const dish: FridgeItem = {
     uid: nextUid('d'),
     kind: 'dish',
@@ -432,7 +430,7 @@ export function cookRecipe(
   const next = grantCookXp(
     {
       ...save,
-      fridge: [...save.fridge.filter((it) => !used.has(it.uid)), dish],
+      fridge: [...save.fridge.filter((it) => !usedIds.has(it.uid)), dish],
       recipesCooked,
     },
     gained,
@@ -460,10 +458,14 @@ export const COOK_LEVEL_MAX = 15;
 /** COOK_XP_TO_NEXT[当前厨艺] = 升到下一级所需。 */
 export const COOK_XP_TO_NEXT = [0, 12, 24, 40, 56, 76, 100, 128, 160, 200, 248, 300, 360, 428, 500];
 
-/**
- * 升到「玩家看到的下一级家具」所需厨艺。下标是当前内部等级 0–8。
- * 烹饪台最严，菜篮从 3 级（内部 1）起卡厨艺。
- */
+/** 烹饪台从当前内部等级再升一级时新解锁几本。 */
+export const TABLE_UNLOCK_NEXT = [1, 1, 1, 1, 1, 1, 1, 1, 1];
+
+export function tableUnlockNext(fromLevel: number): number {
+  return TABLE_UNLOCK_NEXT[clampFurnLevel(fromLevel)] ?? 1;
+}
+
+/** 升到下一级家具所需厨艺。下标是当前内部等级 0–8。 */
 const FURN_COOK_NEED: Record<FurnId, number[]> = {
   table: [1, 1, 3, 4, 6, 7, 8, 10, 12],
   fridge: [1, 1, 3, 4, 5, 6, 7, 9, 11],

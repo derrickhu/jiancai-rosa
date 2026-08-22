@@ -5,6 +5,8 @@ export interface MarketDef {
   name: string;
   hint: string;
   unlockLevel: number;
+  /** 出门扣几口包子。三个菜场眼下一律 1，写在卡上才看得见。 */
+  staminaCost: number;
   thumb: string;
 }
 
@@ -15,6 +17,7 @@ export const MARKETS: MarketDef[] = [
     name: '巷口收摊',
     hint: '家门口这条小街，收摊了还能翻一翻。',
     unlockLevel: 1,
+    staminaCost: 1,
     thumb: 'subpkg_images/market_overview.jpg',
   },
   {
@@ -22,6 +25,7 @@ export const MARKETS: MarketDef[] = [
     name: '河沿早市',
     hint: '摊位更多，好菜也更多。',
     unlockLevel: 4,
+    staminaCost: 1,
     thumb: 'subpkg_images/dest_heyan.jpg',
   },
   {
@@ -29,6 +33,7 @@ export const MARKETS: MarketDef[] = [
     name: '江边渔市',
     hint: '水产多，注意也涨得快。',
     unlockLevel: 8,
+    staminaCost: 1,
     thumb: 'subpkg_images/dest_jiangbian.jpg',
   },
 ];
