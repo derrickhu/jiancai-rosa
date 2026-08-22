@@ -8,6 +8,7 @@ export const STALL_FEE: Record<StallId, number> = {
   root: 3,
   egg: 3,
   fish: 5,
+  meat: 6,
 };
 
 /** 每秒装箱进度。水产摊收得快。 */
@@ -16,6 +17,7 @@ export const PACK_RATE: Record<StallId, number> = {
   root: 2.4,
   egg: 2.4,
   fish: 3.2,
+  meat: 2.8,
 };
 
 export function clampPack(value: number): number {

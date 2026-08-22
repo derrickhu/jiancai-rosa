@@ -5,9 +5,11 @@ import { SceneManager, type Scene } from '@/core/SceneManager';
 import { EV } from '@/config/events';
 import { KitchenManager } from '@/managers/KitchenManager';
 import { RecipeBookPanel } from '@/gameobjects/ui/RecipeBookPanel';
+import { DexPanel } from '@/gameobjects/ui/DexPanel';
 import { FridgePanel } from '@/gameobjects/ui/FridgePanel';
 import { CookPanel } from '@/gameobjects/ui/CookPanel';
 import { UpgradePanel } from '@/gameobjects/ui/UpgradePanel';
+import { ensureRecipeUnlockPanel } from '@/gameobjects/ui/RecipeUnlockPanel';
 import { Platform } from '@/core/PlatformService';
 import {
   STAMINA_MAX,
@@ -44,13 +46,14 @@ import {
   type FurnLayout,
   type KitchenSave,
 } from '@/sim';
-import { fillRect, makeButton, makeCookSkillPill, makeLabel, makeStatPill } from '@/utils/ui';
+import { HUD_ICON, fillRect, makeButton, makeCookSkillPill, makeLabel, makeStatPill } from '@/utils/ui';
 import { applyFit, fitSpriteInBox, fitWidthBottom, gameTexture, isTextureFailed, isTextureReady, mapNorm, whenTextureReady } from '@/utils/assets';
 
 type HotspotId = 'door' | 'basket' | 'recipe' | 'fridge' | 'foam' | 'wok' | 'board' | 'sell';
 type UpgradePick = FurnId | 'house';
 
 const DRAG_SLOP = 14;
+const HOUSE_UPGRADE_SHIFT_X = 50;
 
 export class KitchenScene implements Scene {
   readonly name = 'kitchen';
@@ -61,6 +64,7 @@ export class KitchenScene implements Scene {
   private _fridge = new FridgePanel();
   private _cook = new CookPanel();
   private _recipeBook = new RecipeBookPanel();
+  private _dex = new DexPanel();
   private _upgrade = new UpgradePanel();
   private _onChange = () => {
     const fx = KitchenManager.consumeCookFx();
@@ -102,12 +106,12 @@ export class KitchenScene implements Scene {
   };
   private _onUp = () => this._endDrag();
   private _onWxStart = (res: { touches?: Array<{ clientX?: number; clientY?: number; x?: number; y?: number }> }) => {
-    if (this._fridge.visible || this._cook.visible || this._recipeBook.visible || this._upgrade.visible) return;
+    if (this._fridge.visible || this._cook.visible || this._recipeBook.visible || this._upgrade.visible || this._dex.visible) return;
     const p = this._wxPoint(res);
     if (p) this._beginDrag(p.x, p.y);
   };
   private _onWxMove = (res: { touches?: Array<{ clientX?: number; clientY?: number; x?: number; y?: number }> }) => {
-    if (this._fridge.visible || this._cook.visible || this._recipeBook.visible || this._upgrade.visible) return;
+    if (this._fridge.visible || this._cook.visible || this._recipeBook.visible || this._upgrade.visible || this._dex.visible) return;
     const p = this._wxPoint(res);
     if (!p || !this._drag) return;
     this._applyDragDelta(p.x - this._drag.x, p.y - this._drag.y);
@@ -120,6 +124,7 @@ export class KitchenScene implements Scene {
     this._viewClip.eventMode = 'none';
     this._world.mask = this._viewClip;
     this._fridge.onChange = () => this.relayout();
+    ensureRecipeUnlockPanel();
     this.container.eventMode = 'static';
     this._world.eventMode = 'static';
     this._ui.eventMode = 'passive';
@@ -142,6 +147,7 @@ export class KitchenScene implements Scene {
       this.container.on('globalpointermove', this._onMove);
     }
     this.relayout();
+    ensureRecipeUnlockPanel().present();
   }
 
   onExit(): void {
@@ -159,6 +165,7 @@ export class KitchenScene implements Scene {
     this._fridge.close();
     this._cook.close();
     this._recipeBook.close();
+    this._dex.close();
     this._upgrade.close();
     this._upgradePick = null;
     this._xpPop = null;
@@ -457,9 +464,10 @@ export class KitchenScene implements Scene {
       this._ui.addChild(pop);
     }
 
+    this._drawDexHud(top, redraw);
     if (!KitchenManager.canGoMarket()) {
       const ad = makeButton('看广告 +1 体力', 220, 48, 0x4A6B7A);
-      ad.position.set(32, top + 72);
+      ad.position.set(16, top + 72);
       ad.on('pointertap', () => KitchenManager.watchAdStamina());
       this._ui.addChild(ad);
     }
@@ -474,6 +482,44 @@ export class KitchenScene implements Scene {
       this._ui.addChild(hint);
     }
     this._drawGmBar(w);
+  }
+
+  private _drawDexHud(top: number, redraw: () => void): void {
+    const path = HUD_ICON.dex;
+    whenTextureReady(path, redraw);
+    const size = 86;
+    const root = new PIXI.Container();
+    const tex = gameTexture(path);
+    if (isTextureReady(tex)) {
+      const spr = new PIXI.Sprite(tex);
+      fitSpriteInBox(spr, size, size);
+      spr.anchor.set(0.5);
+      spr.position.set(size / 2, size / 2);
+      spr.eventMode = 'none';
+      root.addChild(spr);
+    } else {
+      const g = new PIXI.Graphics();
+      fillRect(g, 4, 4, size - 8, size - 8, 0xC46A3A, 18);
+      root.addChild(g);
+    }
+    const chip = new PIXI.Graphics();
+    fillRect(chip, 8, size - 2, size - 16, 26, 0xFFF8F0, 12);
+    chip.alpha = 0.92;
+    const label = makeLabel('图鉴', 18, 0x2A2018, { fontWeight: '700' });
+    label.anchor.set(0.5, 0);
+    label.position.set(size / 2, size);
+    root.addChild(chip, label);
+    root.position.set(10, top + 208);
+    root.eventMode = 'static';
+    root.cursor = 'pointer';
+    root.hitArea = new PIXI.Rectangle(0, 0, size, size + 28);
+    const stop = (e: PIXI.FederatedPointerEvent) => e.stopPropagation();
+    root.on('pointerdown', stop);
+    root.on('pointertap', (e) => {
+      e.stopPropagation();
+      this._dex.open();
+    });
+    this._ui.addChild(root);
   }
 
   private _drawGmBar(w: number): void {
@@ -567,8 +613,20 @@ export class KitchenScene implements Scene {
     xpUp.on('pointertap', () => KitchenManager.gmAddCookXp(50));
     this._ui.addChild(xpUp);
 
+    const staUp = makeButton('体+', 64, 44, 0x3A6B5A);
+    staUp.position.set(508, y - 52);
+    staUp.on('pointerdown', stop);
+    staUp.on('pointertap', () => KitchenManager.gmAddStamina(5));
+    this._ui.addChild(staUp);
+
+    const goldUp = makeButton('金+', 64, 44, 0x8B6A20);
+    goldUp.position.set(578, y - 52);
+    goldUp.on('pointerdown', stop);
+    goldUp.on('pointertap', () => KitchenManager.gmAddMoney(100));
+    this._ui.addChild(goldUp);
+
     const artName = makeLabel(`厨艺 ${KitchenManager.save.level}`, 18, 0xF4EFE6);
-    artName.position.set(510, y - 42);
+    artName.position.set(510, y - 28);
     this._ui.addChild(artName);
 
     const pick = this._gmPick;
@@ -663,7 +721,7 @@ export class KitchenScene implements Scene {
     const pin = mapNorm(this._fit, mark.nx, mark.ny, 0, 0);
     const size = Math.round(Math.min(48, Math.max(40, this._fit.srcH * this._fit.scale * 0.034)));
     const root = this._makeUpgradeBadge(size, ready, open);
-    root.position.set(pin.x - size / 2, pin.y - size / 2);
+    root.position.set(pin.x - size / 2 + HOUSE_UPGRADE_SHIFT_X, pin.y - size / 2);
     root.on('pointertap', () => {
       if (this._dragMoved) return;
       this._upgradePick = this._upgradePick === 'house' ? null : 'house';
@@ -722,7 +780,7 @@ export class KitchenScene implements Scene {
     const w = Game.designWidth;
     const cardW = 236;
     const cardH = 148;
-    let x = pin.x + this._pan.x - cardW / 2;
+    let x = pin.x + HOUSE_UPGRADE_SHIFT_X + this._pan.x - cardW / 2;
     let y = pin.y + this._pan.y - cardH - 28;
     x = Math.max(16, Math.min(w - cardW - 16, x));
     y = Math.max((Number.isFinite(Game.safeTop) ? Game.safeTop : 96) + 64, y);

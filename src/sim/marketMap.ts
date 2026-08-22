@@ -1,5 +1,5 @@
 import type { MarketId } from './destinations';
-import { STALLS, type StallId } from './items';
+import { STALLS, stallsForMarket, type StallId } from './items';
 import {
   CARD_WEIGHTS,
   EXTRA_LAYERS,
@@ -39,7 +39,7 @@ export interface MarketMap {
 }
 
 /** 这几种卡要走过一次才明牌，之前只显示背面。 */
-const MYSTERY: CardKind[] = ['freebie', 'deadend', 'empty', 'favor'];
+const MYSTERY: CardKind[] = ['freebie', 'deadend', 'empty', 'favor', 'recipe'];
 
 export function isMysteryCard(kind: CardKind): boolean {
   return MYSTERY.includes(kind);
@@ -59,6 +59,7 @@ const CARD_NAME: Record<CardKind, string> = {
   empty: '空摊',
   favor: '街坊人情',
   deep: '巷子深处',
+  recipe: '油纸菜谱',
 };
 
 const CARD_HINT: Record<CardKind, string> = {
@@ -70,6 +71,7 @@ const CARD_HINT: Record<CardKind, string> = {
   empty: '没货，看清下一层',
   favor: '下一摊免费还慢',
   deep: '再往里走一段',
+  recipe: '一张油纸，上面有菜',
 };
 
 export function cardName(node: MapNode, revealed: boolean): string {
@@ -99,7 +101,7 @@ export function layerCount(marketId: MarketId): number {
  * 先铺保底摊位层，再按权重填其余层，最后按车道连边。
  * 反过来做（先随机再补保底）会出现整局撞不到蛋豆摊的局。
  */
-export function buildMarketMap(marketId: MarketId, seed: number): MarketMap {
+export function buildMarketMap(marketId: MarketId, seed: number, opts?: { allowRecipe?: boolean }): MarketMap {
   const plan = MARKET_PLAN[marketId];
   const rng = mulberry32(seed);
   const total = layerCount(marketId);
@@ -120,6 +122,7 @@ export function buildMarketMap(marketId: MarketId, seed: number): MarketMap {
       const pool = CARD_WEIGHTS[marketId].filter(([kind]) => {
         if (kind === 'deep' && !plan.allowDeep) return false;
         if (kind === 'deadend' && deadends >= plan.maxDeadend) return false;
+        if (kind === 'recipe' && opts?.allowRecipe === false) return false;
         // 开局第一层不给死胡同，也不给岔路，别让人第一下就白走
         if (layer === 0 && (kind === 'deadend' || kind === 'fork')) return false;
         return true;
@@ -204,7 +207,7 @@ function pickStallLayers(rng: Rng, want: number, steps: number, total: number): 
 /** 四类摊轮转，保证一局里各类都露过面。 */
 function stallRotation(rng: Rng, marketId: MarketId): StallId[] {
   const weights = STALL_WEIGHTS[marketId];
-  const base = rngShuffle(rng, STALLS.map((s) => s.id));
+  const base = rngShuffle(rng, stallsForMarket(marketId));
   const extra: StallId[] = [];
   for (let i = 0; i < 6; i++) extra.push(rngWeighted(rng, weights));
   return [...base, ...extra];

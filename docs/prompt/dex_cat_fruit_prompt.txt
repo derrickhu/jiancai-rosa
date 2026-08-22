@@ -1,0 +1,12 @@
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft 2-3 step cel shading. Cute collection-game CATEGORY EMBLEMS, not clipart.
+
+One image: a clean 5-column x 2-row grid, 10 equal SQUARE cells, even white gutters, solid white background. ALL 10 cells are the SAME fruit-category tile, slight pose/arrangement variations so we can pick the best.
+
+Every cell:
+- Watermelon-pink / salmon rounded-square #E07A7A
+- Whole uncut watermelon (dark green stripes) + a pink peach with one leaf
+- One still-life cluster, overlap, one ground shadow, top-left light
+- 18% empty padding inside the rounded square, nothing cropped
+- Same outline weight, same rounding, same icon SCALE in every cell
+- NO tomato, no vegetables, no sliced fruit
+- NO TEXT, no numbers, no labels, no watermark

@@ -1,0 +1,11 @@
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading, gentle highlights. Night riverside fish-market lighting: deep blue night, crescent moon, warm orange paper lanterns, wet wooden dock planks. Tidy not grimy, no horror, no photorealism, no pixel art, no neon. NO TEXT, no labels, no numbers, no captions, no watermark, no UI chrome.
+
+Vertical 9:16 background plate for a night dock fish-market route screen (江边渔市).
+
+Composition: looking up a wooden pier market path at night. The far end of the pier is at the top of the image, the near wet dock planks are at the bottom, giving a clear sense of walking forward into depth. Wooden seafood stalls, crushed-ice crates, barrels, hanging orange lanterns and moored fishing boats line the LEFT and RIGHT edges only. Deep blue night sky and a crescent moon visible in a thin strip at the very top.
+
+CRITICAL: the whole central vertical column of the image, roughly the middle two thirds of the width, must stay visually calm and uncluttered: mostly plain wet wooden planks and soft shadow, gently darkened, low contrast, no busy detail, no bright highlights, no focal objects, no crabs or fish in the center. Interface cards will be drawn on top of that central column and must remain readable. Keep all interesting detail pushed to the left and right margins.
+
+Overall tone slightly darker and desaturated so light cream interface elements will pop against it. Soft vignette darkening at the top and bottom edges.
+
+No people, no faces, no animals, no vehicles. NO TEXT anywhere, no shop signs with lettering, no banners with writing.

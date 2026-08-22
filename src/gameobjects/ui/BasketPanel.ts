@@ -4,45 +4,96 @@ import { OverlayManager } from '@/core/OverlayManager';
 import { EventBus } from '@/core/EventBus';
 import { Platform } from '@/core/PlatformService';
 import { EV } from '@/config/events';
-import { RunManager } from '@/managers/RunManager';
+import { RunManager, type OutingLoot } from '@/managers/RunManager';
 import {
-  occupiedCells,
-  validPlacements,
+  canPlace,
   footprint,
   getItem,
+  occupiedCells,
   displayName,
-  shapeLabel,
   type BasketItem,
-  type PileItem,
 } from '@/sim';
-import { fillRect, makeButton, makeLabel } from '@/utils/ui';
-import { itemTexture } from '@/utils/assets';
+import { fillRect, makeLabel, makeSlicedButton } from '@/utils/ui';
+import { fitSpriteInBox, gameTexture, isTextureReady, itemTexture, whenTextureReady } from '@/utils/assets';
+
+const BG = 'subpkg_kitchen/ui_basket_panel.png';
+const TITLE_FONT = 'Songti SC, STSong, PingFang SC, serif';
+const INK = 0x2A2018;
+const PAPER = 0xFFF8F0;
+const WALNUT = 0x8B5A2B;
+const WET = 0x3A6A72;
+const DRY = 0xC4A574;
+const OK = 0x5C8A3A;
+const BAD = 0xB04A3A;
+const STAGE = { x: 0.13, y: 0.168, w: 0.74, h: 0.168 };
+const CAVITY = { x: 0.12, y: 0.368, w: 0.76, h: 0.42 };
+const FOOTER = { y: 0.81, h: 0.145 };
+
+type DragFrom = 'basket' | 'stage';
 
 export class BasketPanel extends PIXI.Container {
   _isOpen = false;
   placingUid: string | null = null;
   selectedUid: string | null = null;
-  placingRot: 0 | 1 = 0;
+  private _rot: 0 | 1 = 0;
   private _root = new PIXI.Container();
+  private _ghost = new PIXI.Graphics();
+  private _float = new PIXI.Container();
   private _unsub: (() => void) | null = null;
+  private _grid = { x: 0, y: 0, cell: 56, cols: 6, rows: 5 };
+  private _stageRect = { x: 0, y: 0, w: 0, h: 0 };
+  private _drag: {
+    uid: string;
+    from: DragFrom;
+    rot: 0 | 1;
+    defId: string;
+    ox: number;
+    oy: number;
+    startX: number;
+    startY: number;
+    lastX: number;
+    lastY: number;
+    moved: boolean;
+    liftAt: number;
+    gx: number;
+    gy: number;
+    ok: boolean;
+    source: PIXI.Container | null;
+  } | null = null;
 
   constructor() {
     super();
     this.visible = false;
     this.zIndex = 20;
     this.addChild(this._root);
+    this.addChild(this._ghost);
+    this.addChild(this._float);
+    this.eventMode = 'static';
+    this.on('globalpointermove', (e) => this._onMove(e.global.x, e.global.y));
+    this.on('pointerup', (e) => this._onUp(e.global.x, e.global.y));
+    this.on('pointerupoutside', (e) => this._onUp(e.global.x, e.global.y));
     OverlayManager.container.addChild(this);
   }
 
   open(placingUid?: string): void {
     this.placingUid = placingUid ?? null;
-    this.selectedUid = null;
-    this.placingRot = 0;
+    this.selectedUid = placingUid ?? null;
+    this._rot = 0;
+    this._drag = null;
     this._isOpen = true;
     this.visible = true;
+    this.hitArea = new PIXI.Rectangle(0, 0, Game.designWidth, Game.logicHeight);
+    OverlayManager.container.on('pointerup', this._boundUp);
+    OverlayManager.container.on('pointerupoutside', this._boundUp);
+    try { Platform.api?.onTouchMove?.(this._onWxMove); } catch (_) {}
+    try { Platform.api?.onTouchEnd?.(this._onWxEnd); } catch (_) {}
+    try { Platform.api?.onTouchCancel?.(this._onWxEnd); } catch (_) {}
     this.relayout();
     this._unsub?.();
-    const handler = () => this.relayout();
+    const handler = () => {
+      if (this._drag) return;
+      this.relayout();
+    };
     EventBus.on(EV.basketChanged, handler);
     this._unsub = () => EventBus.off(EV.basketChanged, handler);
     OverlayManager.bringToFront();
@@ -52,209 +103,494 @@ export class BasketPanel extends PIXI.Container {
     this._isOpen = false;
     this.visible = false;
     this.placingUid = null;
+    this._drag = null;
+    this._float.removeChildren();
+    this._ghost.clear();
     this._unsub?.();
     this._unsub = null;
+    OverlayManager.container.off('pointerup', this._boundUp);
+    OverlayManager.container.off('pointerupoutside', this._boundUp);
+    try { Platform.api?.offTouchMove?.(this._onWxMove); } catch (_) {}
+    try { Platform.api?.offTouchEnd?.(this._onWxEnd); } catch (_) {}
+    try { Platform.api?.offTouchCancel?.(this._onWxEnd); } catch (_) {}
   }
 
   relayout(): void {
     this._root.removeChildren();
+    if (!this._drag) this._float.removeChildren();
     const w = Game.designWidth;
     const h = Game.logicHeight;
     const dim = new PIXI.Graphics();
     fillRect(dim, 0, 0, w, h, 0x000000);
-    dim.alpha = 0.62;
-    dim.eventMode = 'static';
+    dim.alpha = 0.55;
+    dim.eventMode = 'none';
     this._root.addChild(dim);
 
-    const basket = RunManager.basket;
-    const pile = this._findPlacing();
-    const placingDef = pile ? getItem(pile.defId) : null;
+    const box = this._shellBox(w, h);
+    const shell = new PIXI.Container();
+    shell.position.set(box.x, box.y);
+    shell.eventMode = 'static';
+    shell.hitArea = new PIXI.Rectangle(0, 0, box.w, box.h);
+    this._root.addChild(shell);
+    this._paintBg(shell, box.w, box.h);
 
-    const btnH = 200;
-    const maxGridW = w - 64;
-    const maxGridH = h - Game.safeTop - btnH - 160;
-    const cell = Math.max(40, Math.min(68, Math.floor(maxGridW / basket.cols), Math.floor(maxGridH / basket.rows)));
+    const title = new PIXI.Text('出  门  篮', {
+      fontFamily: TITLE_FONT,
+      fontSize: 32,
+      fill: INK,
+      fontWeight: '700',
+      stroke: '#F6EDE0',
+      strokeThickness: 4,
+    });
+    title.anchor.set(0.5);
+    title.position.set(box.w / 2, box.h * 0.078);
+    title.eventMode = 'none';
+    shell.addChild(title);
+
+    const staging = RunManager.stagingItems();
+    const stage = {
+      x: box.w * STAGE.x,
+      y: box.h * STAGE.y,
+      w: box.w * STAGE.w,
+      h: box.h * STAGE.h,
+    };
+    this._stageRect = { x: box.x + stage.x, y: box.y + stage.y, w: stage.w, h: stage.h };
+    this._drawStage(shell, stage, staging);
+
+    const cav = {
+      x: box.w * CAVITY.x,
+      y: box.h * CAVITY.y,
+      w: box.w * CAVITY.w,
+      h: box.h * CAVITY.h,
+    };
+    this._drawGrid(shell, box, cav);
+
+    const fy = box.h * FOOTER.y;
+    const fh = box.h * FOOTER.h;
+    const btnY = fy + Math.max(8, (fh - 48) * 0.35);
+    const gap = 10;
+    const btnW = (box.w * 0.74 - gap * 2) / 3;
+    const bx = box.w * 0.13;
+    const rot = makeSlicedButton({
+      label: '旋转',
+      width: btnW,
+      height: 46,
+      skin: 'wood',
+      onReady: () => {
+        if (this._isOpen && !this._drag) this.relayout();
+      },
+    });
+    rot.position.set(bx, btnY);
+    rot.on('pointertap', () => this._rotate());
+    shell.addChild(rot);
+    const drop = makeSlicedButton({
+      label: '丢掉',
+      width: btnW,
+      height: 46,
+      skin: 'cream',
+      textColor: 0x8A3B32,
+      onReady: () => {
+        if (this._isOpen && !this._drag) this.relayout();
+      },
+    });
+    drop.position.set(bx + btnW + gap, btnY);
+    drop.on('pointertap', () => this._discard());
+    shell.addChild(drop);
+    const close = makeSlicedButton({
+      label: '关好',
+      width: btnW,
+      height: 46,
+      skin: 'terracotta',
+      onReady: () => {
+        if (this._isOpen && !this._drag) this.relayout();
+      },
+    });
+    close.position.set(bx + (btnW + gap) * 2, btnY);
+    close.on('pointertap', () => this.close());
+    shell.addChild(close);
+  }
+
+  private _shellBox(screenW: number, screenH: number): { x: number; y: number; w: number; h: number } {
+    const tex = gameTexture(BG);
+    const marginX = 10;
+    const top = Game.safeTop + 2;
+    const bottom = 8;
+    const maxW = screenW - marginX * 2;
+    const maxH = screenH - top - bottom;
+    const tw = isTextureReady(tex) ? tex.width : 800;
+    const th = isTextureReady(tex) ? tex.height : 1246;
+    const scale = Math.min(maxW / tw, maxH / th);
+    const w = tw * scale;
+    const h = th * scale;
+    return { x: (screenW - w) / 2, y: top + (maxH - h) / 2, w, h };
+  }
+
+  private _paintBg(host: PIXI.Container, width: number, height: number): void {
+    whenTextureReady(BG, () => {
+      if (this._isOpen && !this._drag) this.relayout();
+    });
+    const tex = gameTexture(BG);
+    if (isTextureReady(tex)) {
+      const sp = new PIXI.Sprite(tex);
+      sp.width = width;
+      sp.height = height;
+      sp.eventMode = 'none';
+      host.addChild(sp);
+      return;
+    }
+    const g = new PIXI.Graphics();
+    g.beginFill(0xC4A574);
+    g.drawRoundedRect(0, 0, width, height, 28);
+    g.endFill();
+    host.addChild(g);
+  }
+
+  private _drawStage(shell: PIXI.Container, stage: { x: number; y: number; w: number; h: number }, items: OutingLoot[]): void {
+    const label = makeLabel(items.length ? '刚拿到 · 拖进篮子，或把篮里的拖回来腾位' : '篮里的菜可以拖着换格', 16, WALNUT, {
+      fontWeight: '600',
+    });
+    label.position.set(stage.x + 6, stage.y - 2);
+    shell.addChild(label);
+    const tile = Math.min(72, Math.max(52, Math.floor(stage.h - 22)));
+    const gap = 8;
+    let x = stage.x + 8;
+    const y = stage.y + stage.h - tile - 6;
+    for (const it of items) {
+      if (this._drag?.uid === it.uid) {
+        x += tile + gap;
+        continue;
+      }
+      shell.addChild(this._lootTile(it, x, y, tile, 'stage'));
+      x += tile + gap;
+    }
+    if (!items.length) {
+      const empty = makeLabel('空着', 18, 0xA89070);
+      empty.position.set(stage.x + 16, stage.y + stage.h * 0.42);
+      shell.addChild(empty);
+    }
+  }
+
+  private _drawGrid(
+    shell: PIXI.Container,
+    box: { x: number; y: number; w: number; h: number },
+    cav: { x: number; y: number; w: number; h: number },
+  ): void {
+    const basket = RunManager.basket;
+    const pad = 6;
+    const cell = Math.max(36, Math.min(64, Math.floor((cav.w - pad * 2) / basket.cols), Math.floor((cav.h - pad * 2) / basket.rows)));
     const gridW = basket.cols * cell;
     const gridH = basket.rows * cell;
-    const panelW = Math.min(w - 24, Math.max(gridW + 40, 680));
-    const panelH = Math.min(h - Game.safeTop - 16, gridH + btnH + 120);
-    const panelX = (w - panelW) / 2;
-    const panelY = Game.safeTop + 8;
+    const gridX = cav.x + (cav.w - gridW) / 2;
+    const gridY = cav.y + (cav.h - gridH) / 2;
+    this._grid = { x: box.x + gridX, y: box.y + gridY, cell, cols: basket.cols, rows: basket.rows };
 
-    const panel = new PIXI.Graphics();
-    fillRect(panel, panelX, panelY, panelW, panelH, 0x3A3228, 18);
-    panel.eventMode = 'none';
-    this._root.addChild(panel);
-
-    const title = makeLabel(this.placingUid ? '点绿色格放下' : '出门篮 · 左湿右干', 30, 0xF4EFE6);
-    title.position.set(panelX + 20, panelY + 14);
-    this._root.addChild(title);
-
-    const hint = makeLabel(
-      this.placingUid && placingDef
-        ? `正在摆：${displayName(placingDef.id, pile!.inspected, pile!.quality)}  ${shapeLabel(placingDef.id, this.placingRot)}  ·  绿格可放`
-        : `左 ${basket.wetCols} 列湿区（泡沫箱）· 右干区（塑料袋）` + (basket.insulatedBottom ? ' · 底行保温' : ''),
-      18,
-      0xC9B8A4,
-      { wordWrap: true, breakWords: true, wordWrapWidth: panelW - 40 },
-    );
-    hint.position.set(panelX + 20, panelY + 52);
-    this._root.addChild(hint);
-
-    const gridX = panelX + (panelW - gridW) / 2;
-    const gridY = panelY + 88;
-
-    const valid = this.placingUid && placingDef
-      ? validPlacements(basket, this.placingUid, placingDef.id, this.placingRot)
-      : [];
-
-    const validSet = new Set(valid.map((v) => `${v.x},${v.y}`));
+    const wetTip = makeLabel(`湿 ${basket.wetCols}列`, 15, 0x2A4A5A, { fontWeight: '700' });
+    wetTip.position.set(gridX + 2, gridY - 20);
+    shell.addChild(wetTip);
+    const dryTip = makeLabel(`干 ${basket.cols - basket.wetCols}列`, 15, WALNUT, { fontWeight: '700' });
+    dryTip.anchor.set(1, 0);
+    dryTip.position.set(gridX + gridW - 2, gridY - 20);
+    shell.addChild(dryTip);
 
     for (let y = 0; y < basket.rows; y++) {
       for (let x = 0; x < basket.cols; x++) {
         const wet = x < basket.wetCols || (basket.insulatedBottom && y === basket.rows - 1);
-        const canDrop = validSet.has(`${x},${y}`);
-        const cellG = new PIXI.Graphics();
-        fillRect(cellG, gridX + x * cell, gridY + y * cell, cell - 3, cell - 3, canDrop ? 0x3D7A3A : wet ? 0x2A4A5A : 0x5A4A38, 6);
-        if (canDrop) {
-          cellG.lineStyle(3, 0x8FCB6B);
-          cellG.drawRoundedRect(gridX + x * cell, gridY + y * cell, cell - 3, cell - 3, 6);
-          cellG.lineStyle(0);
-          const mark = makeLabel('放', 16, 0xE8FFD0);
-          mark.position.set(gridX + x * cell + 8, gridY + y * cell + 8);
-          this._root.addChild(cellG);
-          this._root.addChild(mark);
-          cellG.eventMode = 'static';
-          cellG.cursor = 'pointer';
-          cellG.hitArea = new PIXI.Rectangle(gridX + x * cell, gridY + y * cell, cell - 3, cell - 3);
-          const ox = x;
-          const oy = y;
-          cellG.on('pointertap', () => this._dropAt(ox, oy));
-        } else {
-          cellG.eventMode = 'none';
-          this._root.addChild(cellG);
-        }
+        const g = new PIXI.Graphics();
+        g.lineStyle(1, INK, 0.18);
+        g.beginFill(wet ? WET : DRY, wet ? 0.34 : 0.28);
+        g.drawRoundedRect(gridX + x * cell, gridY + y * cell, cell - 3, cell - 3, 7);
+        g.endFill();
+        g.eventMode = 'none';
+        shell.addChild(g);
       }
-    }
-
-    if (this.placingUid && placingDef && valid.length === 0) {
-      const none = makeLabel('这个方向放不下，点「旋转」换个方向', 20, 0xE07A5F);
-      none.position.set(panelX + 20, gridY + gridH + 8);
-      this._root.addChild(none);
     }
 
     for (const item of basket.items) {
-      const def = getItem(item.defId);
-      const cells = occupiedCells(item);
-      const minX = Math.min(...cells.map((c) => c.x));
-      const minY = Math.min(...cells.map((c) => c.y));
-      const { w: fw, h: fh } = footprint(def, item.rot);
-      const gx = new PIXI.Graphics();
-      const selected = item.uid === this.selectedUid;
-      gx.lineStyle(selected ? 4 : item.pinned ? 3 : 1, selected ? 0xF4C430 : 0x1A140F, 0.8);
-      fillRect(gx, gridX + minX * cell, gridY + minY * cell, fw * cell - 3, fh * cell - 3, def.color, 8);
-      for (let row = 0; row < fh; row++) {
-        for (let col = 0; col < fw; col++) {
-          gx.lineStyle(1, 0x1A140F, 0.25);
-          gx.drawRoundedRect(gridX + (minX + col) * cell + 4, gridY + (minY + row) * cell + 4, cell - 11, cell - 11, 4);
-        }
-      }
-      gx.eventMode = 'static';
-      gx.cursor = 'pointer';
-      gx.hitArea = new PIXI.Rectangle(gridX + minX * cell, gridY + minY * cell, fw * cell - 3, fh * cell - 3);
-      gx.on('pointertap', () => {
-        this.selectedUid = item.uid;
-        this.relayout();
-      });
-      this._root.addChild(gx);
-      const icon = new PIXI.Sprite(itemTexture(item.defId));
-      icon.width = fw * cell - 16;
-      icon.height = fh * cell - 16;
-      icon.position.set(gridX + minX * cell + 6, gridY + minY * cell + 4);
-      icon.eventMode = 'none';
-      this._root.addChild(icon);
-      const t = makeLabel(`${displayName(item.defId, item.inspected, item.quality)}\n${shapeLabel(item.defId, item.rot)}`, 15, 0xFFF8F0, {
-        align: 'center',
-        wordWrap: true,
-        wordWrapWidth: fw * cell - 12,
-      });
-      t.anchor.set(0.5);
-      t.position.set(gridX + minX * cell + (fw * cell) / 2, gridY + minY * cell + (fh * cell) / 2);
-      this._root.addChild(t);
+      if (this._drag?.uid === item.uid) continue;
+      shell.addChild(this._basketTile(item, gridX, gridY, cell));
     }
-
-    const btnY = panelY + panelH - 132;
-    if (this.placingUid) {
-      const rot = makeButton(`旋转 ${placingDef ? shapeLabel(placingDef.id, this.placingRot === 0 ? 1 : 0) : ''}`, 220, 56, 0x5C6B4A);
-      rot.position.set(panelX + 20, btnY);
-      rot.on('pointertap', () => {
-        this.placingRot = this.placingRot === 0 ? 1 : 0;
-        this.relayout();
-      });
-      this._root.addChild(rot);
-    }
-
-    const selected = basket.items.find((it) => it.uid === this.selectedUid);
-    if (selected && !this.placingUid) {
-      const rot = makeButton('旋转', 140, 52, 0x5C6B4A);
-      rot.position.set(panelX + 20, btnY);
-      rot.on('pointertap', () => this.rotateSelected(selected));
-      this._root.addChild(rot);
-
-      const pin = makeButton(selected.pinned ? '取消压底' : '压篮底', 160, 52, 0x4A6B7A);
-      pin.position.set(panelX + 172, btnY);
-      pin.on('pointertap', () => {
-        RunManager.togglePin(selected.uid);
-        this.relayout();
-      });
-      this._root.addChild(pin);
-
-      const drop = makeButton('丢掉', 140, 52, 0x8A3B32);
-      drop.position.set(panelX + 344, btnY);
-      drop.on('pointertap', () => {
-        RunManager.discard(selected.uid);
-        this.selectedUid = null;
-        this.relayout();
-      });
-      this._root.addChild(drop);
-    }
-
-    const close = makeButton(this.placingUid ? '先不放了' : '关闭', panelW - 40, 56, 0xC46A3A);
-    close.position.set(panelX + 20, panelY + panelH - 68);
-    close.on('pointertap', () => this.close());
-    this._root.addChild(close);
   }
 
-  private _dropAt(x: number, y: number): void {
-    if (!this.placingUid) return;
-    const err = RunManager.dropFromPileToCell(this.placingUid, x, y, this.placingRot);
-    if (err) {
-      Platform.showToast(err);
+  private _drawGhost(): void {
+    this._ghost.clear();
+    const drag = this._drag;
+    if (!drag?.moved) return;
+    const def = getItem(drag.defId);
+    const { w: fw, h: fh } = footprint(def, drag.rot);
+    const { x, y, cell } = this._grid;
+    this._ghost.beginFill(drag.ok ? OK : BAD, 0.38);
+    this._ghost.lineStyle(3, drag.ok ? 0x8FCB6B : 0xE07A5F, 0.95);
+    this._ghost.drawRoundedRect(x + drag.gx * cell, y + drag.gy * cell, fw * cell - 3, fh * cell - 3, 8);
+    this._ghost.endFill();
+  }
+
+  private _lootTile(it: OutingLoot, x: number, y: number, size: number, from: DragFrom): PIXI.Container {
+    const root = new PIXI.Container();
+    const on = it.uid === this.selectedUid;
+    const bg = new PIXI.Graphics();
+    bg.lineStyle(on ? 3 : 2, on ? 0xE0A100 : INK, on ? 1 : 0.28);
+    bg.beginFill(PAPER, 0.92);
+    bg.drawRoundedRect(0, 0, size, size, 10);
+    bg.endFill();
+    root.addChild(bg);
+    const icon = new PIXI.Sprite(itemTexture(it.defId));
+    fitSpriteInBox(icon, size - 10, size - 18);
+    icon.anchor.set(0.5);
+    icon.position.set(size / 2, size / 2 - 4);
+    icon.eventMode = 'none';
+    root.addChild(icon);
+    const name = makeLabel(displayName(it.defId, it.inspected, it.quality), 12, INK, { fontWeight: '600' });
+    name.anchor.set(0.5, 1);
+    name.position.set(size / 2, size - 3);
+    root.addChild(name);
+    root.position.set(x, y);
+    this._bindDrag(root, it.uid, it.defId, from, size, size);
+    return root;
+  }
+
+  private _basketTile(item: BasketItem, gridX: number, gridY: number, cell: number): PIXI.Container {
+    const def = getItem(item.defId);
+    const cells = occupiedCells(item);
+    const minX = Math.min(...cells.map((c) => c.x));
+    const minY = Math.min(...cells.map((c) => c.y));
+    const { w: fw, h: fh } = footprint(def, item.rot);
+    const bw = fw * cell - 3;
+    const bh = fh * cell - 3;
+    const root = new PIXI.Container();
+    const on = item.uid === this.selectedUid;
+    const bg = new PIXI.Graphics();
+    bg.lineStyle(on ? 3 : 2, on ? 0xE0A100 : INK, on ? 1 : 0.35);
+    bg.beginFill(PAPER, 0.88);
+    bg.drawRoundedRect(0, 0, bw, bh, 10);
+    bg.endFill();
+    root.addChild(bg);
+    const icon = new PIXI.Sprite(itemTexture(item.defId));
+    fitSpriteInBox(icon, bw - 8, bh - 8);
+    icon.anchor.set(0.5);
+    icon.position.set(bw / 2, bh / 2);
+    icon.eventMode = 'none';
+    root.addChild(icon);
+    root.position.set(gridX + minX * cell, gridY + minY * cell);
+    this._bindDrag(root, item.uid, item.defId, 'basket', bw, bh, item.rot);
+    return root;
+  }
+
+  private _bindDrag(
+    root: PIXI.Container,
+    uid: string,
+    defId: string,
+    from: DragFrom,
+    w: number,
+    h: number,
+    rot?: 0 | 1,
+  ): void {
+    root.eventMode = 'static';
+    root.cursor = 'pointer';
+    root.hitArea = new PIXI.Rectangle(0, 0, w, h);
+    root.on('pointerdown', (e) => {
+      e.stopPropagation();
+      const item = from === 'basket' ? RunManager.basket.items.find((it) => it.uid === uid) : null;
+      this.selectedUid = uid;
+      this.placingUid = from === 'stage' ? uid : this.placingUid;
+      this._rot = rot ?? item?.rot ?? this._rot;
+      this._drag = {
+        uid,
+        from,
+        rot: this._rot,
+        defId,
+        ox: e.global.x - root.getGlobalPosition().x,
+        oy: e.global.y - root.getGlobalPosition().y,
+        startX: e.global.x,
+        startY: e.global.y,
+        lastX: e.global.x,
+        lastY: e.global.y,
+        moved: false,
+        liftAt: 0,
+        gx: 0,
+        gy: 0,
+        ok: false,
+        source: root,
+      };
+      this._syncGhost(e.global.x, e.global.y);
+    });
+  }
+
+  private _onMove(gx: number, gy: number): void {
+    const drag = this._drag;
+    if (!drag) return;
+    drag.lastX = gx;
+    drag.lastY = gy;
+    if (!drag.moved && Math.hypot(gx - drag.startX, gy - drag.startY) > 8) {
+      drag.moved = true;
+      drag.liftAt = Date.now();
+      if (drag.source) drag.source.visible = false;
+      this._lift(drag);
+    }
+    if (!drag.moved) return;
+    this._float.position.set(gx - drag.ox, gy - drag.oy);
+    this._syncGhost(gx, gy);
+    this._drawGhost();
+  }
+
+  private _onUp(gx: number, gy: number): void {
+    const drag = this._drag;
+    if (!drag) return;
+    if (drag.liftAt && Date.now() - drag.liftAt < 100) return;
+    this._drag = null;
+    this._float.removeChildren();
+    this._ghost.clear();
+    if (!drag.moved) {
+      this.relayout();
       return;
     }
-    this.placingUid = null;
+    const px = Number.isFinite(gx) ? gx : drag.lastX;
+    const py = Number.isFinite(gy) ? gy : drag.lastY;
+    if (this._hitStage(px, py) && drag.from === 'basket') {
+      const err = RunManager.returnToStaging(drag.uid);
+      if (err) Platform.showToast(err);
+      this.relayout();
+      return;
+    }
+    if (!drag.ok) {
+      Platform.showToast('这里放不下');
+      this.relayout();
+      return;
+    }
+    const err = drag.from === 'basket'
+      ? RunManager.moveBasketItem(drag.uid, drag.gx, drag.gy, drag.rot)
+      : RunManager.dropStagingToCell(drag.uid, drag.gx, drag.gy, drag.rot);
+    if (err) Platform.showToast(err);
+    else this.placingUid = null;
     this.relayout();
   }
 
-  private _findPlacing(): PileItem | undefined {
-    if (!this.placingUid) return undefined;
-    const fromCurrent = RunManager.currentPile().find((it) => it.uid === this.placingUid);
-    if (fromCurrent) return fromCurrent;
-    if (!RunManager.run) return undefined;
-    for (const list of Object.values(RunManager.run.piles)) {
-      const found = list.find((it) => it.uid === this.placingUid);
-      if (found) return found;
-    }
-    return undefined;
+  private _lift(drag: NonNullable<BasketPanel['_drag']>): void {
+    this._float.removeChildren();
+    const def = getItem(drag.defId);
+    const { w: fw, h: fh } = footprint(def, drag.rot);
+    const cell = this._grid.cell;
+    const bw = Math.max(cell, fw * cell - 3);
+    const bh = Math.max(cell, fh * cell - 3);
+    const wrap = new PIXI.Container();
+    wrap.alpha = 0.92;
+    const bg = new PIXI.Graphics();
+    bg.beginFill(PAPER, 0.9);
+    bg.lineStyle(2, 0xE0A100);
+    bg.drawRoundedRect(0, 0, bw, bh, 10);
+    bg.endFill();
+    wrap.addChild(bg);
+    const icon = new PIXI.Sprite(itemTexture(drag.defId));
+    fitSpriteInBox(icon, bw - 8, bh - 8);
+    icon.anchor.set(0.5);
+    icon.position.set(bw / 2, bh / 2);
+    wrap.addChild(icon);
+    this._float.addChild(wrap);
   }
 
-  private rotateSelected(item: BasketItem): void {
-    const nextRot: 0 | 1 = item.rot === 0 ? 1 : 0;
-    const err = RunManager.tryManualPlace({ ...item, rot: nextRot });
-    if (err) {
-      Platform.showToast(err);
+  private _syncGhost(gx: number, gy: number): void {
+    const drag = this._drag;
+    if (!drag) return;
+    const cell = this._cellAt(gx - drag.ox, gy - drag.oy);
+    if (!cell) {
+      drag.ok = false;
       return;
     }
+    drag.gx = cell.x;
+    drag.gy = cell.y;
+    const draft = { uid: drag.uid, defId: drag.defId, x: cell.x, y: cell.y, rot: drag.rot };
+    if (drag.from === 'basket') {
+      const result = canPlace(
+        { ...RunManager.basket, items: RunManager.basket.items.filter((it) => it.uid !== drag.uid) },
+        draft,
+      );
+      drag.ok = result.ok || this._canSwap(drag.uid, cell.x, cell.y, drag.rot);
+    } else {
+      drag.ok = canPlace(RunManager.basket, draft).ok;
+    }
+  }
+
+  private _canSwap(uid: string, x: number, y: number, rot: 0 | 1): boolean {
+    const item = RunManager.basket.items.find((it) => it.uid === uid);
+    if (!item) return false;
+    const probe = { ...item, x, y, rot };
+    const hit = RunManager.basket.items.filter((it) => {
+      if (it.uid === uid) return false;
+      const a = new Set(occupiedCells(probe).map((c) => `${c.x},${c.y}`));
+      return occupiedCells(it).some((c) => a.has(`${c.x},${c.y}`));
+    });
+    return hit.length === 1;
+  }
+
+  private _boundUp = (e: PIXI.FederatedPointerEvent): void => {
+    this._onUp(e.global.x, e.global.y);
+  };
+
+  private _onWxMove = (res: { touches?: Array<{ clientX?: number; clientY?: number; x?: number; y?: number }> }): void => {
+    const t = res.touches?.[0];
+    if (!t || !this._drag) return;
+    const scale = Game.contentScale || 1;
+    this._onMove((t.clientX ?? t.x ?? 0) / scale, (t.clientY ?? t.y ?? 0) / scale);
+  };
+
+  private _onWxEnd = (res: {
+    changedTouches?: Array<{ clientX?: number; clientY?: number; x?: number; y?: number }>;
+    touches?: Array<{ clientX?: number; clientY?: number; x?: number; y?: number }>;
+  }): void => {
+    const drag = this._drag;
+    if (!drag) return;
+    const t = res.changedTouches?.[0] ?? res.touches?.[0];
+    const scale = Game.contentScale || 1;
+    if (t && t.clientX != null && t.clientY != null) {
+      this._onUp(t.clientX / scale, t.clientY / scale);
+      return;
+    }
+    this._onUp(drag.lastX, drag.lastY);
+  };
+
+  private _cellAt(left: number, top: number): { x: number; y: number } | null {
+    const { x, y, cell, cols, rows } = this._grid;
+    const cx = Math.floor((left - x) / cell);
+    const cy = Math.floor((top - y) / cell);
+    if (cx < 0 || cy < 0 || cx >= cols || cy >= rows) return null;
+    return { x: cx, y: cy };
+  }
+
+  private _hitStage(gx: number, gy: number): boolean {
+    const r = this._stageRect;
+    return gx >= r.x && gx <= r.x + r.w && gy >= r.y && gy <= r.y + r.h;
+  }
+
+  private _rotate(): void {
+    this._rot = this._rot === 0 ? 1 : 0;
+    if (this._drag) {
+      this._drag.rot = this._rot;
+      this._lift(this._drag);
+      this._syncGhost(this._drag.startX, this._drag.startY);
+      this.relayout();
+      return;
+    }
+    const selected = RunManager.basket.items.find((it) => it.uid === this.selectedUid);
+    if (selected) {
+      const err = RunManager.moveBasketItem(selected.uid, selected.x, selected.y, this._rot);
+      if (err) Platform.showToast(err);
+      return;
+    }
+    this.relayout();
+  }
+
+  private _discard(): void {
+    const uid = this.selectedUid;
+    if (!uid) {
+      Platform.showToast('先点一件');
+      return;
+    }
+    if (RunManager.basket.items.some((it) => it.uid === uid)) {
+      RunManager.discard(uid);
+    } else {
+      RunManager.discardStaging(uid);
+    }
+    this.selectedUid = null;
+    this.placingUid = null;
     this.relayout();
   }
 }

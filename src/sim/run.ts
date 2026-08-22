@@ -3,7 +3,7 @@ import {
   STALLS,
   displayName,
   initialFreshness,
-  itemsForStall,
+  rollMarketItem,
   sellPrice,
   type Quality,
   type StallId,
@@ -35,6 +35,7 @@ export interface PileItem {
 export interface RunEventLog {
   nodeId: string;
   kind: CardKind;
+  marketId: MarketId;
   /** 弹窗正文。事件卡是一句人话，白捡是一句旁白。 */
   text: string;
   /** 白捡到的东西；没捡到东西的卡是 null */
@@ -104,10 +105,17 @@ function rollQuality(rng: Rng): Quality {
   return 'premium';
 }
 
-export function createRun(opts: { allowGodPick: boolean; marketId?: MarketId; seed?: number }): RunState {
+export function createRun(opts: {
+  allowGodPick: boolean;
+  marketId?: MarketId;
+  seed?: number;
+  cookLevel?: number;
+  allowRecipe?: boolean;
+}): RunState {
   const marketId = opts.marketId ?? 'xiangko';
   const seed = opts.seed ?? newSeed();
-  const map = buildMarketMap(marketId, seed);
+  const cookLevel = opts.cookLevel ?? 1;
+  const map = buildMarketMap(marketId, seed, { allowRecipe: opts.allowRecipe !== false });
   const plan = MARKET_PLAN[marketId];
   // 单独一条 rng：改品质规则不该把地图布局也换掉
   const rng = mulberry32((seed ^ 0x9E3779B9) >>> 0);
@@ -117,11 +125,10 @@ export function createRun(opts: { allowGodPick: boolean; marketId?: MarketId; se
   for (const node of mapStallNodes(map)) {
     const stall = STALLS.find((s) => s.id === node.stall)!;
     const bonus = node.kind === 'paystall' ? 2 : 0;
-    const pool = itemsForStall(node.stall!);
     const n = rngInt(rng, stall.count[0] + bonus, stall.count[1] + bonus);
     const list: PileItem[] = [];
     for (let i = 0; i < n; i++) {
-      const def = rngPick(rng, pool);
+      const def = rollMarketItem(marketId, node.stall!, cookLevel, rng);
       list.push({
         uid: nextUid('p'),
         defId: def.id,
@@ -235,9 +242,9 @@ export function tickRun(state: RunState, dt: number, _interacting: boolean): Run
 }
 
 /** 白捡的货：地上躺着的只会是叶菜根茎蛋豆，不会是活蟹。 */
-export function rollFreebie(rng: Rng): { defId: string; quality: Quality } {
+export function rollFreebie(rng: Rng, marketId: MarketId = 'xiangko', cookLevel = 1): { defId: string; quality: Quality } {
   const stall = rngPick(rng, FREEBIE_STALLS);
-  const def = rngPick(rng, itemsForStall(stall));
+  const def = rollMarketItem(marketId, stall, cookLevel, rng);
   return { defId: def.id, quality: rng() < 0.7 ? 'common' : 'fresh' };
 }
 

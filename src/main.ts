@@ -7,8 +7,11 @@ import { LoadingScene } from '@/scenes/LoadingScene';
 import { KitchenScene } from '@/scenes/KitchenScene';
 import { DestinationScene } from '@/scenes/DestinationScene';
 import { MarketScene } from '@/scenes/MarketScene';
+import { preloadTextures } from '@/utils/assets';
+import { kitchenBootPaths } from '@/utils/bootAssets';
 
-const BOOT_HOLD_MS = 1100;
+const BOOT_HOLD_MS = 480;
+const BOOT_MAX_MS = 12000;
 
 function main(): void {
   const canvas = (typeof GameGlobal !== 'undefined' && GameGlobal.canvas)
@@ -21,20 +24,31 @@ function main(): void {
 
   Game.init(canvas);
   SaveManager.load();
-  SceneManager.register(new LoadingScene());
+  const loading = new LoadingScene();
+  SceneManager.register(loading);
   SceneManager.switchTo('loading');
 
   const started = Date.now();
   const enterKitchen = (): void => {
+    if (SceneManager.current !== loading) return;
+    loading.setProgress(1);
     SceneManager.register(new KitchenScene());
     SceneManager.register(new DestinationScene());
     SceneManager.register(new MarketScene());
-    const wait = Math.max(0, BOOT_HOLD_MS - (Date.now() - started));
-    globalThis.setTimeout(() => SceneManager.switchTo('kitchen'), wait);
+    SceneManager.switchTo('kitchen');
   };
-  const raf = globalThis.requestAnimationFrame?.bind(globalThis);
-  if (raf) raf(() => raf(enterKitchen));
-  else enterKitchen();
+
+  const paths = kitchenBootPaths(SaveManager.data);
+  const loaded = preloadTextures(paths, (done, total) => {
+    loading.setProgress(done / Math.max(1, total));
+  });
+  const timeout = new Promise<void>((resolve) => {
+    globalThis.setTimeout(resolve, BOOT_MAX_MS);
+  });
+  void Promise.race([loaded, timeout]).then(() => {
+    const wait = Math.max(0, BOOT_HOLD_MS - (Date.now() - started));
+    globalThis.setTimeout(enterKitchen, wait);
+  });
 
   Platform.onHide(() => {
     SaveManager.flush();

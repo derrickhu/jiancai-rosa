@@ -217,6 +217,47 @@ export function place(state: BasketState, item: BasketItem): { ok: true; state: 
   return { ok: true, state: { ...state, items: next } };
 }
 
+function overlappingOthers(
+  state: BasketState,
+  draft: Pick<BasketItem, 'uid' | 'defId' | 'x' | 'y' | 'rot'>,
+): BasketItem[] {
+  const cells = new Set(occupiedCells(draft).map((c) => `${c.x},${c.y}`));
+  const hit = new Map<string, BasketItem>();
+  for (const item of state.items) {
+    if (item.uid === draft.uid) continue;
+    for (const c of occupiedCells(item)) {
+      if (cells.has(`${c.x},${c.y}`)) hit.set(item.uid, item);
+    }
+  }
+  return [...hit.values()];
+}
+
+/** 空位就放下；压到刚好一件且对方能回到原位，就互换。 */
+export function tryRelocate(
+  state: BasketState,
+  uid: string,
+  x: number,
+  y: number,
+  rot: 0 | 1,
+): { ok: true; state: BasketState } | { ok: false; reason: string } {
+  const item = state.items.find((it) => it.uid === uid);
+  if (!item) return { ok: false, reason: '篮里没有' };
+  const draft = { ...item, x, y, rot };
+  const others = overlappingOthers(state, draft);
+  if (others.length === 0) return place(state, draft);
+  if (others.length > 1) return { ok: false, reason: '这里已经有东西' };
+  const other = others[0];
+  const cleared: BasketState = {
+    ...state,
+    items: state.items.filter((it) => it.uid !== uid && it.uid !== other.uid),
+  };
+  const a = place(cleared, draft);
+  if (!a.ok) return a;
+  const back = place(a.state, { ...other, x: item.x, y: item.y });
+  if (!back.ok) return { ok: false, reason: '换不过来，先把挡路的拖出去' };
+  return back;
+}
+
 export function removeItem(state: BasketState, uid: string): BasketState {
   return { ...state, items: state.items.filter((it) => it.uid !== uid) };
 }

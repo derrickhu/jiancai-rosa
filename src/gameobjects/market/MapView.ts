@@ -15,7 +15,7 @@ const ATLAS_COLS = 4;
 const ATLAS_ROWS = 3;
 
 /** 图集格位：叶菜/根茎/蛋豆/水产/岔路/死胡同/白捡/收费摊/空摊/人情/深处/背面。 */
-const STALL_SLOT: Record<StallId, number> = { leaf: 0, root: 1, egg: 2, fish: 3 };
+const STALL_SLOT: Record<StallId, number> = { leaf: 0, root: 1, egg: 2, fish: 3, meat: 2 };
 const KIND_SLOT: Record<CardKind, number> = {
   stall: 0,
   paystall: 7,
@@ -25,15 +25,17 @@ const KIND_SLOT: Record<CardKind, number> = {
   empty: 8,
   favor: 9,
   deep: 10,
+  recipe: 10,
 };
 const BACK_SLOT = 11;
 
-const _slots = new Map<number, PIXI.Texture>();
+const _slots = new Map<string, PIXI.Texture>();
 
-function slotTexture(slot: number): PIXI.Texture | null {
-  const hit = _slots.get(slot);
+function slotTexture(atlas: string, slot: number): PIXI.Texture | null {
+  const key = `${atlas}#${slot}`;
+  const hit = _slots.get(key);
   if (hit) return hit;
-  const tex = gameTexture(CARD_ATLAS);
+  const tex = gameTexture(atlas);
   if (!isTextureReady(tex)) return null;
   const cw = tex.width / ATLAS_COLS;
   const ch = tex.height / ATLAS_ROWS;
@@ -42,7 +44,7 @@ function slotTexture(slot: number): PIXI.Texture | null {
   // 内缩 1px，躲开 JPEG 在格子边界上的溢色
   const frame = new PIXI.Rectangle(col * cw + 1, row * ch + 1, cw - 2, ch - 2);
   const sub = new PIXI.Texture(tex.baseTexture, frame);
-  _slots.set(slot, sub);
+  _slots.set(key, sub);
   return sub;
 }
 
@@ -71,24 +73,27 @@ export function makeRouteCard(opts: {
   option: RouteOption;
   width: number;
   mode?: CardMode;
+  /** 这个菜场自己的卡面图集。不传就用巷口那张。 */
+  atlas?: string;
   onReady?: () => void;
   onTap?: () => void;
 }): PIXI.Container {
   const { option, width } = opts;
+  const atlas = opts.atlas ?? CARD_ATLAS;
   const mode = opts.mode ?? 'full';
   const height = Math.round(width * FRAME_RATIO);
   const locked = !!option.blocked;
   const root = new PIXI.Container();
 
   whenTextureReady(CARD_FRAME, () => opts.onReady?.());
-  whenTextureReady(CARD_ATLAS, () => opts.onReady?.());
+  whenTextureReady(atlas, () => opts.onReady?.());
 
   const winX = Math.round(width * WIN.x);
   const winY = Math.round(height * WIN.y);
   const winW = Math.round(width * WIN.w);
   const winH = Math.round(height * WIN.h);
 
-  const thumb = slotTexture(slotForNode(option.node, option.revealed));
+  const thumb = slotTexture(atlas, slotForNode(option.node, option.revealed));
   if (thumb) {
     const sp = new PIXI.Sprite(thumb);
     sp.position.set(winX, winY);
@@ -238,6 +243,7 @@ export function layoutRouteMap(opts: {
   onPick: (nodeId: string) => void;
   /** 全层进不去时让位给「绕过去」按钮，不画站位点 */
   showRoot?: boolean;
+  atlas?: string;
   onReady?: () => void;
 }): RouteMapView {
   const root = new PIXI.Container();
@@ -326,6 +332,7 @@ export function layoutRouteMap(opts: {
         option: cell.option,
         width: cell.width,
         mode: ROW_MODES[i],
+        atlas: opts.atlas,
         onReady: opts.onReady,
         onTap: () => opts.onPick(cell.option.node.id),
       });

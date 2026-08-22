@@ -1,6 +1,36 @@
 import { displayName, getItem, GOD_PICK, sellPrice, type Quality } from './items';
 import { nextUid, type ExtractedItem } from './run';
 import {
+  RECIPES,
+  isRecipeId,
+  isRecipeUnlocked,
+  pickRecipeFoods,
+  recipeById,
+  recipeUnlockView,
+  type RecipeId,
+} from './recipes';
+
+export {
+  RECIPES,
+  recipeNeeds,
+  recipeCanCook,
+  recipeXp,
+  pickRecipeFoods,
+  isRecipeUnlocked,
+  unlockedRecipes,
+  recipeUnlockView,
+  recipesGainedByTable,
+  recipesGainedByCook,
+  remainingMarketRecipes,
+  isRecipeId,
+  recipeById,
+  START_RECIPES,
+  TABLE_UNLOCKS,
+  COOK_UNLOCK_AT,
+  MARKET_RECIPE_POOL,
+} from './recipes';
+export type { RecipeId, RecipeDef, RecipeNeed } from './recipes';
+import {
   FURN_IDS,
   FURN_MAX_LEVEL,
   HOUSE_MAX_LEVEL,
@@ -90,6 +120,8 @@ export interface KitchenSave {
   dexSeen: string[];
   dexInspected: string[];
   recipesCooked: RecipeId[];
+  /** 三场捡到的菜谱。只能捡，台子和厨艺不送。 */
+  recipesFound: RecipeId[];
   dailyGodPickDate: string;
   lastSeenAt: number;
   /** 厨艺等级 1–15。做菜加经验，出门选点和家具门槛都看它。 */
@@ -119,6 +151,7 @@ export function defaultSave(now = Date.now()): KitchenSave {
     dexSeen: [],
     dexInspected: [],
     recipesCooked: [],
+    recipesFound: [],
     dailyGodPickDate: '',
     lastSeenAt: now,
     level: 1,
@@ -142,7 +175,10 @@ export function normalizeSave(raw: Partial<KitchenSave> | null, now = Date.now()
     dexSeen: Array.isArray(raw.dexSeen) ? raw.dexSeen : [],
     dexInspected: Array.isArray(raw.dexInspected) ? raw.dexInspected : [],
     recipesCooked: Array.isArray(raw.recipesCooked)
-      ? raw.recipesCooked.filter((id): id is RecipeId => RECIPES.some((r) => r.id === id))
+      ? raw.recipesCooked.filter((id): id is RecipeId => isRecipeId(id))
+      : [],
+    recipesFound: Array.isArray((raw as KitchenSave).recipesFound)
+      ? (raw as KitchenSave).recipesFound.filter((id): id is RecipeId => isRecipeId(id))
       : [],
     seenCards: Array.isArray(raw.seenCards) ? raw.seenCards : [],
   };
@@ -262,159 +298,23 @@ export function sellItems(save: KitchenSave, uids: string[]): { save: KitchenSav
   return { save: { ...save, fridge: remain, money: save.money + gained }, gained };
 }
 
-export type RecipeId = 'stirfry' | 'tomato_egg' | 'garlic_shrimp';
-
-export interface RecipeDef {
-  id: RecipeId;
-  name: string;
-  desc: string;
-  /** 左侧分类。新菜谱入库必须写。 */
-  group: string;
-  /** 熟菜进冰箱后给玩家看的闲话。新菜谱入库必须写。 */
-  blurb: string;
-  /** 每次做成功给的厨艺经验。 */
-  xp: number;
-  /** 这道菜第一次做再加的经验。 */
-  firstXp: number;
-  match: (items: FridgeItem[]) => boolean;
-  cook: (items: FridgeItem[]) => number;
-}
-
-function isVeg(id: string): boolean {
-  return !!getItem(id).vegetable;
-}
-
-export const RECIPES: RecipeDef[] = [
-  {
-    id: 'stirfry',
-    name: '清炒时蔬',
-    desc: '任意 2 个干蔬菜',
-    group: '家常',
-    blurb: '两把绿叶子进锅，出来就是“今晚吃素”。',
-    xp: 8,
-    firstXp: 4,
-    match: (items) => items.length === 2 && items.every((it) => isVeg(it.defId) && getItem(it.defId).zone === 'dry'),
-    cook: (items) => {
-      let sum = items.reduce((s, it) => s + sellPrice(it.defId, it.quality, it.inspected, it.freshness), 0);
-      sum = Math.round(sum * 1.4);
-      if (items.some((it) => it.defId === 'cilantro')) sum = Math.round(sum * 1.1);
-      return sum;
-    },
-  },
-  {
-    id: 'tomato_egg',
-    name: '番茄炒蛋',
-    desc: '番茄 1 + 鸡蛋 1',
-    group: '家常',
-    blurb: '中式厨房的起手式。红黄一碰，连外卖都要让路。',
-    xp: 16,
-    firstXp: 8,
-    match: (items) => {
-      if (items.length !== 2) return false;
-      const ids = items.map((it) => it.defId).sort().join(',');
-      return ids === 'egg,tomato';
-    },
-    cook: (items) => {
-      let sum = items.reduce((s, it) => s + sellPrice(it.defId, it.quality, it.inspected, it.freshness), 0);
-      sum = Math.round(sum * 1.8);
-      if (items.every((it) => it.freshness >= 2)) sum = Math.round(sum * 1.2);
-      return sum;
-    },
-  },
-  {
-    id: 'garlic_shrimp',
-    name: '蒜蓉虾',
-    desc: '大蒜 1 + 虾 1',
-    group: '水产',
-    blurb: '蒜末噼啪一响，虾就同意被你卖掉。',
-    xp: 28,
-    firstXp: 14,
-    match: (items) => {
-      if (items.length !== 2) return false;
-      const ids = items.map((it) => it.defId).sort().join(',');
-      return ids === 'garlic,shrimp';
-    },
-    cook: (items) => {
-      let sum = items.reduce((s, it) => s + sellPrice(it.defId, it.quality, it.inspected, it.freshness), 0);
-      sum = Math.round(sum * 2.0);
-      const shrimp = items.find((it) => it.defId === 'shrimp');
-      if (shrimp && shrimp.inspected && shrimp.quality === 'premium') sum += 20;
-      return sum;
-    },
-  },
-];
-
-export interface RecipeNeed {
-  label: string;
-  have: number;
-  need: number;
-  /** 材料图标用的食材 id。 */
-  iconId: string;
-}
-
-function usableFoods(save: KitchenSave): FridgeItem[] {
-  return save.fridge.filter((it) => fridgeKind(it) === 'food' && it.quality !== 'rotten');
-}
-
-function freshest(list: FridgeItem[]): FridgeItem | undefined {
-  return [...list].sort((a, b) => b.freshness - a.freshness)[0];
-}
-
-export function recipeNeeds(save: KitchenSave, recipeId: RecipeId): RecipeNeed[] {
-  const foods = usableFoods(save);
-  if (recipeId === 'tomato_egg') {
-    return [
-      { label: '番茄', iconId: 'tomato', have: foods.filter((it) => it.defId === 'tomato').length, need: 1 },
-      { label: '鸡蛋', iconId: 'egg', have: foods.filter((it) => it.defId === 'egg').length, need: 1 },
-    ];
-  }
-  if (recipeId === 'garlic_shrimp') {
-    return [
-      { label: '大蒜', iconId: 'garlic', have: foods.filter((it) => it.defId === 'garlic').length, need: 1 },
-      { label: '虾', iconId: 'shrimp', have: foods.filter((it) => it.defId === 'shrimp').length, need: 1 },
-    ];
-  }
-  const veg = foods.filter((it) => isVeg(it.defId) && getItem(it.defId).zone === 'dry').length;
-  return [{ label: '干蔬菜', iconId: 'bokchoy', have: veg, need: 2 }];
-}
-
-export function pickRecipeFoods(save: KitchenSave, recipeId: RecipeId): FridgeItem[] {
-  const foods = usableFoods(save);
-  if (recipeId === 'tomato_egg') {
-    const tomato = freshest(foods.filter((it) => it.defId === 'tomato'));
-    const egg = freshest(foods.filter((it) => it.defId === 'egg'));
-    return tomato && egg ? [tomato, egg] : [];
-  }
-  if (recipeId === 'garlic_shrimp') {
-    const garlic = freshest(foods.filter((it) => it.defId === 'garlic'));
-    const shrimp = freshest(foods.filter((it) => it.defId === 'shrimp'));
-    return garlic && shrimp ? [garlic, shrimp] : [];
-  }
-  const veg = foods
-    .filter((it) => isVeg(it.defId) && getItem(it.defId).zone === 'dry')
-    .sort((a, b) => b.freshness - a.freshness);
-  return veg.length >= 2 ? veg.slice(0, 2) : [];
-}
-
-export function recipeCanCook(save: KitchenSave, recipeId: RecipeId): boolean {
-  return pickRecipeFoods(save, recipeId).length > 0;
-}
-
 export function cookRecipe(
   save: KitchenSave,
   recipeId: RecipeId,
   uids?: string[],
 ): { save: KitchenSave; error?: string; xp?: number; levels?: number } {
-  const recipe = RECIPES.find((r) => r.id === recipeId);
+  const recipe = recipeById(recipeId);
   if (!recipe) return { save, error: '未知菜谱' };
+  const view = recipeUnlockView(save);
+  if (!isRecipeUnlocked(view, recipeId)) return { save, error: '还不会这道菜' };
   const items = uids?.length
     ? save.fridge.filter((it) => uids.includes(it.uid))
-    : pickRecipeFoods(save, recipeId);
+    : pickRecipeFoods(view, recipeId);
   if (!items.length) return { save, error: `材料不够：${recipe.desc}` };
   if (items.some((it) => it.quality === 'rotten')) return { save, error: '坏了，不能下锅' };
   if (!recipe.match(items)) return { save, error: `材料不对：${recipe.desc}` };
   const value = recipe.cook(items);
-  const usedIds = new Set(items.map((it) => it.uid));
+  const usedIds = new Set(items.map((it) => it.uid).filter((uid): uid is string => !!uid));
   const dish: FridgeItem = {
     uid: nextUid('d'),
     kind: 'dish',
@@ -456,13 +356,13 @@ export const HOUSE_UPGRADE_COST = [200, 520];
 export const HOUSE_COOK_NEED = [4, 8];
 export const COOK_LEVEL_MAX = 15;
 /** COOK_XP_TO_NEXT[当前厨艺] = 升到下一级所需。 */
-export const COOK_XP_TO_NEXT = [0, 12, 24, 40, 56, 76, 100, 128, 160, 200, 248, 300, 360, 428, 500];
+export const COOK_XP_TO_NEXT = [0, 20, 36, 60, 84, 114, 150, 192, 240, 300, 372, 450, 540, 642, 750];
 
 /** 烹饪台从当前内部等级再升一级时新解锁几本。 */
-export const TABLE_UNLOCK_NEXT = [1, 1, 1, 1, 1, 1, 1, 1, 1];
+export const TABLE_UNLOCK_NEXT = [3, 3, 3, 3, 3, 3, 3, 3, 3];
 
 export function tableUnlockNext(fromLevel: number): number {
-  return TABLE_UNLOCK_NEXT[clampFurnLevel(fromLevel)] ?? 1;
+  return TABLE_UNLOCK_NEXT[clampFurnLevel(fromLevel)] ?? 3;
 }
 
 /** 升到下一级家具所需厨艺。下标是当前内部等级 0–8。 */
@@ -504,7 +404,7 @@ export function cookXpView(save: KitchenSave): {
 } {
   const level = cookLevel(save);
   const maxed = level >= COOK_LEVEL_MAX;
-  const need = maxed ? (COOK_XP_TO_NEXT[COOK_LEVEL_MAX - 1] ?? 500) : xpToNext(level);
+  const need = maxed ? (COOK_XP_TO_NEXT[COOK_LEVEL_MAX - 1] ?? 750) : xpToNext(level);
   const xp = maxed ? need : Math.min(cookXp(save), need);
   return {
     level,
@@ -516,13 +416,6 @@ export function cookXpView(save: KitchenSave): {
   };
 }
 
-export function recipeXp(save: KitchenSave, recipeId: RecipeId): number {
-  const recipe = RECIPES.find((r) => r.id === recipeId);
-  if (!recipe) return 0;
-  const first = !save.recipesCooked.includes(recipeId);
-  return recipe.xp + (first ? recipe.firstXp : 0);
-}
-
 export function grantCookXp(save: KitchenSave, amount: number): { save: KitchenSave; gained: number; levels: number } {
   const gained = Math.max(0, Math.floor(amount));
   if (gained <= 0) return { save, gained: 0, levels: 0 };
@@ -530,7 +423,7 @@ export function grantCookXp(save: KitchenSave, amount: number): { save: KitchenS
   let xp = cookXp(save);
   let levels = 0;
   if (level >= COOK_LEVEL_MAX) {
-    const full = COOK_XP_TO_NEXT[COOK_LEVEL_MAX - 1] ?? 500;
+    const full = COOK_XP_TO_NEXT[COOK_LEVEL_MAX - 1] ?? 750;
     return { save: { ...save, level: COOK_LEVEL_MAX, xp: full }, gained, levels: 0 };
   }
   xp += gained;
@@ -541,7 +434,7 @@ export function grantCookXp(save: KitchenSave, amount: number): { save: KitchenS
     level += 1;
     levels += 1;
   }
-  if (level >= COOK_LEVEL_MAX) xp = COOK_XP_TO_NEXT[COOK_LEVEL_MAX - 1] ?? 500;
+  if (level >= COOK_LEVEL_MAX) xp = COOK_XP_TO_NEXT[COOK_LEVEL_MAX - 1] ?? 750;
   return { save: { ...save, level, xp }, gained, levels };
 }
 

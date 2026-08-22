@@ -23,8 +23,13 @@ export class LoadingScene implements Scene {
   private _barFill: PIXI.Graphics | null = null;
   private _fish: PIXI.Sprite | null = null;
   private _bar = { x: 0, y: 0, w: BAR_W, h: BAR_H };
-  private _progress = 0.16;
+  private _progress = 0.08;
+  private _target = 0.08;
   private _boundUpdate = () => this.update(Game.ticker.deltaMS / 1000);
+
+  setProgress(ratio: number): void {
+    this._target = Math.max(this._target, Math.min(1, ratio));
+  }
 
   constructor() {
     this.container.addChild(this._root);
@@ -110,7 +115,9 @@ export class LoadingScene implements Scene {
   }
 
   update(dt: number): void {
-    this._progress = Math.min(0.96, this._progress + dt * 0.22);
+    const t = Math.min(1, dt * 7);
+    this._progress += (this._target - this._progress) * t;
+    if (this._target >= 1) this._progress = Math.max(this._progress, 0.98);
     this._paintProgress();
   }
 

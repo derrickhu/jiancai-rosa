@@ -17,9 +17,13 @@ import {
   pileToBasketDraft,
   place,
   removeItem,
+  tryRelocate,
   rollFreebie,
   settleExtract,
-  EVENT_VOICE,
+  eventVoice,
+  remainingMarketRecipes,
+  recipeById,
+  cookLevel,
   stallPacked,
   PACK_FULL,
   tickRun,
@@ -50,9 +54,12 @@ export interface RouteOption {
   left: number;
 }
 
+export type OutingLoot = Omit<BasketItem, 'x' | 'y' | 'rot' | 'pinned' | 'dampened' | 'broken'>;
+
 class RunManagerClass {
   run: RunState | null = null;
   basket: BasketState = createBasket(0);
+  pendingLoot: OutingLoot[] = [];
   interacting = false;
   private _rng: Rng = mulberry32(1);
 
@@ -64,12 +71,15 @@ class RunManagerClass {
       allowGodPick: KitchenManager.allowGodPickToday(),
       marketId,
       seed,
+      cookLevel: cookLevel(KitchenManager.save),
+      allowRecipe: remainingMarketRecipes(marketId, KitchenManager.save.recipesFound).length > 0,
     });
     if (hasGodPick(this.run)) KitchenManager.markGodPickToday();
     this.basket = createBasket(
       furnLevel(KitchenManager.save, 'basket'),
       furnLevel(KitchenManager.save, 'foam'),
     );
+    this.pendingLoot = [];
     this.emit();
     return true;
   }
@@ -235,24 +245,27 @@ class RunManagerClass {
     const log = (text: string, gain: RunEventLog['gain'] = null): RunEventLog => ({
       nodeId: node.id,
       kind: node.kind,
+      marketId: state.marketId,
       text,
       gain,
     });
     const voice = (): string => {
-      const lines = EVENT_VOICE[node.kind]?.lines;
+      const lines = eventVoice(state.marketId, node.kind)?.lines;
       return lines?.length ? rngPick(this._rng, lines) : '';
     };
 
     switch (node.kind) {
       case 'freebie': {
-        const { defId, quality } = rollFreebie(this._rng);
+        const { defId, quality } = rollFreebie(this._rng, state.marketId, cookLevel(KitchenManager.save));
         const name = displayName(defId, false, quality);
         const placed = tryAutoPlace(this.basket, freebieToBasketDraft(defId, quality));
         if (!placed) {
+          const draft = freebieToBasketDraft(defId, quality);
+          this.pendingLoot = [...this.pendingLoot, draft];
           return {
             ...state,
             note: '地上有货，可篮子塞不下。',
-            lastEvent: log('篮子实在挤不出地方，只能看它躺在那儿。', { defId, quality, taken: false }),
+            lastEvent: log('篮子满了，先腾个位子再捡。', { defId, quality, taken: false }),
           };
         }
         this.basket = { ...this.basket, items: [...this.basket.items, placed] };
@@ -280,6 +293,20 @@ class RunManagerClass {
         };
       case 'fork':
         return { ...state, note: '路分成两条，这一步没耗天色。' };
+      case 'recipe': {
+        const left = remainingMarketRecipes(state.marketId, KitchenManager.save.recipesFound);
+        const id = left.length ? rngPick(this._rng, left) : null;
+        if (!id) {
+          return { ...state, note: '纸上的字看不清了。', lastEvent: log('油纸湿透了，字认不出来。') };
+        }
+        KitchenManager.findRecipe(id);
+        const name = recipeById(id)?.name ?? '一道菜';
+        return {
+          ...state,
+          note: `记下了「${name}」。`,
+          lastEvent: log(`${voice()}\n记下了：${name}`),
+        };
+      }
       default:
         return state;
     }
@@ -372,6 +399,90 @@ class RunManagerClass {
     return null;
   }
 
+  moveBasketItem(uid: string, x: number, y: number, rot: 0 | 1): string | null {
+    const result = tryRelocate(this.basket, uid, x, y, rot);
+    if (!result.ok) return result.reason;
+    this.basket = result.state;
+    this.emit();
+    return null;
+  }
+
+  stagingItems(): OutingLoot[] {
+    const seen = new Set<string>();
+    const out: OutingLoot[] = [];
+    for (const it of this.pendingLoot) {
+      if (seen.has(it.uid)) continue;
+      seen.add(it.uid);
+      out.push(it);
+    }
+    for (const it of this.currentPile()) {
+      if (seen.has(it.uid)) continue;
+      seen.add(it.uid);
+      out.push(pileToBasketDraft(it));
+    }
+    return out;
+  }
+
+  dropStagingToCell(uid: string, x: number, y: number, rot: 0 | 1 = 0): string | null {
+    const loot = this.stagingItems().find((it) => it.uid === uid);
+    if (!loot) return '已经不在手里';
+    const err = this.tryManualPlace({
+      ...loot,
+      x,
+      y,
+      rot,
+      pinned: false,
+      dampened: false,
+    });
+    if (err) return err;
+    this.pendingLoot = this.pendingLoot.filter((it) => it.uid !== uid);
+    if (this.findPile(uid)) this.removeFromPile(uid);
+    this.emit();
+    return null;
+  }
+
+  returnToStaging(uid: string): string | null {
+    const item = this.basket.items.find((it) => it.uid === uid);
+    if (!item) return '篮里没有';
+    this.basket = removeItem(this.basket, uid);
+    if (this.run?.mode === 'rummage' && this.run.currentNodeId) {
+      const nid = this.run.currentNodeId;
+      const piles = { ...this.run.piles };
+      piles[nid] = [
+        ...(piles[nid] ?? []),
+        {
+          uid: item.uid,
+          defId: item.defId,
+          quality: item.quality,
+          revealed: true,
+          inspected: item.inspected,
+          washed: false,
+          drawn: true,
+        },
+      ];
+      this.run = { ...this.run, piles };
+    } else {
+      this.pendingLoot = [
+        ...this.pendingLoot,
+        {
+          uid: item.uid,
+          defId: item.defId,
+          quality: item.quality,
+          inspected: item.inspected,
+          freshness: item.freshness,
+        },
+      ];
+    }
+    this.emit();
+    return null;
+  }
+
+  discardStaging(uid: string): void {
+    this.pendingLoot = this.pendingLoot.filter((it) => it.uid !== uid);
+    if (this.findPile(uid)) this.removeFromPile(uid);
+    this.emit();
+  }
+
   dropFromPileToCell(uid: string, x: number, y: number, rot: 0 | 1 = 0): string | null {
     if (!this.run) return '不在局内';
     const pile = this.findPile(uid);
@@ -426,6 +537,7 @@ class RunManagerClass {
       furnLevel(KitchenManager.save, 'basket'),
       furnLevel(KitchenManager.save, 'foam'),
     );
+    this.pendingLoot = [];
     this.emit();
   }
 

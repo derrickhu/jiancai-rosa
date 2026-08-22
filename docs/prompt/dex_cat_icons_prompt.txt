@@ -1,0 +1,25 @@
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft 2-3 step cel shading. Cute collection-game CATEGORY EMBLEMS, not clipart collages.
+
+One image: a clean 5-column x 2-row grid, 10 equal SQUARE cells, even white gutters, solid white background. Each cell is ONE unified rounded-square color block (a finished game icon), not separate stickers pasted together.
+
+Composition rules for EVERY cell:
+- One arranged still-life: foods overlap, share one ground shadow, same top-left light.
+- 18% empty padding inside the rounded square. Nothing touches or crosses the border. No cropped leaves, tails, bowls, or corn tips.
+- Same outline weight, same rounding, same icon scale in every cell.
+- NO TEXT, no numbers, no labels, no watermark.
+
+Row 1 (ingredients):
+1 veg: leaf-green square #7BB86A. One tight bouquet: bok choy hugging a tomato, corn tucked behind. Reads as one emblem.
+2 pantry: egg-yellow square #F2C14D. Two eggs nestled against one tofu block, one cluster.
+3 meat: terracotta-red square #D45A4A. Pork slice overlapping a chicken leg, one meat pile.
+4 seafood: sea-blue square #5B8FA8. Crab and small silver fish locked together as one catch.
+5 fruit: watermelon-pink square #E07A7A. Whole watermelon + peach sitting as one fruit pile (never sliced, never a tomato).
+
+Row 2 (dishes):
+6 home: cream-wood square #E8C48A. One homey stir-fry plate, bok choy and egg in one dish.
+7 cold: mint square #8FCB9B. One smashed-cucumber plate, chili dots, nothing cut by the frame.
+8 soup: warm-orange square #E09A4A. One soup bowl, short steam curl, bowl fully inside the padding.
+9 aquatic: teal square #4A8A8A. One seafood plate, shrimp and fish, plate fully inside.
+10 meat-dish: brick square #C46A3A. One pork stir-fry plate, fully inside.
+
+Whole uncut ingredients only except finished plated dishes in row 2.

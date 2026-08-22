@@ -1,0 +1,11 @@
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading, warm wood and paper colors. Isolated UI shell on SOLID BLACK #000000.
+
+Vertical 9:16 RING-BOUND WOODEN CLIPBOARD / scrapbook used as a collection panel.
+- Thick honey-walnut board, rounded corners, worn edges
+- Three silver rings on the LEFT
+- Cream paper page filling the middle, completely BLANK (no lines, no grids, no stamps, no food)
+- TOP 16% empty header band for a title later
+- BOTTOM 14% empty footer band for a button later
+- Tiny blue paperclip at top-left of the paper, no writing
+
+Front view, centered, filling the frame. No close button drawn, no tabs, no icons, no food. NO TEXT, no numbers, no watermark.

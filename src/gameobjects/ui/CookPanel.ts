@@ -2,7 +2,7 @@ import * as PIXI from 'pixi.js';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { KitchenManager } from '@/managers/KitchenManager';
-import { RECIPES, recipeCanCook, recipeNeeds, recipeXp, type RecipeId } from '@/sim';
+import { recipeCanCook, recipeNeeds, recipeUnlockView, recipeXp, unlockedRecipes, type RecipeId } from '@/sim';
 import { FONT, fillRect, makeLabel } from '@/utils/ui';
 import {
   dishTexture,
@@ -26,9 +26,9 @@ const BTN = {
   terracotta: 'subpkg_kitchen/ui_fridge_btn_terracotta.png',
 } as const;
 
-/** 相对菜谱书纸面（与切图实测对齐）。 */
-const PAGE = { x: 0.14, y: 0.11, w: 0.70, h: 0.78 };
-const INSET = { x: 0.14, y: 0.21, w: 0.70, h: 0.64 };
+/** 相对砧板纸面（左有木铲，内容整体右移）。 */
+const PAGE = { x: 0.22, y: 0.10, w: 0.64, h: 0.72 };
+const INSET = { x: 0.22, y: 0.20, w: 0.64, h: 0.58 };
 const LEFT_W = 0.36;
 
 export class CookPanel extends PIXI.Container {
@@ -48,6 +48,8 @@ export class CookPanel extends PIXI.Container {
   open(): void {
     this._isOpen = true;
     this.visible = true;
+    const known = unlockedRecipes(recipeUnlockView(KitchenManager.save));
+    if (!known.some((r) => r.id === this._pick)) this._pick = known[0]?.id ?? 'stirfry';
     this.relayout();
     OverlayManager.bringToFront();
   }
@@ -109,7 +111,8 @@ export class CookPanel extends PIXI.Container {
       return;
     }
     const g = new PIXI.Graphics();
-    fillRect(g, 0, 0, width, height, 0xC46A3A, 28);
+      fillRect(g, 0, 0, width, height, 0x8B5A2B, 28);
+      fillRect(g, width * 0.14, height * 0.1, width * 0.72, height * 0.72, 0xF6EDE0, 16);
     host.addChild(g);
   }
 
@@ -142,52 +145,83 @@ export class CookPanel extends PIXI.Container {
     const x = bw * INSET.x;
     const y = bh * INSET.y;
     const width = bw * INSET.w * LEFT_W;
-    const head = makeLabel('菜谱', 26, INK, { fontWeight: '700' });
+    const view = recipeUnlockView(KitchenManager.save);
+    const known = unlockedRecipes(view);
+    const head = makeLabel(`菜谱  ${known.length}`, 26, INK, { fontWeight: '700' });
     head.position.set(x + 8, y + 2);
     root.addChild(head);
 
-    const groups = [...new Set(RECIPES.map((r) => r.group))];
-    let cy = y + 38;
+    const listTop = y + 38;
+    const listH = bh * (INSET.y + INSET.h) - listTop - 8;
+    const list = new PIXI.Container();
+    const groups = [...new Set(known.map((r) => r.group))];
+    let cy = 0;
     const rowW = width - 12;
     for (const group of groups) {
       const tag = makeLabel(group, 18, TERRACOTTA, { fontWeight: '700' });
       tag.position.set(x + 10, cy);
-      root.addChild(tag);
+      list.addChild(tag);
       cy += 28;
-      for (const recipe of RECIPES.filter((r) => r.group === group)) {
+      for (const recipe of known.filter((r) => r.group === group)) {
         const on = this._pick === recipe.id;
         const row = this._chip(recipe.name, rowW, 44, on ? 'on' : 'off');
-        row.alpha = recipeCanCook(KitchenManager.save, recipe.id) || on ? 1 : 0.75;
+        row.alpha = recipeCanCook(view, recipe.id) || on ? 1 : 0.75;
         row.position.set(x + 6, cy);
         row.on('pointertap', () => {
           this._pick = recipe.id;
           this.relayout();
         });
-        root.addChild(row);
+        list.addChild(row);
         cy += 52;
       }
       cy += 10;
     }
+    const maxScroll = Math.max(0, cy - listH);
+    list.y = listTop;
+    if (maxScroll > 0) {
+      const mask = new PIXI.Graphics();
+      mask.beginFill(0xffffff);
+      mask.drawRect(x, listTop, width, listH);
+      mask.endFill();
+      root.addChild(mask);
+      list.mask = mask;
+      list.eventMode = 'static';
+      list.hitArea = new PIXI.Rectangle(x, 0, width, cy);
+      let lastY = 0;
+      let dragging = false;
+      list.on('pointerdown', (e) => { dragging = true; lastY = e.global.y; });
+      list.on('pointerup', () => { dragging = false; });
+      list.on('pointerupoutside', () => { dragging = false; });
+      list.on('pointermove', (e) => {
+        if (!dragging) return;
+        const next = list.y + (e.global.y - lastY);
+        list.y = Math.min(listTop, Math.max(listTop - maxScroll, next));
+        lastY = e.global.y;
+      });
+    }
+    root.addChild(list);
     return root;
   }
 
   private _stage(bw: number, bh: number): PIXI.Container {
     const root = new PIXI.Container();
-    const recipe = RECIPES.find((r) => r.id === this._pick)!;
-    const save = KitchenManager.save;
-    const needs = recipeNeeds(save, this._pick);
-    const ready = recipeCanCook(save, this._pick);
+    const view = recipeUnlockView(KitchenManager.save);
+    const recipe = unlockedRecipes(view).find((r) => r.id === this._pick) ?? unlockedRecipes(view)[0];
+    if (!recipe) return root;
+    this._pick = recipe.id;
+    const needs = recipeNeeds(view, recipe.id);
+    const ready = recipeCanCook(view, recipe.id);
 
     const pad = bw * 0.02;
     const dx = bw * (INSET.x + INSET.w * LEFT_W) + pad;
     const dy = bh * INSET.y;
     const dw = bw * INSET.w * (1 - LEFT_W) - pad;
     const dh = bh * INSET.h * 0.36;
-    const dishPath = `subpkg_images/dish_${this._pick}.png`;
+    const dishPath = `subpkg_images/dish_${recipe.id}.png`;
     whenTextureReady(dishPath, () => {
       if (this._isOpen) this.relayout();
     });
-    const dish = new PIXI.Sprite(dishTexture(this._pick));
+    const dish = new PIXI.Sprite(dishTexture(recipe.id));
     fitSpriteInBox(dish, dw * 0.86, dh * 0.86);
     dish.anchor.set(0.5);
     dish.position.set(dx + dw / 2, dy + dh / 2);
@@ -198,7 +232,7 @@ export class CookPanel extends PIXI.Container {
     name.anchor.set(0.5);
     name.position.set(dx + dw / 2, dy + dh + 10);
     root.addChild(name);
-    const xp = recipeXp(save, this._pick);
+    const xp = recipeXp(KitchenManager.save, recipe.id);
     const xpLabel = makeLabel(`+${xp} 经验`, 16, TERRACOTTA, { fontWeight: '700' });
     xpLabel.anchor.set(0.5);
     xpLabel.position.set(dx + dw / 2, dy + dh + 34);

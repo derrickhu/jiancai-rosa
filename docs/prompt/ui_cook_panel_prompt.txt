@@ -1,17 +1,15 @@
-Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading, gentle highlights, warm wood and paper colors. Warm golden kitchen lighting, tidy not grimy, no photorealism, no pixel art, no neon. NO TEXT, no labels, no numbers, no captions, no watermark, no UI chrome, no buttons, no icons, no food, no pots, no pans, no flames, no knobs, no fridge, no appliance, no refrigerator.
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading, warm golden kitchen lighting, tidy not grimy. No photorealism, no pixel art, no neon.
+NO TEXT, no labels, no numbers, no captions, no watermark, no UI chrome, no buttons, no icons, no food on the paper, no recipes drawn in.
 
-A single vertical OPEN RECIPE COOKBOOK used as a game UI panel, isolated on a flat solid WHITE background. Front view, centered, filling most of the height. This is a BOOK, not a fridge and not a stove.
+A single vertical KITCHEN CUTTING-BOARD MENU used as a game UI panel. This is NOT a book, NOT a notebook, NOT a clipboard, NOT a ring binder. No spine, no bookmark ribbon, no silver rings, no paperclip, no terracotta cloth cover.
 
-Hardcover cookbook:
-- Terracotta or walnut cloth cover, visible as a thick left spine and a thin rounded cover edge framing the paper.
-- Soft cloth texture, slightly plump, rounded corners like a well-loved book, not a metal appliance.
-- Right edge shows a small stack of cream paper pages (thickness / volume).
-- One thin terracotta ribbon bookmark peeking from the top, empty, no writing.
-- Two tiny cloth-bound book corners only. No furniture feet, no brass knobs, no handles.
+Silhouette: a thick walnut / honey-oak chopping board, portrait 9:16, front view, centered, filling the frame. Visible wood grain, rounded worn corners, a shallow juice groove just inside the rim. Soft plump cartoon volume.
 
-Open paper page is the main face:
-- TOP 18%: empty cream paper header band, reserved for a title drawn later. Completely blank. No writing.
-- MIDDLE 64%: LARGE FLAT cream paper (#F6EDE0), completely empty and smooth. Soft paper grain only. No ruled lines, no grids, no circles, no stamps, no illustrations, no recipes drawn in. This is blank so UI can be drawn on top.
-- BOTTOM 14%: empty cream paper footer band. No writing.
+Pinned on the board: one large sheet of cream butcher paper / parchment (#F6EDE0), completely BLANK and smooth. Soft paper grain only. No lines, no grids, no stamps, no illustrations.
+- TOP 16% of the paper: empty header band for a title later
+- MIDDLE: large empty paper for UI
+- BOTTOM 14%: empty footer band for a button later
 
-Keep it CLEAN and SIMPLE. Few decorations. The silhouette should read instantly as a recipe book. Isolated object, lots of white around it, no kitchen room, no table, no floor. Full frame.
+Kitchen distinction only on the WOOD FRAME, outside the paper: a folded oatmeal linen towel peeking under the bottom edge, and one small empty wooden spatula tucked behind the left rim. Nothing overlaps the paper. No pots, no flames, no fridge.
+
+Isolated on SOLID WHITE #FFFFFF. Full frame, lots of board, little empty canvas.

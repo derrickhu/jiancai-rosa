@@ -20,6 +20,50 @@ export function makeLabel(
   return label;
 }
 
+/** 图鉴格子名：粗圆体深棕字 + 奶油描边，参考食材图鉴那种压在卡片上的名字。 */
+export function makeDexName(
+  text: string,
+  size = 18,
+  unlocked = true,
+  wrapWidth = 0,
+): PIXI.Text {
+  return makeLabel(text, size, unlocked ? 0x3A2416 : 0x8A7358, {
+    fontFamily: 'PingFang SC, Hiragino Sans GB, sans-serif',
+    fontWeight: '700',
+    stroke: unlocked ? 0xFFF6E8 : 0xE8D8C4,
+    strokeThickness: Math.max(3, Math.round(size * 0.22)),
+    lineJoin: 'round',
+    dropShadow: true,
+    dropShadowColor: '#2A2018',
+    dropShadowAlpha: unlocked ? 0.2 : 0.1,
+    dropShadowDistance: 1.4,
+    dropShadowAngle: Math.PI / 2,
+    dropShadowBlur: 0,
+    align: 'center',
+    wordWrap: wrapWidth > 0,
+    wordWrapWidth: wrapWidth,
+    breakWords: true,
+  });
+}
+
+/** 描边白字，图鉴分类那种有厚度的标题。 */
+export function makeStrokeLabel(
+  text: string,
+  size: number,
+  fill = 0xFFF8F0,
+  stroke = 0x2A2018,
+  thickness = 5,
+  opts: Partial<PIXI.ITextStyle> = {},
+): PIXI.Text {
+  return makeLabel(text, size, fill, {
+    fontWeight: '700',
+    stroke,
+    strokeThickness: thickness,
+    lineJoin: 'round',
+    ...opts,
+  });
+}
+
 export function makeButton(
   label: string,
   width: number,
@@ -219,6 +263,7 @@ export const HUD_ICON = {
   stamina: 'subpkg_images/hud_stamina.png',
   fridge: 'subpkg_images/hud_fridge.png',
   basket: 'subpkg_images/hud_basket.png',
+  dex: 'subpkg_images/hud_dex.png',
   destBanner: 'subpkg_images/ui_dest_banner.png',
 } as const;
 

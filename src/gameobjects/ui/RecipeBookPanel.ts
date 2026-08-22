@@ -2,7 +2,7 @@ import * as PIXI from 'pixi.js';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { KitchenManager } from '@/managers/KitchenManager';
-import { RECIPES } from '@/sim';
+import { RECIPES, recipeUnlockView, unlockedRecipes } from '@/sim';
 import { fillRect, makeButton, makeLabel } from '@/utils/ui';
 
 export class RecipeBookPanel extends PIXI.Container {
@@ -45,29 +45,54 @@ export class RecipeBookPanel extends PIXI.Container {
     panel.eventMode = 'static';
     this._root.addChild(panel);
 
+    const view = recipeUnlockView(KitchenManager.save);
+    const known = unlockedRecipes(view);
     const cooked = new Set(KitchenManager.save.recipesCooked);
-    const title = makeLabel(`菜谱  ${cooked.size}/${RECIPES.length}`, 34, 0xF4EFE6);
+    const title = makeLabel(`菜谱  已会 ${known.length}/${RECIPES.length}`, 30, 0xF4EFE6);
     title.position.set(54, Game.safeTop + 40);
     this._root.addChild(title);
-    const hint = makeLabel('做过的菜才会写进本子', 20, 0xC9B8A4);
-    hint.position.set(54, Game.safeTop + 86);
+    const hint = makeLabel('没解锁的不写名字。做过的会打个勾。', 20, 0xC9B8A4);
+    hint.position.set(54, Game.safeTop + 80);
     this._root.addChild(hint);
 
-    let y = Game.safeTop + 140;
-    for (const r of RECIPES) {
-      const unlocked = cooked.has(r.id);
-      const name = makeLabel(unlocked ? r.name : '???', 26, unlocked ? 0xF4EFE6 : 0x7A6B5C);
+    const listTop = Game.safeTop + 120;
+    const listH = h - listTop - 120;
+    const list = new PIXI.Container();
+    let y = 0;
+    for (const r of known) {
+      const done = cooked.has(r.id);
+      const name = makeLabel(`${done ? '✓ ' : ''}${r.name}`, 26, done ? 0xC8E6A0 : 0xF4EFE6);
       name.position.set(54, y);
-      this._root.addChild(name);
-      const desc = makeLabel(
-        unlocked ? r.desc : '还没做过',
-        20,
-        unlocked ? 0xC8E6A0 : 0x7A6B5C,
-      );
-      desc.position.set(54, y + 34);
-      this._root.addChild(desc);
-      y += 88;
+      list.addChild(name);
+      const desc = makeLabel(r.desc, 20, 0xC9B8A4);
+      desc.position.set(54, y + 32);
+      list.addChild(desc);
+      y += 80;
     }
+    list.y = listTop;
+    const maxScroll = Math.max(0, y - listH);
+    if (maxScroll > 0) {
+      const mask = new PIXI.Graphics();
+      mask.beginFill(0xffffff);
+      mask.drawRect(40, listTop, w - 80, listH);
+      mask.endFill();
+      this._root.addChild(mask);
+      list.mask = mask;
+      list.eventMode = 'static';
+      list.hitArea = new PIXI.Rectangle(40, 0, w - 80, y);
+      let lastY = 0;
+      let dragging = false;
+      list.on('pointerdown', (e) => { dragging = true; lastY = e.global.y; });
+      list.on('pointerup', () => { dragging = false; });
+      list.on('pointerupoutside', () => { dragging = false; });
+      list.on('pointermove', (e) => {
+        if (!dragging) return;
+        const next = list.y + (e.global.y - lastY);
+        list.y = Math.min(listTop, Math.max(listTop - maxScroll, next));
+        lastY = e.global.y;
+      });
+    }
+    this._root.addChild(list);
 
     const close = makeButton('合上', w - 108, 56, 0xC46A3A);
     close.position.set(54, h - 100);

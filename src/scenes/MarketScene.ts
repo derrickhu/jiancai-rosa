@@ -7,6 +7,7 @@ import { KitchenManager } from '@/managers/KitchenManager';
 import { BasketPanel } from '@/gameobjects/ui/BasketPanel';
 import { ResultPanel } from '@/gameobjects/ui/ResultPanel';
 import { EventPanel } from '@/gameobjects/ui/EventPanel';
+import { ensureRecipeUnlockPanel } from '@/gameobjects/ui/RecipeUnlockPanel';
 import {
   PACK_FULL,
   STALLS,
@@ -18,6 +19,7 @@ import {
   type RunEventLog,
   type StallId,
   getMarket,
+  MARKET_ART,
 } from '@/sim';
 import { layoutRouteMap, type RouteCell, type RouteMapView } from '@/gameobjects/market/MapView';
 import { HUD_ICON, fillRect, makeHudButton, makeLabel, makePaperChip, makeSlicedButton, makeStatPill } from '@/utils/ui';
@@ -33,17 +35,13 @@ const REVEAL_POP = 0.14;
 const REVEAL_FLY = 0.26;
 const REVEAL_LAND = 0.08;
 
-const ROUTE_BG: Record<string, string> = {
-  xiangko: 'subpkg_images/market_route_1.jpg',
-  heyan: 'subpkg_images/market_route_1.jpg',
-  jiangbian: 'subpkg_images/market_route_1.jpg',
-};
 
 const STALL_BG: Record<StallId, string> = {
   leaf: 'subpkg_images/stall_rummage_leaf.jpg',
   root: 'subpkg_images/stall_rummage_root.jpg',
   egg: 'subpkg_images/stall_rummage_egg.jpg',
   fish: 'subpkg_images/stall_rummage_fish.jpg',
+  meat: 'subpkg_images/stall_rummage_egg.jpg',
 };
 
 const STALL_PILE: Record<StallId, string> = {
@@ -51,6 +49,7 @@ const STALL_PILE: Record<StallId, string> = {
   root: 'subpkg_images/stall_pile_root.png',
   egg: 'subpkg_images/stall_pile_egg.png',
   fish: 'subpkg_images/stall_pile_fish.png',
+  meat: 'subpkg_images/stall_pile_egg.png',
 };
 
 export class MarketScene implements Scene {
@@ -108,6 +107,7 @@ export class MarketScene implements Scene {
     this._body.alpha = 1;
     this._shownEvent = RunManager.run?.lastEvent?.nodeId ?? '';
     this._sync(true);
+    ensureRecipeUnlockPanel().present();
   }
 
   onExit(): void {
@@ -271,7 +271,8 @@ export class MarketScene implements Scene {
   private _drawMap(w: number): void {
     const run = RunManager.run!;
     const h = Game.logicHeight;
-    this._paintScene(ROUTE_BG[run.marketId] ?? 'subpkg_images/market_route_1.jpg', 'cover');
+    const art = MARKET_ART[run.marketId];
+    this._paintScene(art.routeBg, 'cover');
 
     const marketName = getMarket(run.marketId).name;
     const seg = run.visited.length ? ` · 走过 ${run.visited.length} 段` : '';
@@ -304,6 +305,7 @@ export class MarketScene implements Scene {
       bottom: cardsBottom,
       onPick: (id) => this._walkTo(id),
       showRoot: !blocked,
+      atlas: art.cardAtlas,
       onReady: redraw,
     });
     this._mapView = view;
@@ -440,6 +442,7 @@ export class MarketScene implements Scene {
     if (!run || run.ended || !ev || ev.nodeId === this._shownEvent) return;
     this._shownEvent = ev.nodeId;
     if (ev.gain) this._popFreebie(ev);
+    else if (ev.kind === 'recipe' && KitchenManager.peekRecipeUnlock()) ensureRecipeUnlockPanel().present();
     else this._event.open(ev);
   }
 
@@ -497,7 +500,9 @@ export class MarketScene implements Scene {
       ease: Ease.easeOutBack,
       onComplete: () => {
         if (!gain.taken) {
-          Platform.showToast('篮子满了，白捡也拿不走');
+          Platform.showToast('篮子满了，拖开点位子再捡');
+          const lootUid = RunManager.pendingLoot[0]?.uid;
+          if (lootUid) this._basket.open(lootUid);
           TweenManager.to({
             target: wrap,
             props: { alpha: 0, y: wrap.y + 24 },

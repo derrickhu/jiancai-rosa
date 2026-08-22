@@ -21,11 +21,17 @@
 | `loading_bg_prompt.txt` | 启动页夜市底图（圆月+街上果蔬水产，无字） | 9:16 |
 | `title_logo_prompt.txt` | 标题字「扫荡菜场」：扫荡张狂、菜场果蔬笔画 | 16:9 |
 | `market_overview_prompt.txt` | 旧：市集总览（外层换卡片路线后只当选点缩略图） | 9:16 |
-| `market_route_bg_prompt.txt` | 卡片路线底图（中间一列压暗留空给卡片） | 9:16 |
+| `market_route_bg_prompt.txt` | 巷口卡片路线底图（中间一列压暗留空给卡片） | 9:16 |
+| `market_route_heyan_prompt.txt` | 河沿早市路线底图（晨光、船、菜筐，中间压暗） | 9:16 |
+| `market_route_jiangbian_prompt.txt` | 江边渔市路线底图（夜灯笼、栈桥，中间压暗） | 9:16 |
 | `market_card_frame_prompt.txt` | 路线卡框（木框+纸面，入库前把纸面抠成透明窗口） | 3:4 |
-| `market_cards_prompt.txt` | 12 格卡面缩略图集（4×3，四摊+事件+背面） | 1:1 |
+| `market_cards_prompt.txt` | 巷口 12 格卡面缩略图集（4×3，四摊+事件+背面） | 1:1 |
+| `market_cards_heyan_prompt.txt` | 河沿早市卡面图集（同格位，晨光河沿） | 1:1 |
+| `market_cards_jiangbian_prompt.txt` | 江边渔市卡面图集（同格位，夜渔市） | 1:1 |
 | `market_freebie_bundle_prompt.txt` | 白捡卡面重画：地上一个扎口布包，看不出内容（单格贴回图集第 6 格） | 3:4 |
-| `npc_market_busts_prompt.txt` | 事件对话半身像两连（巷口张婶、收摊摊主），平灰底待抠 | 4:3 |
+| `npc_market_busts_prompt.txt` | 巷口事件半身像两连（张婶、收摊摊主），平灰底待抠 | 4:3 |
+| `npc_heyan_busts_prompt.txt` | 河沿事件半身像两连（刘伯、早市摊嫂） | 4:3 |
+| `npc_jiangbian_busts_prompt.txt` | 江边事件半身像两连（渔市阿珠、收网伙计） | 4:3 |
 | `ui_event_gain_prompt.txt` | 白捡弹窗壳体（木框奶油纸，顶角白菜大蒜） | 3:4 |
 | `ui_event_talk_prompt.txt` | 事件对话壳体（挂牌木框奶油纸，两侧灯笼） | 16:9 |
 | `stall_rummage_*_prompt.txt` | 四摊翻堆底 | 4:3 |
@@ -37,5 +43,12 @@
 | `items_new_clean_prompt.txt` | 新食材干净态（按占格比例） | 随 w×h |
 | `ui_fridge_panel_prompt.txt` | 冰箱形背包页（纯色腔体，顶栏/底栏留空） | 9:16 |
 | `ui_fridge_btn_prompt.txt` | 冰箱页配套按钮板（奶油/砖红/胡桃） | 16:9 |
-| `ui_cook_panel_prompt.txt` | 烹饪页菜谱书：布面精装+空白纸页，标题程序叠字 | 9:16 |
+| `ui_cook_panel_prompt.txt` | 烹饪页砧板+空白油纸（与图鉴红本区分） | 9:16 |
+| `kitchen_dex_book_prompt.txt` | 旧：厨房左墙悬挂图鉴书（已改 HUD 图标） | 1:1 |
+| `hud_dex_prompt.txt` | 厨房左侧 HUD 图鉴图标（陶土书+奶油方块） | 1:1 |
+| `dex_cat_icons_prompt.txt` | 图鉴分类方块 5×2（食材五类+菜品五组） | 1:1 |
+| `dex_cat_fruit_prompt.txt` | 水果分类方块：西瓜+桃，不要西红柿 | 1:1 |
+| `ui_dex_panel_prompt.txt` | 图鉴笔记本壳，空白纸面叠字 | 9:16 |
 | `ui_cook_btn_prompt.txt` | 烹饪页专用大按钮（砖红布面，空心叠字） | 16:9 |
+| `ui_recipe_paper_prompt.txt` | 解锁新菜弹窗油纸（木夹、空白纸心叠字） | 3:4 |
+| `ui_basket_panel_prompt.txt` | 出门篮木箱壳：上托盘暂存、下箱井叠格子 | 9:16 |

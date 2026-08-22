@@ -79,9 +79,10 @@ export function houseDoor(_house: number): { nx: number; ny: number; nw: number;
   return { nx: 0.00, ny: 0.16, nw: 0.24, nh: 0.50 };
 }
 
-/** 房屋升级箭头钉在门楣上方，跟房间贴图走，不跟屏幕顶走。 */
+/** 房屋升级箭头钉在门扇上（门中线、门板上沿），跟房间贴图走。 */
 export function houseUpgradeMark(_house = 0): { nx: number; ny: number } {
-  return { nx: 0.118, ny: 0.176 };
+  const door = houseDoor(_house);
+  return { nx: door.nx + door.nw * 0.5, ny: door.ny + door.nh * 0.28 };
 }
 
 /** 质变道具按当前形态显示名字（装修面板 / GM / 热区）。 */

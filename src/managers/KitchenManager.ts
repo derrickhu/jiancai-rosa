@@ -4,6 +4,9 @@ import { EV } from '@/config/events';
 import { SaveManager } from './SaveManager';
 import {
   RECIPES,
+  recipeById,
+  recipesGainedByCook,
+  recipesGainedByTable,
   STAMINA_MAX,
   addStamina,
   buyFurnUpgrade,
@@ -33,6 +36,7 @@ import type { ExtractedItem } from '@/sim/run';
 
 class KitchenManagerClass {
   private _cookFx: { xp: number; levels: number } | null = null;
+  private _unlockQueue: RecipeId[] = [];
   pendingHaul: ExtractedItem[] | null = null;
 
   get save(): KitchenSave {
@@ -141,6 +145,7 @@ class KitchenManagerClass {
   }
 
   cook(recipeId: RecipeId): void {
+    const fromLevel = this.save.level;
     const { save, error, xp, levels } = cookRecipe(this.save, recipeId);
     if (error) {
       Platform.showToast(error);
@@ -150,9 +155,37 @@ class KitchenManagerClass {
     SaveManager.replace(save);
     this.emit();
     const name = RECIPES.find((r) => r.id === recipeId)?.name ?? '菜';
+    const learned = recipesGainedByCook(fromLevel, save.level);
+    this.enqueueRecipeUnlocks(learned);
     if ((levels ?? 0) > 0) Platform.showToast(`${name} 出锅，厨艺升到 ${save.level} 级`, 'success');
     else if ((xp ?? 0) > 0) Platform.showToast(`${name} 出锅，+${xp} 经验`, 'success');
     else Platform.showToast(`${name} 出锅，放进冰箱了`, 'success');
+  }
+
+  findRecipe(id: RecipeId): void {
+    if (this.save.recipesFound.includes(id)) return;
+    SaveManager.replace({ ...this.save, recipesFound: [...this.save.recipesFound, id] });
+    this.enqueueRecipeUnlocks([id]);
+    this.emit();
+  }
+
+  enqueueRecipeUnlocks(ids: RecipeId[]): void {
+    const add = ids.filter((id) => recipeById(id) && !this._unlockQueue.includes(id));
+    if (!add.length) return;
+    this._unlockQueue.push(...add);
+    EventBus.emit(EV.recipeUnlocked);
+  }
+
+  peekRecipeUnlock(): RecipeId | null {
+    return this._unlockQueue[0] ?? null;
+  }
+
+  recipeUnlockLeft(): number {
+    return this._unlockQueue.length;
+  }
+
+  shiftRecipeUnlock(): RecipeId | null {
+    return this._unlockQueue.shift() ?? null;
   }
 
   gmAddCookXp(amount: number): void {
@@ -169,7 +202,22 @@ class KitchenManagerClass {
     Platform.showToast(`厨艺 ${level}/${COOK_LEVEL_MAX}`);
   }
 
+  gmAddStamina(n = 5): void {
+    const save = addStamina(this.save, n);
+    SaveManager.replace(save);
+    this.emit();
+    Platform.showToast(`体力 ${save.stamina}`);
+  }
+
+  gmAddMoney(n = 100): void {
+    const money = this.save.money + n;
+    SaveManager.replace({ ...this.save, money });
+    this.emit();
+    Platform.showToast(`金币 +${n} · 现有 ${money}`);
+  }
+
   upgrade(id: FurnId): void {
+    const fromTable = furnLevel(this.save, 'table');
     const { save, error } = buyFurnUpgrade(this.save, id);
     if (error) {
       Platform.showToast(error);
@@ -184,6 +232,11 @@ class KitchenManagerClass {
     }
     else if (id === 'basket') {
       Platform.showToast(`${furnLabel(id, lv)} · 出门干区 ${outingDryCells(lv)} 格`, 'success');
+    }
+    else if (id === 'table') {
+      const learned = recipesGainedByTable(fromTable, lv);
+      this.enqueueRecipeUnlocks(learned);
+      Platform.showToast(`烹饪台 ${lv + 1} 级`, 'success');
     }
     else Platform.showToast(`升到 ${lv + 1} 级`, 'success');
   }

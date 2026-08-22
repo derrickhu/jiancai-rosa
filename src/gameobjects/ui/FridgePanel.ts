@@ -126,10 +126,10 @@ export class FridgePanel extends PIXI.Container {
     const gap = 14;
     const chipW = (cw - gap) / 2;
 
-    shell.addChild(this._title(midX, hy + hh * 0.38));
+    shell.addChild(this._title(midX, hy + hh * 0.24, used, cap));
     const tabY = hy + hh - 64;
-    shell.addChild(this._tabBtn('食材', 'food', cx, tabY, chipW, foods.length, used, cap));
-    shell.addChild(this._tabBtn('饭菜', 'dish', cx + chipW + gap, tabY, chipW, dishes.length, used, cap));
+    shell.addChild(this._tabBtn('食材', 'food', cx, tabY, chipW, foods.length));
+    shell.addChild(this._tabBtn('饭菜', 'dish', cx + chipW + gap, tabY, chipW, dishes.length));
     const pad = 8;
     const cell = Math.max(48, Math.floor((cw - pad * 2) / cols));
     const gridW = cols * cell;
@@ -263,7 +263,7 @@ export class FridgePanel extends PIXI.Container {
     viewport.on('pointerupoutside', end);
   }
 
-  private _title(cx: number, cy: number): PIXI.Container {
+  private _title(cx: number, cy: number, used: number, cap: number): PIXI.Container {
     const root = new PIXI.Container();
     const name = new PIXI.Text('冰  箱', {
       fontFamily: TITLE_FONT,
@@ -281,9 +281,21 @@ export class FridgePanel extends PIXI.Container {
       dropShadowAngle: Math.PI / 2,
     });
     name.anchor.set(0.5);
-    name.position.set(cx, cy);
     name.eventMode = 'none';
-    root.addChild(name);
+    const count = new PIXI.Text(`${used} / ${cap}`, {
+      fontFamily: TITLE_FONT,
+      fontSize: 26,
+      fill: WALNUT,
+      fontWeight: '700',
+      letterSpacing: 1,
+      stroke: '#F6EDE0',
+      strokeThickness: 4,
+    });
+    count.anchor.set(0.5);
+    count.eventMode = 'none';
+    count.position.set(0, name.height * 0.5 + count.height * 0.5 + 1);
+    root.position.set(cx, cy);
+    root.addChild(name, count);
     return root;
   }
 
@@ -363,11 +375,9 @@ export class FridgePanel extends PIXI.Container {
     y: number,
     width: number,
     count: number,
-    used: number,
-    cap: number,
   ): PIXI.Container {
     const on = this._tab === tab;
-    const root = this._chip(on ? `${label}  ${used}/${cap}` : `${label}  ${count}`, width, 40, on ? 'on' : 'off');
+    const root = this._chip(`${label}  ${count}`, width, 40, on ? 'on' : 'off');
     root.position.set(x, y);
     root.on('pointertap', () => {
       this._tab = tab;

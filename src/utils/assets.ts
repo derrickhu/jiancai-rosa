@@ -102,6 +102,17 @@ export function readyTextureSize(tex: PIXI.Texture, fallback = 256): { w: number
   return { w: fallback, h: fallback };
 }
 
+/** 真灰度，不要用 tint 压暗——带颜色的暗调看起来仍像没解锁的彩图。 */
+let _gray: PIXI.ColorMatrixFilter | null = null;
+
+export function applyGray(target: PIXI.DisplayObject): void {
+  if (!_gray) {
+    _gray = new PIXI.ColorMatrixFilter();
+    _gray.desaturate();
+  }
+  target.filters = [_gray];
+}
+
 export function fitSpriteInBox(sprite: PIXI.Sprite, boxW: number, boxH: number, fallback = 256): number {
   const { w, h } = readyTextureSize(sprite.texture, fallback);
   const scale = Math.min(boxW / Math.max(1, w), boxH / Math.max(1, h));
@@ -117,6 +128,46 @@ export function whenTextureReady(path: string, onReady: () => void): void {
   const list = waiters.get(path) ?? [];
   list.push(onReady);
   waiters.set(path, list);
+}
+
+export function isTextureSettled(path: string): boolean {
+  if (failed.has(path)) return true;
+  const tex = cache.get(path);
+  return !!(tex && isTextureReady(tex));
+}
+
+/** 成功或失败都算完成，用来挡在进厨房之前。 */
+export function preloadTextures(
+  paths: string[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<void> {
+  const unique = [...new Set(paths.filter(Boolean))];
+  if (!unique.length) return Promise.resolve();
+  let done = 0;
+  return new Promise((resolve) => {
+    const tick = (): void => {
+      done += 1;
+      onProgress?.(done, unique.length);
+      if (done >= unique.length) resolve();
+    };
+    for (const path of unique) {
+      let armed = false;
+      const once = (): void => {
+        if (armed) return;
+        armed = true;
+        tick();
+      };
+      if (isTextureSettled(path)) {
+        once();
+        continue;
+      }
+      const list = waiters.get(path) ?? [];
+      list.push(once);
+      waiters.set(path, list);
+      gameTexture(path);
+      if (isTextureSettled(path)) once();
+    }
+  });
 }
 
 export interface SceneFit {

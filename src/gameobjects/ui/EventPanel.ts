@@ -1,7 +1,7 @@
 import * as PIXI from 'pixi.js';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
-import { EVENT_VOICE, type RunEventLog } from '@/sim';
+import { eventVoice, type RunEventLog } from '@/sim';
 import { fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from '@/utils/assets';
 import { fillRect, makeLabel, makePaperChip, makeSlicedButton } from '@/utils/ui';
 
@@ -44,7 +44,7 @@ export class EventPanel extends PIXI.Container {
     if (!log) return;
     const w = Game.designWidth;
     const h = Game.logicHeight;
-    const voice = EVENT_VOICE[log.kind];
+    const voice = eventVoice(log.marketId, log.kind);
     const portrait = voice?.portrait ?? null;
     const x = 24;
     const boxW = w - 48;
