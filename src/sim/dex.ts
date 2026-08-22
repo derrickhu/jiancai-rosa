@@ -46,7 +46,8 @@ const DISH_GROUP_ICON: Record<string, string> = {
 };
 
 const PANTRY = new Set(['garlic', 'ginger', 'egg', 'tofu', 'dried_tofu']);
-const FRUIT = new Set<string>();
+/** 干果归「水果」这一页，别让板栗混进叶菜堆里。 */
+const FRUIT = new Set(['chestnut']);
 const DISH_GROUP_ORDER = ['家常', '凉菜', '汤', '水产', '荤'];
 
 export function foodDexCat(id: string): DexFoodCat {

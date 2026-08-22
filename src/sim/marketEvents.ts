@@ -22,7 +22,9 @@ export const EXTRA_LAYERS = 3;
 export const MARKET_PLAN: Record<MarketId, MarketPlan> = {
   xiangko: { steps: 10, stallLayers: 3, width: [2, 3], maxDeadend: 2, allowDeep: false },
   heyan: { steps: 12, stallLayers: 4, width: [2, 3], maxDeadend: 2, allowDeep: false },
+  shanwu: { steps: 12, stallLayers: 4, width: [2, 3], maxDeadend: 3, allowDeep: false },
   jiangbian: { steps: 14, stallLayers: 4, width: [3, 3], maxDeadend: 2, allowDeep: false },
+  laocheng: { steps: 15, stallLayers: 5, width: [3, 3], maxDeadend: 3, allowDeep: false },
 };
 
 /** 填非保底层用。三个菜场同一套卡型，只改权重。 */
@@ -47,6 +49,16 @@ export const CARD_WEIGHTS: Record<MarketId, Array<[CardKind, number]>> = {
     ['paystall', 10],
     ['recipe', 5],
   ],
+  shanwu: [
+    ['stall', 30],
+    ['freebie', 11],
+    ['fork', 12],
+    ['empty', 11],
+    ['favor', 8],
+    ['deadend', 11],
+    ['paystall', 11],
+    ['recipe', 6],
+  ],
   jiangbian: [
     ['stall', 30],
     ['freebie', 10],
@@ -57,13 +69,25 @@ export const CARD_WEIGHTS: Record<MarketId, Array<[CardKind, number]>> = {
     ['paystall', 14],
     ['recipe', 4],
   ],
+  laocheng: [
+    ['stall', 28],
+    ['freebie', 8],
+    ['fork', 11],
+    ['empty', 10],
+    ['favor', 7],
+    ['deadend', 12],
+    ['paystall', 18],
+    ['recipe', 6],
+  ],
 };
 
 /** 哪类摊多。河沿肉摊、江边水产主场都走这张表，别为菜场另写卡型。 */
 export const STALL_WEIGHTS: Record<MarketId, Array<[StallId, number]>> = {
   xiangko: [['leaf', 34], ['root', 30], ['egg', 24], ['fish', 12]],
   heyan: [['leaf', 26], ['root', 24], ['egg', 22], ['fish', 14], ['meat', 14]],
+  shanwu: [['leaf', 22], ['root', 34], ['egg', 26], ['meat', 18]],
   jiangbian: [['leaf', 16], ['root', 16], ['egg', 18], ['fish', 38], ['meat', 12]],
+  laocheng: [['leaf', 16], ['root', 20], ['egg', 18], ['fish', 20], ['meat', 26]],
 };
 
 /** 收费摊：货更足，进场费也更狠。 */
@@ -87,9 +111,17 @@ export const MARKET_ART: Record<MarketId, { routeBg: string; cardAtlas: string }
     routeBg: 'subpkg_images/market_route_heyan.jpg',
     cardAtlas: 'subpkg_images/market_cards_heyan.jpg',
   },
+  shanwu: {
+    routeBg: 'subpkg_images/market_route_shanwu.jpg',
+    cardAtlas: 'subpkg_images/market_cards_shanwu.jpg',
+  },
   jiangbian: {
     routeBg: 'subpkg_images/market_route_jiangbian.jpg',
     cardAtlas: 'subpkg_images/market_cards_jiangbian.jpg',
+  },
+  laocheng: {
+    routeBg: 'subpkg_images/market_route_laocheng.jpg',
+    cardAtlas: 'subpkg_images/market_cards_laocheng.jpg',
   },
 };
 
@@ -181,6 +213,44 @@ export const EVENT_VOICE: Record<MarketId, Partial<Record<CardKind, EventVoice>>
       ],
     },
   },
+  shanwu: {
+    favor: {
+      speaker: '山坞阿婆',
+      portrait: 'subpkg_images/npc_shanwu_granny.png',
+      lines: [
+        '前头那家我孙子看着摊。你慢慢挑，他不会说你。',
+        '笋是天没亮挖的，还带土。前面那摊算我的。',
+        '山路难走，你既然上来了，就多翻两筐。',
+      ],
+    },
+    empty: {
+      speaker: '挑担的山客',
+      portrait: 'subpkg_images/npc_shanwu_vendor.png',
+      lines: [
+        '这担子空了，我下山去咯。坡上那家还没走。',
+        '菌子早卖光了，来得晚喽。往竹林那边看看。',
+        '就剩两根扁担。你往前走，还有人在歇脚。',
+      ],
+    },
+    deadend: {
+      speaker: null,
+      portrait: null,
+      lines: [
+        '路进了竹林就断了，脚下全是笋壳。',
+        '走到半坡，前面是别人家的地。天色白耗了一步。',
+        '这边只有一口井和几只空篓。',
+      ],
+    },
+    recipe: {
+      speaker: '山坞阿婆',
+      portrait: 'subpkg_images/npc_shanwu_granny.png',
+      lines: [
+        '篓底垫着的这张纸，你识字，拿去。',
+        '山里的做法，写在这上头。别弄湿了。',
+        '我记不住了，你替我记着。',
+      ],
+    },
+  },
   jiangbian: {
     favor: {
       speaker: '渔市阿珠',
@@ -216,6 +286,44 @@ export const EVENT_VOICE: Record<MarketId, Partial<Record<CardKind, EventVoice>>
         '秤底下压着一张，夜市别浪费。',
         '夹给你的，回去照着做。',
         '潮水带来的纸，字还在。',
+      ],
+    },
+  },
+  laocheng: {
+    favor: {
+      speaker: '菜行陈老板',
+      portrait: 'subpkg_images/npc_laocheng_boss.png',
+      lines: [
+        '认得你妈。前头那间报我姓陈，秤给你放平。',
+        '老行里的规矩，熟客不催。你只管慢慢看。',
+        '梁上那条腿是去年的。前面那家账先记着。',
+      ],
+    },
+    empty: {
+      speaker: '菜行伙计',
+      portrait: 'subpkg_images/npc_laocheng_vendor.png',
+      lines: [
+        '这间早上就订光了。里进还有两间没关板。',
+        '好货不上架，来晚就没有。往后堂走走。',
+        '空了空了。石板路尽头那家灯还亮着。',
+      ],
+    },
+    deadend: {
+      speaker: null,
+      portrait: null,
+      lines: [
+        '巷子被一道院墙封死，墙上还留着旧行号。',
+        '走到底是间关了板的铺子。天色白耗了一步。',
+        '这条是运货的后弄，没有摊，只有一地稻草。',
+      ],
+    },
+    recipe: {
+      speaker: '菜行陈老板',
+      portrait: 'subpkg_images/npc_laocheng_boss.png',
+      lines: [
+        '老账本里夹着的，行里没人做了。你拿去。',
+        '这道菜从前是给东家做的。别糟蹋了。',
+        '纸脆，你收好。上头那几味，市面上不常有。',
       ],
     },
   },

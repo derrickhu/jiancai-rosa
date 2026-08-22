@@ -1,7 +1,30 @@
 import * as PIXI from 'pixi.js';
+import { RARITY_STYLE, type Rarity } from '@/sim/rarity';
 import { fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from './assets';
 
 export const FONT = 'PingFang SC, sans-serif';
+
+/**
+ * 格子的稀有度描边：绿=普通 / 蓝=高级 / 紫=稀有。
+ * 外面先描一圈浅色再压深色，木纹底和暗色图标上也分得清蓝和紫。
+ */
+export function drawRarityFrame(
+  g: PIXI.Graphics,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  rarity: Rarity,
+  opts: { radius?: number; thick?: boolean } = {},
+): void {
+  const style = RARITY_STYLE[rarity];
+  const r = opts.radius ?? 10;
+  const width = opts.thick ? 4 : 3;
+  g.lineStyle(width + 2, style.glow, 0.5);
+  g.drawRoundedRect(x, y, w, h, r);
+  g.lineStyle(width, style.frame, 1);
+  g.drawRoundedRect(x, y, w, h, r);
+}
 
 export function makeLabel(
   text: string,

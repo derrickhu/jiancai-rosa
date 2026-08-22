@@ -29,6 +29,7 @@
   "compileType": "game",
   "libVersion": "latest",
   "miniprogramRoot": "minigame/",
+  "cloudfunctionRoot": "cloudfunctions/",
   "appid": "wx41ac821080ff87f9",
   "projectname": "jiancai-rosa",
   "condition": {

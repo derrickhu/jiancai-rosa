@@ -1,0 +1,25 @@
+# 稀有度改版新增菜品（15 道）
+
+风格段（每条前面原样拼上，与 dish_new_shared.txt 一致）：
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading, gentle highlights, warm kitchen lighting. Same style as existing tomato-egg and garlic-shrimp plate icons in this game. NO photorealism, NO 3D render, NO photography, NO pixel art, NO neon. NO TEXT, no labels, no numbers, no captions, no watermark.
+Finished Chinese home-cooked dish, appetizing, clearly readable at 64px. Top-down on a small round cream ceramic plate (soup uses a round cream bowl). Isolated on solid white background. Plate fully visible, centered, generous margin.
+
+| id | 菜名 | 稀有度 | 主体描述 |
+|---|---|---|---|
+| scallion_tofu | 小葱拌豆腐 | 普通绿 | Cold silken tofu cut into white cubes piled on the plate, showered with finely chopped bright-green scallion, a drizzle of clear sesame oil and a little light soy pooling at the edge. |
+| wood_ear_egg | 木耳炒蛋 | 高级蓝 | Stir-fry of glossy black wood-ear fungus pieces tossed with golden fluffy scrambled egg curds, a few green scallion bits, light glaze. |
+| bamboo_pork | 春笋炒肉 | 高级蓝 | Stir-fry of pale ivory bamboo shoot slices with thin pink-brown pork slices, a few green pepper strips, light brown sauce sheen. |
+| bamboo_chicken | 春笋炖鸡 | 高级蓝 | Braised chicken pieces on the bone with chunks of pale bamboo shoot in a shallow amber broth, ginger slices, scattered scallion. |
+| yam_chestnut | 板栗山药煲 | 高级蓝 | Clay-pot style braise of thick beige yam chunks and glossy peeled golden chestnuts in a dark caramel sauce, thickened and shiny. |
+| mushroom_yam_soup | 山药香菇汤 | 高级蓝 | Clear soup in a cream bowl with round white yam slices and brown shiitake mushroom caps, a few green scallion rings floating. |
+| dried_tofu_pork | 香干回锅肉 | 高级蓝 | Stir-fry of curled fatty pork slices with brown dried-tofu slabs and green pepper pieces, glossy red-brown chilli-bean sauce. |
+| chestnut_duck | 板栗烧鸭 | 高级蓝 | Braised duck pieces with glossy whole chestnuts in a deep red-brown sauce, ginger slices, star anise, rich glaze. |
+| crab_tofu | 蟹粉豆腐 | 稀有紫 | Soft white tofu cubes in a thick golden-orange crab-roe sauce, flecks of crab meat, chopped green scallion on top, silky and glossy. |
+| braised_eel | 红烧河鳗 | 稀有紫 | Whole braised river eel curled on the plate, deep mahogany glossy sauce, garlic cloves and ginger slices around it, scallion on top. |
+| wild_fish_soup | 野生黄鱼汤 | 稀有紫 | Creamy milky-white fish soup in a cream bowl with a whole small yellow croaker, white tofu cubes, ginger slices, green scallion. |
+| braised_beef | 红烧牛腩 | 稀有紫 | Chunks of braised beef brisket with white radish pieces in a dark red glossy sauce, star anise and ginger, hearty and thick. |
+| ham_melon_soup | 火腿冬瓜汤 | 稀有紫 | Clear light soup in a cream bowl with translucent pale-green winter melon slices and thin dark-red cured ham slices, ginger, a little green. |
+| matsutake_chicken | 松茸炖鸡 | 稀有紫 | Golden clear chicken broth in a cream bowl with sliced matsutake mushrooms and chicken pieces, ginger slices, a few goji berries, delicate and precious. |
+| yandu_xian | 腌笃鲜 | 稀有紫 | Milky-white Jiangnan soup in a cream bowl with cured ham slices, fresh pork belly chunks, pale bamboo shoot pieces and knotted tofu, rich. |
+
+后处理：rembg `birefnet-general` 去白底 → 裁边 → 512x512 → P 模式调色板（`scripts/fit-dish-art.py`）。

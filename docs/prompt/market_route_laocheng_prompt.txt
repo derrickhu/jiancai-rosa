@@ -1,0 +1,11 @@
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading, gentle highlights, warm wood and paper colors. Old-town covered market-hall lighting: cool grey daylight leaking through a high skylight, warm amber lantern pools below, aged timber and grey brick. Tidy not grimy, no horror, no photorealism, no pixel art, no neon. NO TEXT, no labels, no numbers, no captions, no watermark, no UI chrome.
+
+Vertical 9:16 background plate for an old-town produce hall route screen (老城菜行).
+
+Composition: looking down a long bluestone-flagged aisle inside an old covered produce hall. The far end of the aisle is at the top of the image, the near polished bluestone slabs are at the bottom, giving a clear sense of walking forward into depth. Dark timber pillars, grey brick walls, stone counters, hanging cured hams and sausages on beams, brass scales and red paper lanterns line the LEFT and RIGHT edges only. A pale skylight glow visible in a thin strip at the very top.
+
+CRITICAL: the whole central vertical column of the image, roughly the middle two thirds of the width, must stay visually calm and uncluttered: mostly plain bluestone paving and soft shadow, gently darkened, low contrast, no busy detail, no bright highlights, no focal objects. Interface cards will be drawn on top of that central column and must remain readable. Keep all interesting detail pushed to the left and right margins.
+
+Overall tone slightly darker and desaturated so light cream interface elements will pop against it. Soft vignette darkening at the top and bottom edges.
+
+No people, no faces, no animals, no vehicles. NO TEXT anywhere, no shop signs with lettering, no banners with writing.

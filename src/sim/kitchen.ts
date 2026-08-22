@@ -18,6 +18,9 @@ export {
   pickRecipeFoods,
   isRecipeUnlocked,
   unlockedRecipes,
+  unlockedIngredients,
+  recipeRarity,
+  tallyNeeds,
   recipeUnlockView,
   recipesGainedByTable,
   recipesGainedByCook,
@@ -340,18 +343,20 @@ export function cookRecipe(
 
 export function upgradeCost(id: FurnId, fromLevel: number): number {
   const lv = clampFurnLevel(fromLevel);
+  // 食材表改成按占格公式化定价后整体涨了一档，这里同步抬价，
+  // 否则一趟菜场就能换一次升级，攒钱又变得没有挑战。
   const base: Record<FurnId, number> = {
-    fridge: 50,
-    cook: 45,
-    table: 35,
-    basket: 40,
-    foam: 30,
-    recipe: 25,
+    fridge: 90,
+    cook: 80,
+    table: 65,
+    basket: 72,
+    foam: 55,
+    recipe: 45,
   };
   return Math.round(base[id] * Math.pow(1.38, lv));
 }
 
-export const HOUSE_UPGRADE_COST = [200, 520];
+export const HOUSE_UPGRADE_COST = [380, 980];
 /** 陋屋→精装屋要厨艺 4，精装屋→雅致屋要厨艺 8。 */
 export const HOUSE_COOK_NEED = [4, 8];
 export const COOK_LEVEL_MAX = 15;

@@ -6,10 +6,12 @@
 *.swo
 
 node_modules/
+cloudfunctions/**/node_modules/
 minigame/index.html
 .tmp_qc_*/
 .tmp_loading/
 .tmp_mapcheck/
+.tmp_art/
 
 .env
 .env.*

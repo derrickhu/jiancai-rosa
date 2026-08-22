@@ -20,9 +20,10 @@ import {
   type StallId,
   getMarket,
   MARKET_ART,
+  RARITY_STYLE,
 } from '@/sim';
 import { layoutRouteMap, type RouteCell, type RouteMapView } from '@/gameobjects/market/MapView';
-import { HUD_ICON, fillRect, makeHudButton, makeLabel, makePaperChip, makeSlicedButton, makeStatPill } from '@/utils/ui';
+import { HUD_ICON, drawRarityFrame, fillRect, makeHudButton, makeLabel, makePaperChip, makeSlicedButton, makeStatPill } from '@/utils/ui';
 import { Platform } from '@/core/PlatformService';
 import { TweenManager, Ease } from '@/core/TweenManager';
 import { applyFit, fitCover, fitSpriteInBox, fitWidthBottom, gameTexture, isTextureFailed, isTextureReady, itemLookTexture, itemTexture, whenTextureReady } from '@/utils/assets';
@@ -836,6 +837,17 @@ export class MarketScene implements Scene {
     const def = getItem(visibleDefId(item));
     const root = new PIXI.Container();
     root.position.set(x, y);
+
+    // 摊上只给蓝紫货描边，绿货全描一遍会把整张桌子变成彩灯
+    if (def.rarity !== 'common') {
+      const halo = new PIXI.Graphics();
+      halo.beginFill(RARITY_STYLE[def.rarity].glow, 0.16);
+      halo.drawRoundedRect(2, 2, tw - 4, th - 4, 14);
+      halo.endFill();
+      drawRarityFrame(halo, 2, 2, tw - 4, th - 4, def.rarity, { radius: 14 });
+      halo.eventMode = 'none';
+      root.addChild(halo);
+    }
 
     const look = item.quality === 'rotten' ? 'rotten' : 'clean';
     const icon = new PIXI.Sprite(itemLookTexture(visibleDefId(item), look));

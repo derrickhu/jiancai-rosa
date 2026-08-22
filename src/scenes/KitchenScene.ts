@@ -683,9 +683,9 @@ export class KitchenScene implements Scene {
     const door = houseDoor(this._viewHouse());
     return [
       { id: 'door', nx: door.nx, ny: door.ny + 0.12, nw: door.nw, nh: door.nh - 0.12, label: '出门' },
-      ...(basket ? [{ id: 'basket' as const, ...basket, label: furnLabel('basket', this._viewLevel('basket')) }] : []),
-      ...(fridge ? [{ id: 'fridge' as const, ...fridge, label: '冰箱' }] : []),
-      ...(foam ? [{ id: 'foam' as const, ...foam, label: furnLabel('foam', this._viewLevel('foam')) }] : []),
+      ...(basket ? [{ ...basket, id: 'basket' as const, label: furnLabel('basket', this._viewLevel('basket')) }] : []),
+      ...(fridge ? [{ ...fridge, id: 'fridge' as const, label: '冰箱' }] : []),
+      ...(foam ? [{ ...foam, id: 'foam' as const, label: furnLabel('foam', this._viewLevel('foam')) }] : []),
       ...(table ? [{ ...table, id: 'board' as const, label: '烹饪' }] : []),
     ];
   }

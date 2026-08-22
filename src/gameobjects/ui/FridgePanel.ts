@@ -8,10 +8,14 @@ import {
   fridgeItemName,
   fridgeItemPrice,
   fridgeKind,
+  itemRarity,
+  recipeRarity,
   type FridgeItem,
   type FridgeKind,
+  type Rarity,
+  type RecipeId,
 } from '@/sim';
-import { FONT, fillRect, makeLabel } from '@/utils/ui';
+import { FONT, drawRarityFrame, fillRect, makeLabel } from '@/utils/ui';
 import {
   dishTexture,
   fitSpriteInBox,
@@ -35,6 +39,11 @@ const WALNUT = 0x8B5A2B;
 const MUTED = 0x8A6A40;
 const TITLE_FONT = 'Songti SC, STSong, PingFang SC, serif';
 const COIN = 'subpkg_images/hud_coin.png';
+
+/** 冰箱里生食和熟菜混着放：生食看食材稀有度，熟菜看菜谱稀有度。 */
+function fridgeSlotRarity(it: FridgeItem): Rarity {
+  return fridgeKind(it) === 'dish' ? recipeRarity(it.defId as RecipeId) : itemRarity(it.defId);
+}
 const BTN = {
   cream: 'subpkg_kitchen/ui_fridge_btn_cream.png',
   terracotta: 'subpkg_kitchen/ui_fridge_btn_terracotta.png',
@@ -393,10 +402,17 @@ export class FridgePanel extends PIXI.Container {
     const root = new PIXI.Container();
     const on = !!(it && this.selected.has(it.uid));
     const bg = new PIXI.Graphics();
-    bg.lineStyle(on ? 4 : 2, on ? 0xE0A100 : INK, on ? 1 : 0.22);
+    if (!it) bg.lineStyle(2, INK, 0.22);
     bg.beginFill(it ? PAPER : 0xE8DFD0, it ? 0.96 : 0.42);
     bg.drawRoundedRect(x, y, size, size, 12);
     bg.endFill();
+    if (it) {
+      drawRarityFrame(bg, x + 2, y + 2, size - 4, size - 4, fridgeSlotRarity(it), { radius: 12, thick: on });
+      if (on) {
+        bg.lineStyle(4, 0xE0A100, 1);
+        bg.drawRoundedRect(x, y, size, size, 12);
+      }
+    }
     root.addChild(bg);
     if (!it) {
       root.eventMode = 'none';

@@ -13,7 +13,7 @@ import {
   displayName,
   type BasketItem,
 } from '@/sim';
-import { fillRect, makeLabel, makeSlicedButton } from '@/utils/ui';
+import { drawRarityFrame, fillRect, makeLabel, makeSlicedButton } from '@/utils/ui';
 import { fitSpriteInBox, gameTexture, isTextureReady, itemTexture, whenTextureReady } from '@/utils/assets';
 
 const BG = 'subpkg_kitchen/ui_basket_panel.png';
@@ -328,10 +328,14 @@ export class BasketPanel extends PIXI.Container {
     const root = new PIXI.Container();
     const on = it.uid === this.selectedUid;
     const bg = new PIXI.Graphics();
-    bg.lineStyle(on ? 3 : 2, on ? 0xE0A100 : INK, on ? 1 : 0.28);
     bg.beginFill(PAPER, 0.92);
     bg.drawRoundedRect(0, 0, size, size, 10);
     bg.endFill();
+    drawRarityFrame(bg, 2, 2, size - 4, size - 4, getItem(it.defId).rarity, { thick: on });
+    if (on) {
+      bg.lineStyle(3, 0xE0A100, 1);
+      bg.drawRoundedRect(0, 0, size, size, 10);
+    }
     root.addChild(bg);
     const icon = new PIXI.Sprite(itemTexture(it.defId));
     fitSpriteInBox(icon, size - 10, size - 18);
@@ -359,10 +363,14 @@ export class BasketPanel extends PIXI.Container {
     const root = new PIXI.Container();
     const on = item.uid === this.selectedUid;
     const bg = new PIXI.Graphics();
-    bg.lineStyle(on ? 3 : 2, on ? 0xE0A100 : INK, on ? 1 : 0.35);
     bg.beginFill(PAPER, 0.88);
     bg.drawRoundedRect(0, 0, bw, bh, 10);
     bg.endFill();
+    drawRarityFrame(bg, 2, 2, bw - 4, bh - 4, def.rarity, { thick: on });
+    if (on) {
+      bg.lineStyle(3, 0xE0A100, 1);
+      bg.drawRoundedRect(0, 0, bw, bh, 10);
+    }
     root.addChild(bg);
     const icon = new PIXI.Sprite(itemTexture(item.defId));
     fitSpriteInBox(icon, bw - 8, bh - 8);
@@ -475,9 +483,9 @@ export class BasketPanel extends PIXI.Container {
     wrap.alpha = 0.92;
     const bg = new PIXI.Graphics();
     bg.beginFill(PAPER, 0.9);
-    bg.lineStyle(2, 0xE0A100);
     bg.drawRoundedRect(0, 0, bw, bh, 10);
     bg.endFill();
+    drawRarityFrame(bg, 2, 2, bw - 4, bh - 4, def.rarity);
     wrap.addChild(bg);
     const icon = new PIXI.Sprite(itemTexture(drag.defId));
     fitSpriteInBox(icon, bw - 8, bh - 8);

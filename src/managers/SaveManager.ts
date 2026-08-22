@@ -1,7 +1,6 @@
+import { SAVE_KEY } from '@/config/CloudConfig';
 import { PersistService } from '@/core/PersistService';
 import { decayFridge, normalizeSave, regenStamina, type KitchenSave } from '@/sim/kitchen';
-
-const SAVE_KEY = 'jiancai_save';
 
 class SaveManagerClass {
   data: KitchenSave = normalizeSave(null);

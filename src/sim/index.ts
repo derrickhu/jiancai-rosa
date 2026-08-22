@@ -1,3 +1,4 @@
+export * from './rarity';
 export * from './items';
 export * from './basket';
 export * from './attention';

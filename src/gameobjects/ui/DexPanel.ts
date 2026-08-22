@@ -15,8 +15,9 @@ import {
   type DexFoodCat,
   type DexTab,
   type KitchenSave,
+  type Rarity,
 } from '@/sim';
-import { fillRect, makeDexName, makeLabel, makeSlicedButton, makeStrokeLabel } from '@/utils/ui';
+import { drawRarityFrame, fillRect, makeDexName, makeLabel, makeSlicedButton, makeStrokeLabel } from '@/utils/ui';
 import {
   applyGray,
   dishTexture,
@@ -222,10 +223,11 @@ export class DexPanel extends PIXI.Container {
   }
 
   private _titleText(): string {
-    if (this._view.kind === 'food') {
-      return DEX_FOOD_CATS.find((c) => c.id === this._view.cat)?.label ?? '食材';
+    const view = this._view;
+    if (view.kind === 'food') {
+      return DEX_FOOD_CATS.find((c) => c.id === view.cat)?.label ?? '食材';
     }
-    if (this._view.kind === 'dish') return this._view.group;
+    if (view.kind === 'dish') return view.group;
     return '图鉴';
   }
 
@@ -456,7 +458,7 @@ export class DexPanel extends PIXI.Container {
     const iconH = dish ? 120 : 88;
     const iconY = dish ? 68 : 58;
     const labelY = dish ? 136 : 112;
-    let entries: Array<{ id: string; name: string; blurb: string; unlocked: boolean; dish: boolean }>;
+    let entries: Array<{ id: string; name: string; blurb: string; unlocked: boolean; dish: boolean; rarity: Rarity }>;
     if (this._view.kind === 'food') {
       entries = foodsInCat(this._view.cat).map((it) => ({
         id: it.id,
@@ -464,6 +466,7 @@ export class DexPanel extends PIXI.Container {
         blurb: it.blurb,
         unlocked: isFoodUnlocked(save, it.id),
         dish: false,
+        rarity: it.rarity,
       }));
     } else if (this._view.kind === 'dish') {
       entries = dishesInGroup(this._view.group).map((it) => ({
@@ -472,6 +475,7 @@ export class DexPanel extends PIXI.Container {
         blurb: it.blurb,
         unlocked: isDishUnlocked(save, it.id),
         dish: true,
+        rarity: it.rarity,
       }));
     } else {
       entries = [];
@@ -492,6 +496,8 @@ export class DexPanel extends PIXI.Container {
       g.beginFill(it.unlocked ? 0xF4EFE6 : 0xE4D8C8);
       g.drawRoundedRect(0, 0, cellW, cellH, 12);
       g.endFill();
+      // 没解锁的也描边：让人看见图鉴里还缺着哪一格紫的
+      drawRarityFrame(g, 2, 2, cellW - 4, cellH - 4, it.rarity, { radius: 12 });
       card.addChild(g);
       const tex = it.dish ? dishTexture(it.id) : itemTexture(it.id);
       const path = it.dish ? `subpkg_images/dish_${it.id}.png` : `subpkg_images/${it.id}.png`;

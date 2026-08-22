@@ -2,8 +2,18 @@ import * as PIXI from 'pixi.js';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { KitchenManager } from '@/managers/KitchenManager';
-import { recipeCanCook, recipeNeeds, recipeUnlockView, recipeXp, unlockedRecipes, type RecipeId } from '@/sim';
-import { FONT, fillRect, makeLabel } from '@/utils/ui';
+import {
+  RARITY_STYLE,
+  itemRarity,
+  rarityLabel,
+  recipeCanCook,
+  recipeNeeds,
+  recipeUnlockView,
+  recipeXp,
+  unlockedRecipes,
+  type RecipeId,
+} from '@/sim';
+import { FONT, drawRarityFrame, fillRect, makeLabel } from '@/utils/ui';
 import {
   dishTexture,
   fitSpriteInBox,
@@ -165,6 +175,13 @@ export class CookPanel extends PIXI.Container {
       for (const recipe of known.filter((r) => r.group === group)) {
         const on = this._pick === recipe.id;
         const row = this._chip(recipe.name, rowW, 44, on ? 'on' : 'off');
+        // 行首一道色条，翻列表时不用点开就知道这本值不值得攒材料
+        const tab = new PIXI.Graphics();
+        tab.beginFill(RARITY_STYLE[recipe.rarity].frame, 1);
+        tab.drawRoundedRect(7, 11, 6, 22, 3);
+        tab.endFill();
+        tab.eventMode = 'none';
+        row.addChild(tab);
         row.alpha = recipeCanCook(view, recipe.id) || on ? 1 : 0.75;
         row.position.set(x + 6, cy);
         row.on('pointertap', () => {
@@ -221,6 +238,11 @@ export class CookPanel extends PIXI.Container {
     whenTextureReady(dishPath, () => {
       if (this._isOpen) this.relayout();
     });
+    const frame = new PIXI.Graphics();
+    drawRarityFrame(frame, dx + 2, dy + 2, dw - 4, dh - 4, recipe.rarity, { radius: 14 });
+    frame.eventMode = 'none';
+    root.addChild(frame);
+
     const dish = new PIXI.Sprite(dishTexture(recipe.id));
     fitSpriteInBox(dish, dw * 0.86, dh * 0.86);
     dish.anchor.set(0.5);
@@ -233,7 +255,12 @@ export class CookPanel extends PIXI.Container {
     name.position.set(dx + dw / 2, dy + dh + 10);
     root.addChild(name);
     const xp = recipeXp(KitchenManager.save, recipe.id);
-    const xpLabel = makeLabel(`+${xp} 经验`, 16, TERRACOTTA, { fontWeight: '700' });
+    const xpLabel = makeLabel(
+      `${rarityLabel(recipe.rarity)}  ·  +${xp} 经验`,
+      16,
+      RARITY_STYLE[recipe.rarity].ink,
+      { fontWeight: '700' },
+    );
     xpLabel.anchor.set(0.5);
     xpLabel.position.set(dx + dw / 2, dy + dh + 34);
     root.addChild(xpLabel);
@@ -336,10 +363,14 @@ export class CookPanel extends PIXI.Container {
     const ok = have >= need;
     const root = new PIXI.Container();
     const bg = new PIXI.Graphics();
-    bg.lineStyle(2, ok ? OK : INK, ok ? 0.7 : 0.22);
     bg.beginFill(PAPER, 0.9);
     bg.drawRoundedRect(x, y, size, size, 12);
     bg.endFill();
+    drawRarityFrame(bg, x + 2, y + 2, size - 4, size - 4, itemRarity(iconId), { radius: 12 });
+    if (ok) {
+      bg.lineStyle(2, OK, 0.85);
+      bg.drawRoundedRect(x, y, size, size, 12);
+    }
     root.addChild(bg);
 
     const path = `subpkg_images/${iconId}.png`;

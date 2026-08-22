@@ -9,11 +9,16 @@ import { HUD_ICON, fillRect, makeCookSkillPill, makeLabel, makeSlicedButton, mak
 import { applyFit, fitCover, fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from '@/utils/assets';
 
 const DEST_BG = 'subpkg_images/dest_street_bg.jpg';
+/** 卡高 200 + 间距 14。菜场超过四个就得滚，别把「回家」挤下屏。 */
+const CARD_STEP = 214;
+const DRAG_SLOP = 10;
 
 export class DestinationScene implements Scene {
   readonly name = 'destinations';
   readonly container = new PIXI.Container();
   private _ui = new PIXI.Container();
+  private _scrollY = 0;
+  private _dragMoved = false;
 
   constructor() {
     this.container.addChild(this._ui);
@@ -81,9 +86,24 @@ export class DestinationScene implements Scene {
     icePill.position.set(454, pillsY);
     this._ui.addChild(icePill);
 
+    const listTop = pillsY + 52;
+    const listH = Math.max(240, h - 96 - listTop);
+    const contentH = MARKETS.length * CARD_STEP;
+    const list = new PIXI.Container();
     MARKETS.forEach((market, i) => {
-      this._ui.addChild(this._card(market, 24, pillsY + 52 + i * 214, w - 48));
+      list.addChild(this._card(market, 24, i * CARD_STEP, w - 48));
     });
+    list.y = listTop + Math.max(Math.min(0, listH - contentH), Math.min(0, this._scrollY));
+    this._scrollY = list.y - listTop;
+    this._ui.addChild(list);
+
+    if (contentH > listH) {
+      const mask = new PIXI.Graphics();
+      fillRect(mask, 0, listTop, w, listH, 0xffffff);
+      this._ui.addChild(mask);
+      list.mask = mask;
+      this._bindScroll(list, w, listTop, listH, contentH);
+    }
 
     const back = makeSlicedButton({
       label: '回家',
@@ -95,6 +115,38 @@ export class DestinationScene implements Scene {
     back.position.set(32, h - 80);
     back.on('pointertap', () => SceneManager.switchTo('kitchen'));
     this._ui.addChild(back);
+  }
+
+  private _bindScroll(
+    list: PIXI.Container,
+    w: number,
+    top: number,
+    viewH: number,
+    contentH: number,
+  ): void {
+    const min = top + viewH - contentH;
+    list.eventMode = 'static';
+    list.hitArea = new PIXI.Rectangle(0, 0, w, contentH);
+    let lastY = 0;
+    let dragging = false;
+    list.on('pointerdown', (e) => {
+      dragging = true;
+      this._dragMoved = false;
+      lastY = e.global.y;
+    });
+    const end = (): void => {
+      dragging = false;
+    };
+    list.on('pointerup', end);
+    list.on('pointerupoutside', end);
+    list.on('pointermove', (e) => {
+      if (!dragging) return;
+      const dy = e.global.y - lastY;
+      if (Math.abs(dy) > DRAG_SLOP) this._dragMoved = true;
+      list.y = Math.min(top, Math.max(min, list.y + dy));
+      this._scrollY = list.y - top;
+      lastY = e.global.y;
+    });
   }
 
   private _drawTitle(w: number, top: number, onReady: () => void): number {
@@ -200,7 +252,10 @@ export class DestinationScene implements Scene {
         },
       });
       go.position.set(x + 236, y + 136);
-      go.on('pointertap', () => this._depart(market));
+      go.on('pointertap', () => {
+        if (this._dragMoved) return;
+        this._depart(market);
+      });
       root.addChild(go);
       root.addChild(this._staminaCost(x + 416, y + 136, market.staminaCost, KitchenManager.save.stamina < market.staminaCost));
     } else {
@@ -221,6 +276,7 @@ export class DestinationScene implements Scene {
       root.cursor = 'pointer';
       root.hitArea = new PIXI.Rectangle(x, y, width, height);
       root.on('pointertap', () => {
+        if (this._dragMoved) return;
         Platform.showToast(`${market.name} · 厨艺 ${market.unlockLevel} 解锁`);
       });
     }

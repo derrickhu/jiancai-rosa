@@ -23,6 +23,8 @@ import {
   eventVoice,
   remainingMarketRecipes,
   recipeById,
+  recipeUnlockView,
+  unlockedIngredients,
   cookLevel,
   stallPacked,
   PACK_FULL,
@@ -63,6 +65,11 @@ class RunManagerClass {
   interacting = false;
   private _rng: Rng = mulberry32(1);
 
+  /** 摊上抽货时给「手里菜谱用得上的食材」加权，货才跟得上进度。 */
+  private _wanted(): Set<string> {
+    return unlockedIngredients(recipeUnlockView(KitchenManager.save));
+  }
+
   start(marketId: MarketId = 'xiangko'): boolean {
     if (!KitchenManager.startRun()) return false;
     const seed = newSeed();
@@ -73,6 +80,7 @@ class RunManagerClass {
       seed,
       cookLevel: cookLevel(KitchenManager.save),
       allowRecipe: remainingMarketRecipes(marketId, KitchenManager.save.recipesFound).length > 0,
+      wanted: this._wanted(),
     });
     if (hasGodPick(this.run)) KitchenManager.markGodPickToday();
     this.basket = createBasket(
@@ -256,7 +264,12 @@ class RunManagerClass {
 
     switch (node.kind) {
       case 'freebie': {
-        const { defId, quality } = rollFreebie(this._rng, state.marketId, cookLevel(KitchenManager.save));
+        const { defId, quality } = rollFreebie(
+          this._rng,
+          state.marketId,
+          cookLevel(KitchenManager.save),
+          this._wanted(),
+        );
         const name = displayName(defId, false, quality);
         const placed = tryAutoPlace(this.basket, freebieToBasketDraft(defId, quality));
         if (!placed) {

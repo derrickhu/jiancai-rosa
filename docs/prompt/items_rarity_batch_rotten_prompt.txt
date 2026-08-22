@@ -1,0 +1,19 @@
+# 稀有度改版新增食材（10 种）· 坏掉态
+
+风格段（每条前面原样拼上）：
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading. Whole unprocessed market ingredient only, never sliced, never cross-section, no plating, no garnish, no cutting board, no knife, no hands. Cute spoiled and sad, NOT horror, no slime monsters, no mold spores flying. Ordinary ingredient, NOT a character: no faces, no eyes, no mouths. Same style as the existing rotten bokchoy / tomato / crab icons in this game. Readable silhouette at 64px. NO photorealism, NO pixel art. NO TEXT, no labels, no numbers, no watermark. Isolated on solid pure white background, one item, centered, filling the canvas.
+
+| id | 名称 | 比例 | 主体描述 |
+|---|---|---|---|
+| scallion_rotten | 小葱 | 3:4 | A limp bundle of spoiled spring onions, leaves drooping and collapsing, green faded to yellow-grey with slimy dark tips, white bulbs turned translucent and soft. |
+| bamboo_shoot_rotten | 春笋 | 9:16 | An unpeeled spring bamboo shoot gone bad, husk leaves dried and curling away, dull grey-brown blotches, base darkened and shrunken, tilting over. |
+| yam_rotten | 山药 | 9:16 | A long Chinese yam root gone bad, skin wrinkled and shrivelled, large brown-black soft patches, the whole root sagging into a slight bend. |
+| wood_ear_rotten | 木耳 | 1:1 | A cluster of black wood-ear fungus gone bad, folds collapsed and waterlogged, dull grey slimy sheen, edges greying and mushy. |
+| chestnut_rotten | 板栗 | 1:1 | Three unshelled chestnuts gone bad, shells dull and dusty grey-brown, one cracked open showing a shrunken greyish kernel, small fuzzy grey patches. |
+| matsutake_rotten | 松茸 | 3:4 | A matsutake pine mushroom gone bad, cap opened and darkened with grey-brown bruises, stem soft and bending, no glow left. |
+| duck_leg_rotten | 鸭腿 | 1:1 | A raw duck leg gone bad, skin dull greyish-green with darkened blotches, surface slick and sagging, flesh colour faded. |
+| beef_brisket_rotten | 牛腩 | 1:1 | A chunk of raw beef brisket gone bad, red faded to dull grey-brown, fat yellowed, surface tacky and slumped. |
+| ham | 火腿 | 4:3 | A whole cured ham leg gone bad, rind darkened and dusty with grey-white bloom patches, fat edge yellowed, hemp rope frayed. |
+| river_eel_rotten | 河鳗 | 9:16 | A river eel gone bad, curved body gone limp and slack, olive skin dulled to grey with pale slimy film, eye clouded white, no blood. |
+
+抠图：rembg `birefnet-general`，再裁边、长边压到 320、转 P 模式调色板（`scripts/fit-item-art.py`）。
