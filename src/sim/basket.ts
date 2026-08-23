@@ -24,9 +24,9 @@ export interface BasketState {
 
 /** 塑料袋/菜篮：出门干区列数。 */
 export const BAG_DRY_COLS = [4, 4, 4, 4, 5, 5, 5, 5, 6, 6];
-/** 塑料袋/菜篮：出门共用行数。 */
-export const BAG_ROWS = [5, 5, 6, 6, 6, 6, 7, 7, 7, 8];
-/** 泡沫箱/水桶：出门湿区列数。 */
+/** 塑料袋/菜篮：出门共用行数。开局 2 行，湿区刚好 2×2。 */
+export const BAG_ROWS = [2, 3, 3, 4, 4, 5, 5, 6, 6, 7];
+/** 泡沫箱/水桶：出门湿区列数。开局 2 列 × 2 行。 */
 export const FOAM_WET_COLS = [2, 2, 2, 3, 3, 3, 4, 4, 4, 5];
 
 function clampBagLevel(level: number): number {
@@ -38,7 +38,7 @@ export function bagDryCols(basketLevel: number): number {
 }
 
 export function bagRows(basketLevel: number): number {
-  return BAG_ROWS[clampBagLevel(basketLevel)] ?? 5;
+  return BAG_ROWS[clampBagLevel(basketLevel)] ?? 2;
 }
 
 export function foamWetCols(foamLevel: number): number {

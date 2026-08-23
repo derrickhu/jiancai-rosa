@@ -1,0 +1,13 @@
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading, gentle highlights, warm kitchen lighting. Same style as existing spinach-egg-soup and scallion-tofu plate icons in this game. NO photorealism, NO 3D render, NO photography, NO pixel art, NO neon. NO TEXT, no labels, no numbers, no captions, no watermark.
+
+REAL Chinese home-style 豆腐蛋花汤 / tofu egg-drop soup. NOT tomato soup, NOT 番茄炒蛋, NOT western miso, NOT spinach soup.
+
+Must look like the actual dish:
+- Top-down view of a round cream ceramic bowl with a slightly thicker darker rim
+- Clear pale golden-white broth (never red, never tomato-orange, never green spinach)
+- Soft white tofu cubes floating in the soup, clearly readable as rectangular tofu blocks
+- Fluffy yellow egg-drop ribbons / egg-flower clouds swirled through the broth
+- Tiny green scallion specks on top
+- Appetizing, juicy, home-cooked, ready to eat with rice
+
+Finished plated soup. Isolated on solid #FF00FF magenta. Bowl fully visible, centered, generous margin.

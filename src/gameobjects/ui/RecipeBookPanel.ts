@@ -4,22 +4,28 @@ import { OverlayManager } from '@/core/OverlayManager';
 import { KitchenManager } from '@/managers/KitchenManager';
 import { RECIPES, recipeUnlockView, unlockedRecipes } from '@/sim';
 import { fillRect, makeButton, makeLabel } from '@/utils/ui';
+import { VerticalScroller } from '@/utils/scroll';
 
 export class RecipeBookPanel extends PIXI.Container {
   _isOpen = false;
   private _root = new PIXI.Container();
+  private _scroller: VerticalScroller;
 
   constructor() {
     super();
     this.visible = false;
     this.zIndex = 25;
+    this.eventMode = 'static';
     this.addChild(this._root);
     OverlayManager.container.addChild(this);
+    this._scroller = new VerticalScroller(this, { visible: () => this._isOpen });
   }
 
   open(): void {
     this._isOpen = true;
     this.visible = true;
+    this._scroller.reset();
+    this._scroller.enable();
     this.relayout();
     OverlayManager.bringToFront();
   }
@@ -27,12 +33,14 @@ export class RecipeBookPanel extends PIXI.Container {
   close(): void {
     this._isOpen = false;
     this.visible = false;
+    this._scroller.disable();
   }
 
   relayout(): void {
     this._root.removeChildren();
     const w = Game.designWidth;
     const h = Game.logicHeight;
+    this.hitArea = new PIXI.Rectangle(0, 0, w, h);
     const dim = new PIXI.Graphics();
     fillRect(dim, 0, 0, w, h, 0x000000);
     dim.alpha = 0.55;
@@ -76,23 +84,17 @@ export class RecipeBookPanel extends PIXI.Container {
       mask.beginFill(0xffffff);
       mask.drawRect(40, listTop, w - 80, listH);
       mask.endFill();
+      mask.eventMode = 'none';
       this._root.addChild(mask);
       list.mask = mask;
-      list.eventMode = 'static';
-      list.hitArea = new PIXI.Rectangle(40, 0, w - 80, y);
-      let lastY = 0;
-      let dragging = false;
-      list.on('pointerdown', (e) => { dragging = true; lastY = e.global.y; });
-      list.on('pointerup', () => { dragging = false; });
-      list.on('pointerupoutside', () => { dragging = false; });
-      list.on('pointermove', (e) => {
-        if (!dragging) return;
-        const next = list.y + (e.global.y - lastY);
-        list.y = Math.min(listTop, Math.max(listTop - maxScroll, next));
-        lastY = e.global.y;
-      });
     }
     this._root.addChild(list);
+    this._scroller.attach({
+      content: list,
+      maxScroll,
+      baseY: listTop,
+      hit: { x: 40, y: listTop, w: w - 80, h: listH },
+    });
 
     const close = makeButton('合上', w - 108, 56, 0xC46A3A);
     close.position.set(54, h - 100);

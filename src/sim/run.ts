@@ -1,6 +1,5 @@
 import {
   GOD_PICK,
-  STALLS,
   displayName,
   initialFreshness,
   rollMarketItem,
@@ -9,13 +8,13 @@ import {
   type StallId,
 } from './items';
 import type { MarketId } from './destinations';
-import { PACK_FULL, PACK_RATE, STALL_FEE, clampPack } from './packing';
-import { FAVOR_PACK_RATE, FREEBIE_STALLS, MARKET_PLAN, type CardKind } from './marketEvents';
+import { PACK_RATE, STALL_FEE } from './packing';
+import { FAVOR_PACK_RATE, FREEBIE_STALLS, MARKET_PLAN, paystallPileBonus, stallPileRange, type CardKind } from './marketEvents';
 import { buildMarketMap, mapStallNodes, type MapNode, type MarketMap } from './marketMap';
 import { mulberry32, newSeed, rngInt, rngPick, type Rng } from './rng';
 import type { BasketItem, BasketState } from './basket';
 
-/** 天色（步数）管全局，实时只留在摊内老板装箱。 */
+/** 天色（步数）管全局。摊内不再倒计时装箱。 */
 export type RunMode = 'map' | 'rummage';
 export type ExtractKind = 'safe' | 'messy';
 
@@ -97,12 +96,9 @@ export function nextUid(prefix = 'i'): string {
   return `${prefix}${_uidSeq.toString(36)}`;
 }
 
-function rollQuality(rng: Rng): Quality {
-  const r = rng();
-  if (r < 0.18) return 'rotten';
-  if (r < 0.62) return 'common';
-  if (r < 0.88) return 'fresh';
-  return 'premium';
+function rollQuality(rng: Rng, paid = false): Quality {
+  const rotten = paid ? 0.06 : 0.18;
+  return rng() < rotten ? 'rotten' : 'common';
 }
 
 export function createRun(opts: {
@@ -125,16 +121,17 @@ export function createRun(opts: {
   const piles: Record<string, PileItem[]> = {};
   const packing: Record<string, number> = {};
   for (const node of mapStallNodes(map)) {
-    const stall = STALLS.find((s) => s.id === node.stall)!;
-    const bonus = node.kind === 'paystall' ? 2 : 0;
-    const n = rngInt(rng, stall.count[0] + bonus, stall.count[1] + bonus);
+    const range = stallPileRange(marketId, node.stall!);
+    const paid = node.kind === 'paystall';
+    const bonus = paid ? paystallPileBonus(marketId) : 0;
+    const n = rngInt(rng, range[0] + bonus, range[1] + bonus);
     const list: PileItem[] = [];
     for (let i = 0; i < n; i++) {
       const def = rollMarketItem(marketId, node.stall!, cookLevel, rng, opts.wanted);
       list.push({
         uid: nextUid('p'),
         defId: def.id,
-        quality: rollQuality(rng),
+        quality: rollQuality(rng, paid),
         revealed: false,
         inspected: false,
         washed: false,
@@ -230,17 +227,9 @@ export function visibleDefId(item: PileItem): string {
   return item.defId;
 }
 
-/** 只在摊内跑：老板一边装箱，桌上没挑走的就归他。 */
-export function tickRun(state: RunState, dt: number, _interacting: boolean): RunState {
-  if (state.ended || state.mode !== 'rummage' || !state.currentNodeId) return state;
-  const id = state.currentNodeId;
-  const packing = { ...state.packing };
-  const piles = { ...state.piles };
-  packing[id] = clampPack((packing[id] ?? 0) + dt * packRate(state, id));
-  if (packing[id] >= PACK_FULL) {
-    piles[id] = (piles[id] ?? []).map((it) => (it.washed ? it : { ...it, washed: true }));
-  }
-  return { ...state, packing, piles };
+/** 装箱倒计时已停用：天色管整局，摊内不催。 */
+export function tickRun(state: RunState, _dt: number, _interacting: boolean): RunState {
+  return state;
 }
 
 /** 白捡的货：地上躺着的只会是叶菜根茎蛋豆，不会是活蟹。 */
@@ -256,25 +245,15 @@ export function rollFreebie(
 }
 
 export function settleExtract(kind: ExtractKind, basket: BasketState): ExtractResult {
-  const items: ExtractedItem[] = basket.items.map((it) => {
-    let quality = it.quality;
-    let freshness = it.freshness;
-    if (kind === 'messy' && quality !== 'rotten') freshness -= 2;
-    if (it.dampened && quality !== 'rotten') freshness -= 1;
-    if (quality === 'rotten' || freshness <= 0) {
-      quality = 'rotten';
-      freshness = 1;
-    }
-    return {
-      uid: it.uid,
-      defId: it.defId,
-      quality,
-      inspected: it.inspected,
-      freshness,
-      name: displayName(it.defId, it.inspected, quality),
-      sell: sellPrice(it.defId, quality, it.inspected, freshness),
-    };
-  });
+  const items: ExtractedItem[] = basket.items.map((it) => ({
+    uid: it.uid,
+    defId: it.defId,
+    quality: it.quality,
+    inspected: it.inspected,
+    freshness: it.freshness,
+    name: displayName(it.defId, it.inspected, it.quality),
+    sell: sellPrice(it.defId, it.quality, it.inspected, it.freshness),
+  }));
   return { kind, items, lost: 0 };
 }
 
@@ -285,11 +264,12 @@ export function decideExtract(state: RunState, voluntary: boolean): ExtractKind 
 }
 
 export function pileToBasketDraft(item: PileItem): Omit<BasketItem, 'x' | 'y' | 'rot' | 'pinned' | 'dampened'> {
+  const inspected = item.defId === GOD_PICK.id ? item.inspected : true;
   return {
     uid: item.uid,
     defId: item.defId,
     quality: item.quality,
-    inspected: item.inspected,
+    inspected,
     freshness: initialFreshness(item.quality),
   };
 }
@@ -299,7 +279,7 @@ export function freebieToBasketDraft(defId: string, quality: Quality): Omit<Bask
     uid: nextUid('f'),
     defId,
     quality,
-    inspected: false,
+    inspected: true,
     freshness: initialFreshness(quality),
   };
 }

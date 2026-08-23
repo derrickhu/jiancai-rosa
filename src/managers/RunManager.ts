@@ -26,9 +26,8 @@ import {
   recipeUnlockView,
   unlockedIngredients,
   cookLevel,
+  GOD_PICK,
   stallPacked,
-  PACK_FULL,
-  tickRun,
   tryAutoPlace,
   visibleDefId,
   furnLevel,
@@ -102,20 +101,7 @@ class RunManagerClass {
     return !!this.run && !this.run.ended;
   }
 
-  /** 只有摊内在跑表：老板一边装箱。路线页是从容决策，不催。 */
-  tick(dt: number): void {
-    if (!this.run || this.run.ended) return;
-    if (this.run.mode !== 'rummage' || !this.run.currentNodeId) return;
-    const id = this.run.currentNodeId;
-    const prevPack = Math.floor(this.run.packing[id] ?? 0);
-    const prevLeft = countGround(this.run);
-    this.run = tickRun(this.run, dt, this.interacting);
-    const nextPack = Math.floor(this.run.packing[id] ?? 0);
-    if (prevPack < PACK_FULL && nextPack >= PACK_FULL) {
-      Platform.showToast('这摊剩的装上车了');
-    }
-    if (nextPack !== prevPack || countGround(this.run) !== prevLeft) this.emit();
-  }
+  tick(_dt: number): void {}
 
   /** 这一层能点的卡。 */
   options(): RouteOption[] {
@@ -365,7 +351,11 @@ class RunManagerClass {
     const item = uid
       ? crate.find((it) => it.uid === uid) ?? crate[Math.floor(Math.random() * crate.length)]
       : crate[Math.floor(Math.random() * crate.length)];
-    this.patchPile(item.uid, { drawn: true, revealed: true });
+    this.patchPile(item.uid, {
+      drawn: true,
+      revealed: true,
+      inspected: item.defId !== GOD_PICK.id,
+    });
     this.emit();
     return this.findPile(item.uid) ?? item;
   }
@@ -386,7 +376,7 @@ class RunManagerClass {
     this.emit();
   }
 
-  take(uid: string): 'placed' | 'need_space' | 'gone' | 'rotten' {
+  take(uid: string, opts?: { quiet?: boolean }): 'placed' | 'need_space' | 'gone' | 'rotten' {
     if (!this.run) return 'gone';
     const item = this.findPile(uid);
     if (!item || !item.revealed || item.washed) return 'gone';
@@ -395,7 +385,8 @@ class RunManagerClass {
       this.emit();
       return 'rotten';
     }
-    const draft = pileToBasketDraft(item);
+    this._revealGodPick(uid, opts?.quiet);
+    const draft = pileToBasketDraft(this.findPile(uid) ?? { ...item, inspected: true });
     const placed = tryAutoPlace(this.basket, draft);
     if (!placed) return 'need_space';
     this.basket = { ...this.basket, items: [...this.basket.items, placed] };
@@ -437,6 +428,13 @@ class RunManagerClass {
   }
 
   dropStagingToCell(uid: string, x: number, y: number, rot: 0 | 1 = 0): string | null {
+    const pile = this.findPile(uid);
+    if (pile?.quality === 'rotten') {
+      this.removeFromPile(uid);
+      this.emit();
+      return '坏了，丢掉';
+    }
+    this._revealGodPick(uid);
     const loot = this.stagingItems().find((it) => it.uid === uid);
     if (!loot) return '已经不在手里';
     const err = this.tryManualPlace({
@@ -500,7 +498,13 @@ class RunManagerClass {
     if (!this.run) return '不在局内';
     const pile = this.findPile(uid);
     if (!pile) return '已经不在堆里';
-    const base = pileToBasketDraft(pile);
+    if (pile.quality === 'rotten') {
+      this.removeFromPile(uid);
+      this.emit();
+      return '坏了，丢掉';
+    }
+    this._revealGodPick(uid);
+    const base = pileToBasketDraft(this.findPile(uid) ?? { ...pile, inspected: true });
     const tryRot = (r: 0 | 1): string | null => {
       return this.tryManualPlace({
         ...base,
@@ -558,8 +562,14 @@ class RunManagerClass {
     const defId = item.inspected ? item.defId : visibleDefId(item);
     const shape = shapeLabel(defId);
     if (!item.revealed) return `？  ${shape}`;
-    if (!item.inspected) return `${displayName(defId, false, item.quality)}  ${shape}  ？`;
-    return `${displayName(item.defId, true, item.quality)}  ${shape}`;
+    return `${displayName(defId, item.inspected, item.quality)}  ${shape}`;
+  }
+
+  private _revealGodPick(uid: string, quiet = false): void {
+    const item = this.findPile(uid);
+    if (!item || item.defId !== GOD_PICK.id || item.inspected) return;
+    this.patchPile(uid, { inspected: true });
+    if (!quiet) Platform.showToast('原来是野生大黄鱼', 'success');
   }
 
   private findPile(uid: string): PileItem | undefined {
@@ -596,10 +606,3 @@ class RunManagerClass {
 }
 
 export const RunManager = new RunManagerClass();
-
-function countGround(run: RunState): number {
-  return (Object.values(run.piles) as PileItem[][]).reduce(
-    (n, list) => n + list.filter((it) => !it.washed).length,
-    0,
-  );
-}

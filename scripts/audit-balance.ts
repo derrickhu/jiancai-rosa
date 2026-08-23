@@ -10,6 +10,8 @@ import {
   COOK_UNLOCK_AT,
   MARKET_RECIPE_POOL,
   tallyNeeds,
+  findDuplicateIngredientSets,
+  ingredientSetKey,
 } from '../src/sim/recipes';
 import { MARKETS } from '../src/sim/destinations';
 import type { Rarity } from '../src/sim/rarity';
@@ -90,6 +92,15 @@ for (const r of ['common', 'rare', 'epic'] as Rarity[]) {
         bad(`${rec.name} 引用了不存在的食材 ${id}`);
       }
     }
+  }
+}
+
+console.log('\n=== 规则校验：菜谱食材种类集合不能重复 ===');
+{
+  const dups = findDuplicateIngredientSets();
+  if (!dups.length) console.log('  全部独一无二');
+  for (const [a, b] of dups) {
+    bad(`${a.name}(${a.id}) 与 ${b.name}(${b.id}) 种类相同：[${ingredientSetKey(a.needs)}]`);
   }
 }
 

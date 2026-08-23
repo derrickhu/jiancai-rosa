@@ -16,6 +16,7 @@ import {
   type RecipeId,
 } from '@/sim';
 import { FONT, drawRarityFrame, fillRect, makeLabel } from '@/utils/ui';
+import { VerticalScroller } from '@/utils/scroll';
 import {
   dishTexture,
   fitSpriteInBox,
@@ -56,17 +57,18 @@ export class FridgePanel extends PIXI.Container {
   onChange: (() => void) | null = null;
   private _tab: FridgeKind = 'food';
   private _root = new PIXI.Container();
-  private _scrollY = 0;
   private _inspectUid: string | null = null;
-  private _dragMoved = false;
   private _btnSlices = new Map<string, { left: PIXI.Texture; mid: PIXI.Texture; right: PIXI.Texture }>();
+  private _scroller: VerticalScroller;
 
   constructor() {
     super();
     this.visible = false;
     this.zIndex = 22;
+    this.eventMode = 'static';
     this.addChild(this._root);
     OverlayManager.container.addChild(this);
+    this._scroller = new VerticalScroller(this, { visible: () => this._isOpen });
   }
 
   prune(): void {
@@ -82,7 +84,8 @@ export class FridgePanel extends PIXI.Container {
     if (tab) this._tab = tab;
     this._isOpen = true;
     this.visible = true;
-    this._scrollY = 0;
+    this._scroller.reset();
+    this._scroller.enable();
     this._inspectUid = null;
     this.relayout();
     OverlayManager.bringToFront();
@@ -91,6 +94,7 @@ export class FridgePanel extends PIXI.Container {
   close(): void {
     this._isOpen = false;
     this.visible = false;
+    this._scroller.disable();
   }
 
   relayout(): void {
@@ -98,6 +102,7 @@ export class FridgePanel extends PIXI.Container {
     this.prune();
     const w = Game.designWidth;
     const h = Game.logicHeight;
+    this.hitArea = new PIXI.Rectangle(0, 0, w, h);
     const dim = new PIXI.Graphics();
     fillRect(dim, 0, 0, w, h, 0x000000);
     dim.alpha = 0.46;
@@ -146,21 +151,17 @@ export class FridgePanel extends PIXI.Container {
     const contentH = Math.ceil(slotCount / cols) * cell;
     const maxScroll = Math.max(0, contentH - (ch - pad));
 
-    this._scrollY = Math.max(-maxScroll, Math.min(0, this._scrollY));
-
     const viewport = new PIXI.Container();
     const mask = new PIXI.Graphics();
     mask.beginFill(0xffffff);
     mask.drawRoundedRect(cx, cy, cw, ch, 18);
     mask.endFill();
+    mask.eventMode = 'none';
     viewport.mask = mask;
-    viewport.eventMode = 'static';
-    viewport.hitArea = new PIXI.Rectangle(cx, cy, cw, ch);
     shell.addChild(mask);
     shell.addChild(viewport);
 
     const grid = new PIXI.Container();
-    grid.position.set(0, this._scrollY);
     viewport.addChild(grid);
     for (let i = 0; i < slotCount; i++) {
       const x = gridX + (i % cols) * cell;
@@ -168,7 +169,12 @@ export class FridgePanel extends PIXI.Container {
       grid.addChild(this._slot(x, y, cell - 8, items[i]));
     }
 
-    this._bindScroll(viewport, grid, maxScroll);
+    this._scroller.attach({
+      content: grid,
+      maxScroll,
+      baseY: 0,
+      hit: { x: box.x + cx, y: box.y + cy, w: cw, h: ch },
+    });
 
     if (!items.length) {
       const empty = makeLabel(
@@ -244,32 +250,6 @@ export class FridgePanel extends PIXI.Container {
     g.drawRoundedRect(width * CAVITY.x, height * CAVITY.y, width * CAVITY.w, height * CAVITY.h, 16);
     g.endFill();
     host.addChild(g);
-  }
-
-  private _bindScroll(viewport: PIXI.Container, grid: PIXI.Container, maxScroll: number): void {
-    if (maxScroll <= 0) return;
-    let dragging = false;
-    let startY = 0;
-    let startScroll = 0;
-    viewport.on('pointerdown', (e) => {
-      dragging = true;
-      this._dragMoved = false;
-      startY = e.global.y;
-      startScroll = this._scrollY;
-    });
-    const move = (e: PIXI.FederatedPointerEvent) => {
-      if (!dragging) return;
-      const dy = e.global.y - startY;
-      if (Math.abs(dy) > 8) this._dragMoved = true;
-      this._scrollY = Math.max(-maxScroll, Math.min(0, startScroll + dy));
-      grid.y = this._scrollY;
-    };
-    const end = () => {
-      dragging = false;
-    };
-    viewport.on('pointermove', move);
-    viewport.on('pointerup', end);
-    viewport.on('pointerupoutside', end);
   }
 
   private _title(cx: number, cy: number, used: number, cap: number): PIXI.Container {
@@ -391,7 +371,7 @@ export class FridgePanel extends PIXI.Container {
     root.on('pointertap', () => {
       this._tab = tab;
       this.selected.clear();
-      this._scrollY = 0;
+      this._scroller.reset();
       this._inspectUid = null;
       this.relayout();
     });
@@ -441,7 +421,7 @@ export class FridgePanel extends PIXI.Container {
     root.cursor = 'pointer';
     root.hitArea = new PIXI.Rectangle(x, y, size, size);
     root.on('pointertap', () => {
-      if (this._dragMoved) return;
+      if (this._scroller.moved) return;
       this.selected.add(it.uid);
       this._inspectUid = it.uid;
       this.relayout();

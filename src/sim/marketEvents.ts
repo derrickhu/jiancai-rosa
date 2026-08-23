@@ -1,5 +1,5 @@
 import type { MarketId } from './destinations';
-import type { StallId } from './items';
+import { STALLS, type StallId } from './items';
 import { STALL_FEE } from './packing';
 
 export type CardKind = 'stall' | 'paystall' | 'freebie' | 'fork' | 'deadend' | 'empty' | 'favor' | 'deep' | 'recipe';
@@ -90,6 +90,28 @@ export const STALL_WEIGHTS: Record<MarketId, Array<[StallId, number]>> = {
   laocheng: [['leaf', 16], ['root', 20], ['egg', 18], ['fish', 20], ['meat', 26]],
 };
 
+/**
+ * 巷口篮子小，摊上不能铺一堆。没写的场走 STALLS 默认件数。
+ * 收费摊再另加 paystallPileBonus。
+ */
+const MARKET_STALL_COUNT: Partial<Record<MarketId, Partial<Record<StallId, [number, number]>>>> = {
+  xiangko: {
+    leaf: [2, 3],
+    root: [2, 3],
+    egg: [2, 3],
+    fish: [1, 2],
+  },
+};
+
+export function stallPileRange(marketId: MarketId, stall: StallId): [number, number] {
+  return MARKET_STALL_COUNT[marketId]?.[stall] ?? STALLS.find((s) => s.id === stall)?.count ?? [3, 5];
+}
+
+/** 收费摊比普通摊多留一点，巷口只多 1 件，免得一摊就塞满塑料袋。 */
+export function paystallPileBonus(marketId: MarketId): number {
+  return marketId === 'xiangko' ? 1 : 2;
+}
+
 /** 收费摊：货更足，进场费也更狠。 */
 export function paystallFee(stall: StallId): number {
   return STALL_FEE[stall] * 3 + 8;
@@ -98,11 +120,11 @@ export function paystallFee(stall: StallId): number {
 /** 白捡只出这几摊的货，地上不会躺着活蟹。 */
 export const FREEBIE_STALLS: StallId[] = ['leaf', 'root', 'egg'];
 
-/** 街坊人情：下一摊免费，老板还慢慢收。 */
+/** 街坊人情：下一摊免费。 */
 export const FAVOR_PACK_RATE = 0.7;
 
 /** 每个菜场自己的路线底图和卡面图集，别三个场共用巷口那一套。 */
-export const MARKET_ART: Record<MarketId, { routeBg: string; cardAtlas: string }> = {
+export const MARKET_ART: Record<MarketId, { routeBg: string; cardAtlas: string; meatCard?: string }> = {
   xiangko: {
     routeBg: 'subpkg_images/market_route_1.jpg',
     cardAtlas: 'subpkg_images/market_cards.jpg',
@@ -110,20 +132,52 @@ export const MARKET_ART: Record<MarketId, { routeBg: string; cardAtlas: string }
   heyan: {
     routeBg: 'subpkg_images/market_route_heyan.jpg',
     cardAtlas: 'subpkg_images/market_cards_heyan.jpg',
+    meatCard: 'subpkg_images/market_card_heyan_meat.jpg',
   },
   shanwu: {
     routeBg: 'subpkg_images/market_route_shanwu.jpg',
     cardAtlas: 'subpkg_images/market_cards_shanwu.jpg',
+    meatCard: 'subpkg_images/market_card_shanwu_meat.jpg',
   },
   jiangbian: {
     routeBg: 'subpkg_images/market_route_jiangbian.jpg',
     cardAtlas: 'subpkg_images/market_cards_jiangbian.jpg',
+    meatCard: 'subpkg_images/market_card_jiangbian_meat.jpg',
   },
   laocheng: {
     routeBg: 'subpkg_images/market_route_laocheng.jpg',
     cardAtlas: 'subpkg_images/market_cards_laocheng.jpg',
+    meatCard: 'subpkg_images/market_card_laocheng_meat.jpg',
   },
 };
+
+const XIANGKO_RUMMAGE: Record<StallId, string> = {
+  leaf: 'subpkg_images/stall_rummage_leaf.jpg',
+  root: 'subpkg_images/stall_rummage_root.jpg',
+  egg: 'subpkg_images/stall_rummage_egg.jpg',
+  fish: 'subpkg_images/stall_rummage_fish.jpg',
+  meat: 'subpkg_images/stall_rummage_egg.jpg',
+};
+
+const XIANGKO_PILE: Record<StallId, string> = {
+  leaf: 'subpkg_images/stall_pile_leaf.png',
+  root: 'subpkg_images/stall_pile_root.png',
+  egg: 'subpkg_images/stall_pile_egg.png',
+  fish: 'subpkg_images/stall_pile_fish.png',
+  meat: 'subpkg_images/stall_pile_egg.png',
+};
+
+/** 翻堆底图：巷口沿用旧文件，后四个场按市场×摊位各一张。 */
+export function stallRummageArt(marketId: MarketId, stall: StallId): string {
+  if (marketId === 'xiangko') return XIANGKO_RUMMAGE[stall];
+  return `subpkg_images/stall_rummage_${marketId}_${stall}.jpg`;
+}
+
+/** 可点遮挡堆：巷口沿用旧文件，后四个场按市场×摊位各一张。 */
+export function stallPileArt(marketId: MarketId, stall: StallId): string {
+  if (marketId === 'xiangko') return XIANGKO_PILE[stall];
+  return `subpkg_images/stall_pile_${marketId}_${stall}.png`;
+}
 
 export interface EventVoice {
   /** 说话的人。null 是旁白，弹窗不画半身像 */

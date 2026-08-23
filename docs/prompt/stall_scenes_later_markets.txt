@@ -1,0 +1,17 @@
+后四个场的摊位场景禁止复用巷口那一套，也禁止互相复用。
+风格先贴 market_cartoon_lock.txt，再锁一张巷口参考图。
+
+文件命名：
+  stall_rummage_{market}_{stall}.jpg   翻堆底，720×1280
+  stall_pile_{market}_{stall}.png      可点遮挡堆，透明，宽约 480
+  market_card_{market}_meat.jpg        肉摊路线卡，3:4
+
+market = heyan | shanwu | jiangbian | laocheng
+stall  = leaf | root | egg | fish | meat
+山坞没有水产摊，不要做 shanwu_fish。
+
+每个场的摊面材质和遮挡物必须一眼能分开：
+  河沿：湿青石、竹筐、红伞、河水
+  山坞：竹席、石阶、笋壳、茅草
+  江边：夜栈板、渔网、碎冰、灯笼
+  老城：石台、红灯、铜秤、店布

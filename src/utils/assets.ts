@@ -72,7 +72,7 @@ export function itemTexture(id: string): PIXI.Texture {
   return gameTexture(imgPath(`${id}.png`));
 }
 
-export type ItemLook = 'clean' | 'dirty' | 'rotten';
+export type ItemLook = 'clean' | 'rotten';
 
 /** 脏/坏图没有就回落到干净图，调用方可用 tint 区分。 */
 export function itemLookTexture(id: string, look: ItemLook): PIXI.Texture {

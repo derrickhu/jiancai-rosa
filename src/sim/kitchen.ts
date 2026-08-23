@@ -4,6 +4,7 @@ import {
   RECIPES,
   isRecipeId,
   isRecipeUnlocked,
+  migrateRecipeId,
   pickRecipeFoods,
   recipeById,
   recipeUnlockView,
@@ -48,9 +49,9 @@ import {
 
 export const STAMINA_MAX = 5;
 export const STAMINA_REGEN_MS = 30 * 60 * 1000;
-export const FRIDGE_BASE = 8;
-/** 冰箱内部 0–9 级的格数。回家后干湿饭菜都进这些格，不分仓。 */
-export const FRIDGE_CAP = [8, 10, 12, 14, 16, 20, 24, 28, 32, 36];
+export const FRIDGE_BASE = 12;
+/** 冰箱内部 0–9 级的格数。回家后干湿饭菜都进这些格，不分仓。每升一级 +6。 */
+export const FRIDGE_CAP = [12, 18, 24, 30, 36, 42, 48, 54, 60, 66];
 export const UPGRADE_BASKET_I = 80;
 export const UPGRADE_BASKET_II = 200;
 export const UPGRADE_FRIDGE = 60;
@@ -177,12 +178,8 @@ export function normalizeSave(raw: Partial<KitchenSave> | null, now = Date.now()
     houseLevel: 0,
     dexSeen: Array.isArray(raw.dexSeen) ? raw.dexSeen : [],
     dexInspected: Array.isArray(raw.dexInspected) ? raw.dexInspected : [],
-    recipesCooked: Array.isArray(raw.recipesCooked)
-      ? raw.recipesCooked.filter((id): id is RecipeId => isRecipeId(id))
-      : [],
-    recipesFound: Array.isArray((raw as KitchenSave).recipesFound)
-      ? (raw as KitchenSave).recipesFound.filter((id): id is RecipeId => isRecipeId(id))
-      : [],
+    recipesCooked: migrateRecipeIds(raw.recipesCooked),
+    recipesFound: migrateRecipeIds((raw as KitchenSave).recipesFound),
     seenCards: Array.isArray(raw.seenCards) ? raw.seenCards : [],
   };
   next.basketLevel = next.furnLevels.basket;
@@ -191,13 +188,33 @@ export function normalizeSave(raw: Partial<KitchenSave> | null, now = Date.now()
   return next;
 }
 
+function migrateRecipeIds(raw: unknown): RecipeId[] {
+  if (!Array.isArray(raw)) return [];
+  const out: RecipeId[] = [];
+  for (const id of raw) {
+    if (typeof id !== 'string') continue;
+    const next = migrateRecipeId(id);
+    if (next && !out.includes(next)) out.push(next);
+  }
+  return out;
+}
+
 function migrateFridgeItems(raw: unknown): FridgeItem[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((it) => {
     const row = it as FridgeItem;
+    const dish = row.kind === 'dish';
+    const defId = dish && typeof row.defId === 'string'
+      ? (migrateRecipeId(row.defId) ?? row.defId)
+      : row.defId;
+    let quality = row.quality;
+    if (!dish && quality !== 'rotten' && quality !== 'god') quality = 'common';
     return {
       ...row,
-      kind: row.kind === 'dish' ? 'dish' as const : 'food' as const,
+      defId,
+      kind: dish ? 'dish' as const : 'food' as const,
+      quality,
+      inspected: dish || row.defId === 'wild_yellowfish' ? true : (row.inspected ?? true),
     };
   });
 }
@@ -253,12 +270,7 @@ export function regenStamina(save: KitchenSave, now = Date.now()): KitchenSave {
 }
 
 export function decayFridge(save: KitchenSave, now = Date.now()): KitchenSave {
-  const hours = Math.floor(Math.max(0, now - save.lastSeenAt) / (60 * 60 * 1000));
-  if (hours <= 0) return { ...save, lastSeenAt: now };
-  const fridge = save.fridge
-    .map((it) => ({ ...it, freshness: it.freshness - hours }))
-    .filter((it) => it.freshness > 0);
-  return { ...save, fridge, lastSeenAt: now };
+  return { ...save, lastSeenAt: now };
 }
 
 export function noteDex(save: KitchenSave, items: ExtractedItem[]): KitchenSave {
@@ -360,8 +372,12 @@ export const HOUSE_UPGRADE_COST = [380, 980];
 /** 陋屋→精装屋要厨艺 4，精装屋→雅致屋要厨艺 8。 */
 export const HOUSE_COOK_NEED = [4, 8];
 export const COOK_LEVEL_MAX = 15;
-/** COOK_XP_TO_NEXT[当前厨艺] = 升到下一级所需。 */
-export const COOK_XP_TO_NEXT = [0, 20, 36, 60, 84, 114, 150, 192, 240, 300, 372, 450, 540, 642, 750];
+/**
+ * COOK_XP_TO_NEXT[当前厨艺] = 升到下一级所需。
+ * 大约是旧表的 3 倍：做菜给的经验没变，升一级要炒更久，才跟得上家具金币节奏。
+ */
+export const COOK_XP_TO_NEXT = [0, 60, 110, 180, 250, 340, 450, 580, 720, 900, 1120, 1350, 1620, 1930, 2250];
+const COOK_XP_MAXED = COOK_XP_TO_NEXT[COOK_LEVEL_MAX - 1];
 
 /** 烹饪台从当前内部等级再升一级时新解锁几本。 */
 export const TABLE_UNLOCK_NEXT = [3, 3, 3, 3, 3, 3, 3, 3, 3];
@@ -409,7 +425,7 @@ export function cookXpView(save: KitchenSave): {
 } {
   const level = cookLevel(save);
   const maxed = level >= COOK_LEVEL_MAX;
-  const need = maxed ? (COOK_XP_TO_NEXT[COOK_LEVEL_MAX - 1] ?? 750) : xpToNext(level);
+  const need = maxed ? COOK_XP_MAXED : xpToNext(level);
   const xp = maxed ? need : Math.min(cookXp(save), need);
   return {
     level,
@@ -428,8 +444,7 @@ export function grantCookXp(save: KitchenSave, amount: number): { save: KitchenS
   let xp = cookXp(save);
   let levels = 0;
   if (level >= COOK_LEVEL_MAX) {
-    const full = COOK_XP_TO_NEXT[COOK_LEVEL_MAX - 1] ?? 750;
-    return { save: { ...save, level: COOK_LEVEL_MAX, xp: full }, gained, levels: 0 };
+    return { save: { ...save, level: COOK_LEVEL_MAX, xp: COOK_XP_MAXED }, gained, levels: 0 };
   }
   xp += gained;
   while (level < COOK_LEVEL_MAX) {
@@ -439,7 +454,7 @@ export function grantCookXp(save: KitchenSave, amount: number): { save: KitchenS
     level += 1;
     levels += 1;
   }
-  if (level >= COOK_LEVEL_MAX) xp = COOK_XP_TO_NEXT[COOK_LEVEL_MAX - 1] ?? 750;
+  if (level >= COOK_LEVEL_MAX) xp = COOK_XP_MAXED;
   return { save: { ...save, level, xp }, gained, levels };
 }
 

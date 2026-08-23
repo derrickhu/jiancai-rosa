@@ -22,8 +22,11 @@
 | `title_logo_prompt.txt` | 标题字「扫荡菜场」：扫荡张狂、菜场果蔬笔画 | 16:9 |
 | `market_overview_prompt.txt` | 旧：市集总览（外层换卡片路线后只当选点缩略图） | 9:16 |
 | `market_route_bg_prompt.txt` | 巷口卡片路线底图（中间一列压暗留空给卡片） | 9:16 |
+| `market_cartoon_lock.txt` | 后四个场必须锁回巷口卡通，禁止写实 | — |
 | `market_route_heyan_prompt.txt` | 河沿早市路线底图（晨光、船、菜筐，中间压暗） | 9:16 |
+| `market_route_shanwu_prompt.txt` | 山坞早集路线底图（石阶、竹棚，中间压暗） | 9:16 |
 | `market_route_jiangbian_prompt.txt` | 江边渔市路线底图（夜灯笼、栈桥，中间压暗） | 9:16 |
+| `market_route_laocheng_prompt.txt` | 老城菜行路线底图（青石厅、火腿，中间压暗） | 9:16 |
 | `market_card_frame_prompt.txt` | 路线卡框（木框+纸面，入库前把纸面抠成透明窗口） | 3:4 |
 | `market_cards_prompt.txt` | 巷口 12 格卡面缩略图集（4×3，四摊+事件+背面） | 1:1 |
 | `market_cards_heyan_prompt.txt` | 河沿早市卡面图集（同格位，晨光河沿） | 1:1 |
@@ -34,11 +37,13 @@
 | `npc_jiangbian_busts_prompt.txt` | 江边事件半身像两连（渔市阿珠、收网伙计） | 4:3 |
 | `ui_event_gain_prompt.txt` | 白捡弹窗壳体（木框奶油纸，顶角白菜大蒜） | 3:4 |
 | `ui_event_talk_prompt.txt` | 事件对话壳体（挂牌木框奶油纸，两侧灯笼） | 16:9 |
-| `stall_rummage_*_prompt.txt` | 四摊翻堆底 | 4:3 |
-| `stall_pile_*_prompt.txt` | 四摊遮挡堆（点堆抽取） | 1:1 |
+| `stall_rummage_*_prompt.txt` | 巷口四摊翻堆底 | 9:16 |
+| `stall_pile_*_prompt.txt` | 巷口四摊遮挡堆（点堆抽取） | 1:1 |
+| `stall_scenes_later_markets.txt` | 后四场按市场×摊位的翻堆底 / 遮挡堆 / 肉摊卡 | 9:16 / 1:1 / 3:4 |
 | `items_leaf_prompt.txt` 等 | 食材表 | 4:3 |
 | `dishes_prompt.txt` | 三道熟菜共用风格 | 1:1 |
 | `dish_stirfry_prompt.txt` / `dish_tomato_egg_prompt.txt` / `dish_garlic_shrimp_prompt.txt` | 装盘成品菜（旧三道） | 1:1 |
+| `dish_egg_tofu_soup_prompt.txt` | 豆腐蛋花汤（替番茄蛋汤） | 1:1 |
 | `dish_new_shared.txt` / `dish_batch01_prompt.txt` | 五十本里其余装盘菜 | 1:1 |
 | `items_new_clean_prompt.txt` | 新食材干净态（按占格比例） | 随 w×h |
 | `ui_fridge_panel_prompt.txt` | 冰箱形背包页（纯色腔体，顶栏/底栏留空） | 9:16 |

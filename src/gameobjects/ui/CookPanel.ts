@@ -14,6 +14,7 @@ import {
   type RecipeId,
 } from '@/sim';
 import { FONT, drawRarityFrame, fillRect, makeLabel } from '@/utils/ui';
+import { VerticalScroller } from '@/utils/scroll';
 import {
   dishTexture,
   fitSpriteInBox,
@@ -46,13 +47,16 @@ export class CookPanel extends PIXI.Container {
   private _root = new PIXI.Container();
   private _pick: RecipeId = 'stirfry';
   private _btnSlices = new Map<string, { left: PIXI.Texture; mid: PIXI.Texture; right: PIXI.Texture }>();
+  private _scroller: VerticalScroller;
 
   constructor() {
     super();
     this.visible = false;
     this.zIndex = 23;
+    this.eventMode = 'static';
     this.addChild(this._root);
     OverlayManager.container.addChild(this);
+    this._scroller = new VerticalScroller(this, { visible: () => this._isOpen });
   }
 
   open(): void {
@@ -60,6 +64,8 @@ export class CookPanel extends PIXI.Container {
     this.visible = true;
     const known = unlockedRecipes(recipeUnlockView(KitchenManager.save));
     if (!known.some((r) => r.id === this._pick)) this._pick = known[0]?.id ?? 'stirfry';
+    this._scroller.reset();
+    this._scroller.enable();
     this.relayout();
     OverlayManager.bringToFront();
   }
@@ -67,12 +73,14 @@ export class CookPanel extends PIXI.Container {
   close(): void {
     this._isOpen = false;
     this.visible = false;
+    this._scroller.disable();
   }
 
   relayout(): void {
     this._root.removeChildren();
     const w = Game.designWidth;
     const h = Game.logicHeight;
+    this.hitArea = new PIXI.Rectangle(0, 0, w, h);
     const dim = new PIXI.Graphics();
     fillRect(dim, 0, 0, w, h, 0x000000);
     dim.alpha = 0.46;
@@ -90,7 +98,7 @@ export class CookPanel extends PIXI.Container {
     this._paintBg(shell, box.w, box.h);
 
     shell.addChild(this._title(box.w * (PAGE.x + PAGE.w * 0.5), box.h * (PAGE.y + 0.045)));
-    shell.addChild(this._sideList(box.w, box.h));
+    shell.addChild(this._sideList(box.x, box.y, box.w, box.h));
     shell.addChild(this._stage(box.w, box.h));
   }
 
@@ -150,7 +158,7 @@ export class CookPanel extends PIXI.Container {
     return root;
   }
 
-  private _sideList(bw: number, bh: number): PIXI.Container {
+  private _sideList(ox: number, oy: number, bw: number, bh: number): PIXI.Container {
     const root = new PIXI.Container();
     const x = bw * INSET.x;
     const y = bh * INSET.y;
@@ -185,6 +193,7 @@ export class CookPanel extends PIXI.Container {
         row.alpha = recipeCanCook(view, recipe.id) || on ? 1 : 0.75;
         row.position.set(x + 6, cy);
         row.on('pointertap', () => {
+          if (this._scroller.moved) return;
           this._pick = recipe.id;
           this.relayout();
         });
@@ -200,23 +209,17 @@ export class CookPanel extends PIXI.Container {
       mask.beginFill(0xffffff);
       mask.drawRect(x, listTop, width, listH);
       mask.endFill();
+      mask.eventMode = 'none';
       root.addChild(mask);
       list.mask = mask;
-      list.eventMode = 'static';
-      list.hitArea = new PIXI.Rectangle(x, 0, width, cy);
-      let lastY = 0;
-      let dragging = false;
-      list.on('pointerdown', (e) => { dragging = true; lastY = e.global.y; });
-      list.on('pointerup', () => { dragging = false; });
-      list.on('pointerupoutside', () => { dragging = false; });
-      list.on('pointermove', (e) => {
-        if (!dragging) return;
-        const next = list.y + (e.global.y - lastY);
-        list.y = Math.min(listTop, Math.max(listTop - maxScroll, next));
-        lastY = e.global.y;
-      });
     }
     root.addChild(list);
+    this._scroller.attach({
+      content: list,
+      maxScroll,
+      baseY: listTop,
+      hit: { x: ox + x, y: oy + listTop, w: width, h: listH },
+    });
     return root;
   }
 

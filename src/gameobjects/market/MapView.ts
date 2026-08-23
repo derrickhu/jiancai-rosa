@@ -75,6 +75,8 @@ export function makeRouteCard(opts: {
   mode?: CardMode;
   /** 这个菜场自己的卡面图集。不传就用巷口那张。 */
   atlas?: string;
+  /** 有肉摊的菜场用独立卡面，不再借用蛋豆格。 */
+  meatCard?: string;
   onReady?: () => void;
   onTap?: () => void;
 }): PIXI.Container {
@@ -84,16 +86,21 @@ export function makeRouteCard(opts: {
   const height = Math.round(width * FRAME_RATIO);
   const locked = !!option.blocked;
   const root = new PIXI.Container();
+  const meatPath = option.node.stall === 'meat' && option.revealed ? opts.meatCard : undefined;
 
   whenTextureReady(CARD_FRAME, () => opts.onReady?.());
   whenTextureReady(atlas, () => opts.onReady?.());
+  if (meatPath) whenTextureReady(meatPath, () => opts.onReady?.());
 
   const winX = Math.round(width * WIN.x);
   const winY = Math.round(height * WIN.y);
   const winW = Math.round(width * WIN.w);
   const winH = Math.round(height * WIN.h);
 
-  const thumb = slotTexture(atlas, slotForNode(option.node, option.revealed));
+  const meatTex = meatPath ? gameTexture(meatPath) : null;
+  const thumb = meatTex && isTextureReady(meatTex)
+    ? meatTex
+    : slotTexture(atlas, slotForNode(option.node, option.revealed));
   if (thumb) {
     const sp = new PIXI.Sprite(thumb);
     sp.position.set(winX, winY);
@@ -244,6 +251,7 @@ export function layoutRouteMap(opts: {
   /** 全层进不去时让位给「绕过去」按钮，不画站位点 */
   showRoot?: boolean;
   atlas?: string;
+  meatCard?: string;
   onReady?: () => void;
 }): RouteMapView {
   const root = new PIXI.Container();
@@ -333,6 +341,7 @@ export function layoutRouteMap(opts: {
         width: cell.width,
         mode: ROW_MODES[i],
         atlas: opts.atlas,
+        meatCard: opts.meatCard,
         onReady: opts.onReady,
         onTap: () => opts.onPick(cell.option.node.id),
       });

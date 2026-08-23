@@ -80,6 +80,7 @@ function priced(spec: ItemSpec): ItemDef {
 const SPECS: ItemSpec[] = [
   // ── 叶菜摊 ──────────────────────────────────────────────
   { id: 'bokchoy', name: '小白菜', w: 1, h: 2, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['leaf'], color: 0x6BA368, blurb: '摊上最常见的绿叶子，帮你证明今晚真的开过火。', blurbRotten: '叶子摊成湿报纸，连虫都懒得来。' },
+  { id: 'caitai', name: '菜苔', w: 1, h: 2, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['leaf'], color: 0x7CB342, blurb: '细秆顶着小黄花，一炒就是晚饭。别跟油菜整棵搞混。', blurbRotten: '花谢了，秆也软成了一撮绳。' },
   { id: 'cilantro', name: '香菜', w: 1, h: 1, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['leaf'], color: 0x3D7A3A, blurb: '有人闻见就逃，有人觉得没它不算一盘菜。', blurbRotten: '香气先走了，只剩一撮黑头发。' },
   { id: 'scallion', name: '小葱', w: 1, h: 2, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['leaf'], color: 0x6FB04A, blurb: '一把细葱，切末往上一撒，整盘菜就像有人管。', blurbRotten: '葱白发滑，香味比谁都先走。' },
   { id: 'spinach', name: '菠菜', w: 1, h: 2, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['leaf'], color: 0x3D7A3A, blurb: '红根还在，才像刚从筐里拔的。', blurbRotten: '叶子黑了，红根也救不回来。' },
@@ -197,14 +198,14 @@ function pool(common: string[], rare: string[] = [], epic: string[] = []): Stall
  */
 const MARKET_POOLS: Record<MarketId, Partial<Record<StallId, StallPool>>> = {
   xiangko: {
-    leaf: pool(['bokchoy', 'cilantro', 'scallion']),
-    root: pool(['potato', 'radish', 'cucumber', 'eggplant', 'pepper']),
+    leaf: pool(['bokchoy', 'caitai', 'cilantro', 'scallion']),
+    root: pool(['potato', 'cucumber', 'eggplant']),
     egg: pool(['tomato', 'garlic', 'ginger', 'egg', 'tofu'], ['mushroom']),
-    fish: pool(['smallfish'], ['clam'], ['shrimp']),
+    fish: pool(['smallfish']),
   },
   heyan: {
     leaf: pool(
-      ['bokchoy', 'cilantro', 'scallion', 'spinach', 'chive', 'cabbage', 'lettuce', 'celery'],
+      ['bokchoy', 'caitai', 'cilantro', 'scallion', 'spinach', 'chive', 'cabbage', 'lettuce', 'celery'],
       ['broccoli'],
     ),
     root: pool(
@@ -217,7 +218,7 @@ const MARKET_POOLS: Record<MarketId, Partial<Record<StallId, StallPool>>> = {
   },
   shanwu: {
     leaf: pool(
-      ['bokchoy', 'cilantro', 'scallion', 'chive', 'celery', 'water_spinach', 'rapeseed'],
+      ['bokchoy', 'caitai', 'cilantro', 'scallion', 'chive', 'celery', 'water_spinach', 'rapeseed'],
       ['broccoli'],
     ),
     root: pool(
@@ -228,7 +229,7 @@ const MARKET_POOLS: Record<MarketId, Partial<Record<StallId, StallPool>>> = {
     meat: pool([], ['chicken_leg', 'duck_leg', 'pork'], ['ribs']),
   },
   jiangbian: {
-    leaf: pool(['bokchoy', 'cilantro', 'scallion', 'cabbage']),
+    leaf: pool(['bokchoy', 'caitai', 'cilantro', 'scallion', 'cabbage']),
     root: pool(['radish', 'potato', 'onion', 'melon']),
     egg: pool(['tomato', 'garlic', 'ginger', 'egg', 'tofu'], ['mushroom']),
     fish: pool(
@@ -249,7 +250,7 @@ const MARKET_POOLS: Record<MarketId, Partial<Record<StallId, StallPool>>> = {
 
 /** 一次抽货里蓝货/紫货的基础概率。厨艺每升一级再各加一点点。 */
 const RARE_CHANCE: Record<MarketId, number> = {
-  xiangko: 0.05,
+  xiangko: 0.02,
   heyan: 0.13,
   shanwu: 0.22,
   jiangbian: 0.24,
@@ -257,7 +258,7 @@ const RARE_CHANCE: Record<MarketId, number> = {
 };
 
 const EPIC_CHANCE: Record<MarketId, number> = {
-  xiangko: 0.004,
+  xiangko: 0,
   heyan: 0.012,
   shanwu: 0.03,
   jiangbian: 0.05,
@@ -315,25 +316,18 @@ export function shapeLabel(defId: string, rot: 0 | 1 = 0): string {
 
 export function displayName(defId: string, inspected: boolean, quality: Quality): string {
   const def = getItem(defId);
-  if (quality === 'rotten' && inspected) return `坏了·${def.name}`;
+  if (quality === 'rotten') return `坏了·${def.name}`;
   if (defId === GOD_PICK.id && !inspected) return '小鱼';
-  if (!inspected) return def.name;
-  if (quality === 'god') return `神捡·${def.name}`;
-  if (quality === 'premium') return `精品·${def.name}`;
-  if (quality === 'fresh') return `新鲜·${def.name}`;
+  if (defId === GOD_PICK.id) return `神捡·${def.name}`;
   return def.name;
 }
 
-export function sellPrice(defId: string, quality: Quality, inspected: boolean, freshness: number): number {
+/** 好货一个价。坏的卖不掉。神捡验出来才按神价。freshness 只留给旧存档。 */
+export function sellPrice(defId: string, quality: Quality, inspected = true, _freshness = 1): number {
   if (quality === 'rotten') return 0;
-  if (!inspected) quality = 'common';
   const def = getItem(defId);
-  if (defId === GOD_PICK.id && inspected) return def.prices.god ?? def.prices.premium;
-  const rank = Math.max(1, Math.min(3, freshness));
-  // 品相和新鲜度取低的那个：蔫了的精品只能按蔫了卖
-  const used = QUALITY_RANK[quality] < rank ? quality : RANK_TO_QUALITY[rank];
-  const key = used === 'fresh' ? 'fresh' : used === 'premium' || used === 'god' ? 'premium' : 'common';
-  return Math.max(1, def.prices[key]);
+  if (defId === GOD_PICK.id && inspected) return def.prices.god ?? def.prices.common;
+  return Math.max(1, def.prices.common);
 }
 
 export function initialFreshness(quality: Quality): number {
@@ -344,6 +338,6 @@ export const STALLS: Array<{ id: StallId; name: string; hint: string; count: [nu
   { id: 'leaf', name: '叶菜摊', hint: '注意低，适合开局', count: [5, 7] },
   { id: 'root', name: '根茎摊', hint: '冬瓜占格大', count: [5, 7] },
   { id: 'egg', name: '蛋豆摊', hint: '蛋易碎，豆腐怕挤', count: [4, 6] },
-  { id: 'fish', name: '水产摊', hint: '好货显眼，注意涨得快', count: [4, 6] },
+  { id: 'fish', name: '水产摊', hint: '好货显眼，湿货占格', count: [4, 6] },
   { id: 'meat', name: '肉摊', hint: '整摊都是蓝紫货', count: [3, 5] },
 ];

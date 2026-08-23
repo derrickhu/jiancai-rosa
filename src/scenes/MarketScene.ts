@@ -9,7 +9,7 @@ import { ResultPanel } from '@/gameobjects/ui/ResultPanel';
 import { EventPanel } from '@/gameobjects/ui/EventPanel';
 import { ensureRecipeUnlockPanel } from '@/gameobjects/ui/RecipeUnlockPanel';
 import {
-  PACK_FULL,
+  GOD_PICK,
   STALLS,
   displayName,
   getItem,
@@ -21,37 +21,23 @@ import {
   getMarket,
   MARKET_ART,
   RARITY_STYLE,
+  stallPileArt,
+  stallRummageArt,
 } from '@/sim';
 import { layoutRouteMap, type RouteCell, type RouteMapView } from '@/gameobjects/market/MapView';
-import { HUD_ICON, drawRarityFrame, fillRect, makeHudButton, makeLabel, makePaperChip, makeSlicedButton, makeStatPill } from '@/utils/ui';
+import { FONT, HUD_ICON, drawRarityFrame, fillRect, makeHudButton, makeLabel, makePaperChip, makeSlicedButton, makeStatPill } from '@/utils/ui';
 import { Platform } from '@/core/PlatformService';
 import { TweenManager, Ease } from '@/core/TweenManager';
 import { applyFit, fitCover, fitSpriteInBox, fitWidthBottom, gameTexture, isTextureFailed, isTextureReady, itemLookTexture, itemTexture, whenTextureReady } from '@/utils/assets';
 import type { Scene } from '@/core/SceneManager';
 import type { ExtractResult } from '@/sim';
 
-const HOLD_SEC = 0.45;
 const REVEAL_FACE = 188;
 const REVEAL_POP = 0.14;
 const REVEAL_FLY = 0.26;
 const REVEAL_LAND = 0.08;
-
-
-const STALL_BG: Record<StallId, string> = {
-  leaf: 'subpkg_images/stall_rummage_leaf.jpg',
-  root: 'subpkg_images/stall_rummage_root.jpg',
-  egg: 'subpkg_images/stall_rummage_egg.jpg',
-  fish: 'subpkg_images/stall_rummage_fish.jpg',
-  meat: 'subpkg_images/stall_rummage_egg.jpg',
-};
-
-const STALL_PILE: Record<StallId, string> = {
-  leaf: 'subpkg_images/stall_pile_leaf.png',
-  root: 'subpkg_images/stall_pile_root.png',
-  egg: 'subpkg_images/stall_pile_egg.png',
-  fish: 'subpkg_images/stall_pile_fish.png',
-  meat: 'subpkg_images/stall_pile_egg.png',
-};
+const TITLE_FONT = 'Songti SC, STSong, PingFang SC, serif';
+const GOD_FISH = 'subpkg_images/wild_yellowfish.png';
 
 export class MarketScene implements Scene {
   readonly name = 'market';
@@ -63,16 +49,12 @@ export class MarketScene implements Scene {
   private _result = new ResultPanel();
   private _onRun = () => this._sync();
   private _onExtract = (result: ExtractResult) => this._result.open(result);
-  private _boundUpdate = () => this.update(Game.ticker.deltaMS / 1000);
-  private _onUp = () => this._finishHold();
   private _bodyKey = '';
-  private _hold: { uid: string; ms: number; done: boolean; x: number; y: number; w: number } | null = null;
-  private _holdBar = new PIXI.Graphics();
   private _timerText: PIXI.Text | null = null;
-  private _attFill: PIXI.Graphics | null = null;
-  private _attText: PIXI.Text | null = null;
   private _basketBtn: PIXI.Container | null = null;
   private _revealLayer = new PIXI.Container();
+  private _godLayer = new PIXI.Container();
+  private _godPlaying = false;
   private _flying = new Map<string, { playing: boolean; wrap: PIXI.Container | null; token: PIXI.Container | null }>();
   private _pileKick = 0;
   private _stackPos = { x: 375, y: 800 };
@@ -89,9 +71,9 @@ export class MarketScene implements Scene {
   constructor() {
     this.container.addChild(this._bg);
     this.container.addChild(this._body);
-    this.container.addChild(this._holdBar);
     this.container.addChild(this._revealLayer);
     this.container.addChild(this._hud);
+    this.container.addChild(this._godLayer);
     this.container.eventMode = 'static';
   }
 
@@ -99,9 +81,6 @@ export class MarketScene implements Scene {
     this.container.hitArea = new PIXI.Rectangle(0, 0, Game.designWidth, Game.logicHeight);
     EventBus.on(EV.runChanged, this._onRun);
     EventBus.on(EV.runExtracted, this._onExtract);
-    Game.ticker.add(this._boundUpdate);
-    this.container.on('pointerup', this._onUp);
-    this.container.on('pointerupoutside', this._onUp);
     this._bodyKey = '';
     this._crateMax = {};
     this._walking = false;
@@ -114,30 +93,13 @@ export class MarketScene implements Scene {
   onExit(): void {
     EventBus.off(EV.runChanged, this._onRun);
     EventBus.off(EV.runExtracted, this._onExtract);
-    Game.ticker.remove(this._boundUpdate);
-    this.container.off('pointerup', this._onUp);
-    this.container.off('pointerupoutside', this._onUp);
-    this._hold = null;
     this._walking = false;
     this._mapView = null;
     this._body.alpha = 1;
     this._clearReveal();
+    this._clearGodPick();
     this._basket.close();
     this._event.close();
-  }
-
-  update(dt: number): void {
-    if (this._result._isOpen) return;
-    if (this._hold) {
-      this._hold.ms += dt;
-      this._paintHoldBar();
-      if (!this._hold.done && this._hold.ms >= HOLD_SEC) {
-        this._hold.done = true;
-        const item = this._findPile(this._hold.uid);
-        if (item?.revealed && !item.inspected) RunManager.inspect(item.uid);
-      }
-    }
-    RunManager.tick(dt);
   }
 
   relayout(): void {
@@ -146,6 +108,10 @@ export class MarketScene implements Scene {
 
   private _sync(force = false): void {
     if (this._walking) return;
+    if (this._godPlaying) {
+      this._drawHud();
+      return;
+    }
     const run = RunManager.run;
     this._drawHud();
     if (!run) {
@@ -206,25 +172,14 @@ export class MarketScene implements Scene {
     this._hud.addChild(dusk);
     this._timerText = dusk.children.find((c) => c instanceof PIXI.Text) as PIXI.Text;
 
-    const pack = run.currentNodeId ? run.packing[run.currentNodeId] ?? 0 : 0;
-    const midPill = run.currentNodeId
-      ? makeStatPill({
-        text: `装箱 ${Math.floor(pack)}`,
-        width: 168,
-        ...(pack > 0
-          ? { fill: pack / PACK_FULL, fillColor: pack >= 80 ? 0xE07A5F : 0xE0A100 }
-          : {}),
-      })
-      : makeStatPill({
-        icon: HUD_ICON.coin,
-        text: `${KitchenManager.save.money}`,
-        width: 168,
-        onIconReady: redraw,
-      });
+    const midPill = makeStatPill({
+      icon: HUD_ICON.coin,
+      text: `${KitchenManager.save.money}`,
+      width: 168,
+      onIconReady: redraw,
+    });
     midPill.position.set(168, y);
     this._hud.addChild(midPill);
-    this._attFill = null;
-    this._attText = midPill.children.find((c) => c instanceof PIXI.Text) as PIXI.Text;
 
     const room = KitchenManager.fridgeRoom();
     const bag = RunManager.basket.items;
@@ -257,13 +212,11 @@ export class MarketScene implements Scene {
     this._basketBtn.cursor = 'pointer';
     this._basketBtn.hitArea = new PIXI.Rectangle(0, 0, 124, 44);
     this._basketBtn.position.set(466, y);
-    this._basketBtn.on('pointerdown', () => this._cancelHold());
     this._basketBtn.on('pointertap', () => this._basket.open());
     this._hud.addChild(this._basketBtn);
 
     const leave = makeHudButton('回家', 132, 44, 0xC46A3A);
     leave.position.set(w - 146, y);
-    leave.on('pointerdown', () => this._cancelHold());
     leave.on('pointertap', () => RunManager.extract(true));
     this._hud.addChild(leave);
   }
@@ -307,6 +260,7 @@ export class MarketScene implements Scene {
       onPick: (id) => this._walkTo(id),
       showRoot: !blocked,
       atlas: art.cardAtlas,
+      meatCard: art.meatCard,
       onReady: redraw,
     });
     this._mapView = view;
@@ -551,11 +505,11 @@ export class MarketScene implements Scene {
       gameTexture(`subpkg_images/${def.id}.png`);
       gameTexture(`subpkg_images/${def.id}_rotten.png`);
     });
-    this._paintScene(STALL_BG[stallId] ?? 'subpkg_images/market_overview.jpg', 'cover');
+    if (stallId === 'fish') gameTexture(GOD_FISH);
+    this._paintScene(stallRummageArt(run.marketId, stallId), 'cover');
 
     const back = makeHudButton('回路线', 140, 44, 0xEFE6D6, 0x3A3228);
     back.position.set(16, Game.safeTop + 58);
-    back.on('pointerdown', () => this._cancelHold());
     back.on('pointertap', () => RunManager.leaveStall());
     this._body.addChild(back);
 
@@ -563,7 +517,7 @@ export class MarketScene implements Scene {
     name.position.set(168, Game.safeTop + 58);
     this._body.addChild(name);
 
-    const tip = makePaperChip('连点遮挡堆抽取 · 桌上入篮或按住看品质', { size: 18 });
+    const tip = makePaperChip('连点遮挡堆抽取 · 点桌上的菜入篮', { size: 18 });
     tip.position.set(16, Game.safeTop + 110);
     this._body.addChild(tip);
 
@@ -609,7 +563,7 @@ export class MarketScene implements Scene {
     const kick = this._pileKick;
     this._pileKick = 0;
     const fromRatio = left < max && kick > 0 ? Math.min(1, (left + kick) / max) : ratio;
-    const path = STALL_PILE[stallId];
+    const path = stallPileArt(RunManager.run!.marketId, stallId);
     const tex = gameTexture(path);
     whenTextureReady(path, () => {
       if (this.container.parent) this._sync(true);
@@ -649,7 +603,6 @@ export class MarketScene implements Scene {
     root.eventMode = 'static';
     root.cursor = left > 0 ? 'pointer' : 'default';
     root.hitArea = new PIXI.Rectangle(cx - hit / 2, cy - hit / 2, hit, hit + 36);
-    root.on('pointerdown', () => this._cancelHold());
     root.on('pointertap', () => this._drawOne());
     return root;
   }
@@ -711,7 +664,12 @@ export class MarketScene implements Scene {
     this._revealLayer.addChild(wrap);
     flight.wrap = wrap;
 
-    const name = makeLabel(displayName(defId, false, item.quality), 22, 0xFFF8F0, { fontWeight: '700' });
+    const name = makeLabel(
+      displayName(defId, item.inspected, item.quality === 'god' ? 'common' : item.quality),
+      22,
+      item.quality === 'rotten' ? 0xE07A5F : 0xFFF8F0,
+      { fontWeight: '700' },
+    );
     name.anchor.set(0.5, 1);
     name.alpha = 0;
     name.position.set(0, -REVEAL_FACE * 0.48);
@@ -859,7 +817,7 @@ export class MarketScene implements Scene {
     icon.position.set(tw / 2, th / 2);
     if (look === 'rotten' && !isTextureReady(gameTexture(`subpkg_images/${def.id}_rotten.png`))) icon.tint = 0x6B4A32;
     root.addChild(icon);
-    const tag = makeLabel(RunManager.labelFor(item), 16, item.quality === 'rotten' && item.inspected ? 0xE07A5F : 0xFFF8F0);
+    const tag = makeLabel(RunManager.labelFor(item), 16, item.quality === 'rotten' ? 0xE07A5F : 0xFFF8F0);
     tag.anchor.set(0.5, 1);
     tag.position.set(tw / 2, th - 2);
     root.addChild(tag);
@@ -867,41 +825,155 @@ export class MarketScene implements Scene {
     root.eventMode = 'static';
     root.cursor = 'pointer';
     root.hitArea = new PIXI.Rectangle(0, 0, tw, th);
-    root.on('pointerdown', (e) => {
-      e.stopPropagation();
-      this._hold = { uid: item.uid, ms: 0, done: false, x, y, w: tw };
-      RunManager.interacting = true;
-      this._paintHoldBar();
-    });
+    root.on('pointertap', () => this._takeItem(item.uid));
     return root;
   }
 
-  private _paintHoldBar(): void {
-    this._holdBar.clear();
-    if (!this._hold || this._hold.done) return;
-    const t = Math.min(1, this._hold.ms / HOLD_SEC);
-    this._holdBar.beginFill(0xE0A100, 0.9);
-    this._holdBar.drawRoundedRect(this._hold.x + 8, this._hold.y + 8, (this._hold.w - 16) * t, 6, 3);
-    this._holdBar.endFill();
-  }
-
-  private _finishHold(): void {
-    const hold = this._hold;
-    this._hold = null;
-    this._holdBar.clear();
-    RunManager.interacting = false;
-    if (!hold || hold.done) return;
-    const item = this._findPile(hold.uid);
-    if (!item) return;
-    const result = RunManager.take(item.uid);
+  private _takeItem(uid: string): void {
+    const item = this._findPile(uid);
+    if (item?.defId === GOD_PICK.id && !item.inspected) {
+      this._playGodPick(uid);
+      return;
+    }
+    const result = RunManager.take(uid);
     if (result === 'rotten') Platform.showToast('坏了，丢掉');
-    if (result === 'need_space') this._basket.open(item.uid);
+    if (result === 'need_space') this._basket.open(uid);
   }
 
-  private _cancelHold(): void {
-    this._hold = null;
-    this._holdBar.clear();
-    RunManager.interacting = false;
+  private _playGodPick(uid: string): void {
+    if (this._godPlaying && this._godLayer.children.length) return;
+    const item = this._findPile(uid);
+    if (!item || item.defId !== GOD_PICK.id || item.inspected) return;
+    whenTextureReady(GOD_FISH, () => {
+      if (this._findPile(uid)?.defId === GOD_PICK.id) this._playGodPick(uid);
+    });
+    const tex = gameTexture(GOD_FISH);
+    if (!isTextureReady(tex)) return;
+
+    this._clearGodPick();
+    this._godPlaying = true;
+    const w = Game.designWidth;
+    const h = Game.logicHeight;
+    const cx = w / 2;
+    const cy = Math.round(h * 0.46);
+
+    const dim = new PIXI.Graphics();
+    fillRect(dim, 0, 0, w, h, 0x000000);
+    dim.alpha = 0;
+    dim.eventMode = 'static';
+    this._godLayer.addChild(dim);
+
+    const wrap = new PIXI.Container();
+    wrap.position.set(cx, cy);
+    wrap.scale.set(0.18);
+    wrap.alpha = 0;
+    this._godLayer.addChild(wrap);
+
+    const glow = new PIXI.Graphics();
+    glow.beginFill(0xF4C430, 0.28);
+    glow.drawCircle(0, 16, 168);
+    glow.endFill();
+    glow.beginFill(0xFFF8F0, 0.16);
+    glow.drawCircle(0, 16, 108);
+    glow.endFill();
+    wrap.addChild(glow);
+
+    const fish = new PIXI.Sprite(tex);
+    fish.anchor.set(0.5);
+    fitSpriteInBox(fish, 340, 280);
+    fish.position.set(0, 28);
+    wrap.addChild(fish);
+
+    const title = new PIXI.Text('神  捡', {
+      fontFamily: TITLE_FONT,
+      fontSize: 64,
+      fill: 0xF4C430,
+      fontWeight: '700',
+      letterSpacing: 10,
+      stroke: '#2A2018',
+      strokeThickness: 8,
+      dropShadow: true,
+      dropShadowColor: '#8B5A2B',
+      dropShadowAlpha: 0.55,
+      dropShadowDistance: 3,
+      dropShadowBlur: 0,
+      dropShadowAngle: Math.PI / 2,
+    });
+    title.anchor.set(0.5);
+    title.position.set(0, -168);
+    wrap.addChild(title);
+
+    const name = makeLabel('野生大黄鱼', 30, 0xFFF8F0, {
+      fontFamily: FONT,
+      fontWeight: '700',
+      stroke: 0x2A2018,
+      strokeThickness: 6,
+    });
+    name.anchor.set(0.5);
+    name.position.set(0, -108);
+    wrap.addChild(name);
+
+    const land = this._basketBtn
+      ? { x: this._basketBtn.x + 62, y: this._basketBtn.y + 22 }
+      : { x: 528, y: Game.safeTop + 28 };
+
+    const finish = (openBasket: boolean): void => {
+      this._clearGodPick();
+      if (openBasket) this._basket.open(uid);
+    };
+
+    TweenManager.to({ target: dim, props: { alpha: 0.62 }, duration: 0.16 });
+    TweenManager.to({ target: wrap, props: { alpha: 1 }, duration: 0.12 });
+    TweenManager.to({
+      target: wrap.scale,
+      props: { x: 1, y: 1 },
+      duration: 0.28,
+      ease: Ease.easeOutBack,
+      onComplete: () => {
+        TweenManager.to({
+          target: wrap,
+          props: { x: land.x, y: land.y },
+          duration: 0.42,
+          delay: 0.72,
+          ease: Ease.easeInQuad,
+        });
+        TweenManager.to({
+          target: wrap.scale,
+          props: { x: 0.16, y: 0.16 },
+          duration: 0.42,
+          delay: 0.72,
+          ease: Ease.easeInQuad,
+        });
+        TweenManager.to({
+          target: dim,
+          props: { alpha: 0 },
+          duration: 0.28,
+          delay: 0.86,
+        });
+        TweenManager.to({
+          target: wrap,
+          props: { alpha: 0 },
+          duration: 0.2,
+          delay: 0.96,
+          onComplete: () => {
+            const result = RunManager.take(uid, { quiet: true });
+            finish(result === 'need_space');
+          },
+        });
+      },
+    });
+  }
+
+  private _clearGodPick(): void {
+    this._godLayer.children.forEach((child) => {
+      TweenManager.cancelTarget(child);
+      if ('scale' in child) TweenManager.cancelTarget((child as PIXI.Container).scale);
+      if (child instanceof PIXI.Container) {
+        child.children.forEach((grand) => TweenManager.cancelTarget(grand));
+      }
+    });
+    this._godLayer.removeChildren();
+    this._godPlaying = false;
   }
 
   private _findPile(uid: string): PileItem | undefined {

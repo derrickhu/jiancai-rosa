@@ -13,6 +13,7 @@ import {
   type ExtractResult,
 } from '@/sim';
 import { fillRect, makeButton, makeLabel } from '@/utils/ui';
+import { VerticalScroller } from '@/utils/scroll';
 import { dishTexture, fitSpriteInBox, isTextureReady, itemLookTexture, whenTextureReady } from '@/utils/assets';
 
 const KIND_TEXT = {
@@ -25,15 +26,16 @@ export class ResultPanel extends PIXI.Container {
   private _root = new PIXI.Container();
   private _data: ExtractResult | null = null;
   private _sell = new Set<string>();
-  private _scrollY = 0;
-  private _dragMoved = false;
+  private _scroller: VerticalScroller;
 
   constructor() {
     super();
     this.visible = false;
     this.zIndex = 30;
+    this.eventMode = 'static';
     this.addChild(this._root);
     OverlayManager.container.addChild(this);
+    this._scroller = new VerticalScroller(this, { visible: () => this._isOpen });
   }
 
   open(result: ExtractResult): void {
@@ -41,7 +43,8 @@ export class ResultPanel extends PIXI.Container {
     this.visible = true;
     this._data = result;
     this._sell.clear();
-    this._scrollY = 0;
+    this._scroller.reset();
+    this._scroller.enable();
     this.relayout(result);
     OverlayManager.bringToFront();
   }
@@ -55,6 +58,7 @@ export class ResultPanel extends PIXI.Container {
     this.visible = false;
     this._data = null;
     this._sell.clear();
+    this._scroller.disable();
     RunManager.clear();
     SceneManager.switchTo('kitchen');
   }
@@ -62,6 +66,7 @@ export class ResultPanel extends PIXI.Container {
   relayout(result?: ExtractResult): void {
     const data = result ?? this._data ?? RunManager.run?.extract;
     this._root.removeChildren();
+    this.hitArea = new PIXI.Rectangle(0, 0, Game.designWidth, Game.logicHeight);
     if (!data) return;
     this._data = data;
     if (data.needsPick || (KitchenManager.pendingHaul?.length ?? 0) > 0) {
@@ -72,6 +77,7 @@ export class ResultPanel extends PIXI.Container {
   }
 
   private _drawSummary(data: ExtractResult): void {
+    this._scroller.clear();
     const w = Game.designWidth;
     const h = Game.logicHeight;
     const dim = new PIXI.Graphics();
@@ -161,15 +167,13 @@ export class ResultPanel extends PIXI.Container {
     const listH = Math.max(120, listBottom - listTop);
     const viewport = new PIXI.Container();
     viewport.position.set(40, listTop);
-    viewport.eventMode = 'static';
-    viewport.hitArea = new PIXI.Rectangle(0, 0, w - 80, listH);
     const mask = new PIXI.Graphics();
-    fillRect(mask, 0, 0, w - 80, listH, 0xffffff);
-    viewport.addChild(mask);
+    fillRect(mask, 40, listTop, w - 80, listH, 0xffffff);
+    mask.eventMode = 'none';
     const list = new PIXI.Container();
     list.mask = mask;
     viewport.addChild(list);
-    this._root.addChild(viewport);
+    this._root.addChild(mask, viewport);
 
     let y = 0;
     const addHead = (text: string) => {
@@ -208,8 +212,12 @@ export class ResultPanel extends PIXI.Container {
       }));
       y += 76;
     }
-    list.y = this._scrollY;
-    this._bindScroll(viewport, list, Math.max(0, y - listH));
+    this._scroller.attach({
+      content: list,
+      maxScroll: Math.max(0, y - listH),
+      baseY: 0,
+      hit: { x: 40, y: listTop, w: w - 80, h: listH },
+    });
 
     const status = makeLabel(
       ready
@@ -284,37 +292,12 @@ export class ResultPanel extends PIXI.Container {
     root.cursor = 'pointer';
     root.hitArea = new PIXI.Rectangle(opts.x, opts.y, opts.width, 68);
     root.on('pointertap', () => {
-      if (this._dragMoved) return;
+      if (this._scroller.moved) return;
       if (this._sell.has(opts.key)) this._sell.delete(opts.key);
       else this._sell.add(opts.key);
       this.relayout();
     });
     return root;
-  }
-
-  private _bindScroll(viewport: PIXI.Container, list: PIXI.Container, maxScroll: number): void {
-    if (maxScroll <= 0) return;
-    let dragging = false;
-    let startY = 0;
-    let startScroll = 0;
-    viewport.on('pointerdown', (e) => {
-      dragging = true;
-      this._dragMoved = false;
-      startY = e.global.y;
-      startScroll = this._scrollY;
-    });
-    viewport.on('pointermove', (e) => {
-      if (!dragging) return;
-      const dy = e.global.y - startY;
-      if (Math.abs(dy) > 8) this._dragMoved = true;
-      this._scrollY = Math.max(-maxScroll, Math.min(0, startScroll + dy));
-      list.y = this._scrollY;
-    });
-    const end = () => {
-      dragging = false;
-    };
-    viewport.on('pointerup', end);
-    viewport.on('pointerupoutside', end);
   }
 
   private _picked(): number {
@@ -358,6 +341,7 @@ export class ResultPanel extends PIXI.Container {
     this._isOpen = false;
     this.visible = false;
     this._sell.clear();
+    this._scroller.disable();
     RunManager.clear();
     SceneManager.switchTo('kitchen');
   }

@@ -6,7 +6,7 @@ export type RecipeId =
   // 普通（绿）：烹饪台一级一级送
   | 'stirfry' | 'tomato_egg' | 'scallion_tofu' | 'smashed_cucumber' | 'lettuce_salad'
   | 'garlic_bokchoy' | 'vinegar_cabbage' | 'vinegar_potato' | 'pepper_potato' | 'braised_eggplant'
-  | 'tomato_tofu' | 'cucumber_egg' | 'corn_egg' | 'tomato_egg_soup' | 'stir_beans'
+  | 'tomato_tofu' | 'cucumber_egg' | 'corn_egg' | 'egg_tofu_soup' | 'stir_beans'
   | 'blistered_pepper' | 'garlic_pumpkin' | 'onion_potato' | 'rape_tofu' | 'radish_tofu'
   | 'chive_egg' | 'onion_egg' | 'spinach_egg_soup' | 'garlic_water_spinach' | 'celery_dried_tofu'
   | 'sprout_chive' | 'pan_smallfish' | 'three_fresh' | 'home_tofu' | 'melon_kelp'
@@ -51,11 +51,6 @@ export interface RecipeNeed {
   iconId: string;
 }
 
-function isDryVeg(id: string): boolean {
-  const it = getItem(id);
-  return !!it.vegetable && it.zone === 'dry';
-}
-
 function materialSum(items: RecipeFood[]): number {
   return items.reduce((s, it) => s + sellPrice(it.defId, it.quality, it.inspected, it.freshness), 0);
 }
@@ -70,6 +65,25 @@ function priced(mult: number, extra?: (items: RecipeFood[], sum: number) => numb
     const sum = Math.round(materialSum(items) * mult);
     return extra ? extra(items, sum) : sum;
   };
+}
+
+/**
+ * 两道菜的「食材种类集合」不能相同。份数不同也算重复：
+ * 番茄炒蛋（番茄+蛋2）和番茄蛋汤（番茄+蛋1）会让人不知道该攒哪道。
+ * 种类集合 = 去重后的 needs，不管各要几份。
+ */
+export function ingredientSetKey(needs: readonly string[]): string {
+  return [...new Set(needs)].sort().join(',');
+}
+
+/** 旧存档 id → 现用 id。番茄蛋汤已并进番茄炒蛋，换成豆腐蛋花汤。 */
+export const RECIPE_ID_ALIASES: Record<string, RecipeId> = {
+  tomato_egg_soup: 'egg_tofu_soup',
+};
+
+export function migrateRecipeId(id: string): RecipeId | null {
+  const next = RECIPE_ID_ALIASES[id] ?? id;
+  return isRecipeId(next) ? next : null;
 }
 
 /**
@@ -124,22 +138,8 @@ function dish(
 
 export const RECIPES: RecipeDef[] = [
   // ── 普通（绿）：两三样常见货，锅一响就成 ──────────────────
-  {
-    id: 'stirfry',
-    name: '清炒时蔬',
-    desc: '任意 2 个干蔬菜',
-    group: '家常',
-    rarity: 'common',
-    blurb: '两把绿叶子进锅，出来就是“今晚吃素”。',
-    xp: 6,
-    firstXp: 3,
-    needs: [],
-    match: (items) => items.length === 2 && items.every((it) => isDryVeg(it.defId)),
-    cook: priced(1.6, (items, sum) => (items.some((it) => it.defId === 'cilantro') ? Math.round(sum * 1.1) : sum)),
-  },
-  dish('tomato_egg', '番茄炒蛋', '家常', 'common', '中式厨房的起手式。红黄一碰，连外卖都要让路。', ['tomato', 'egg', 'egg'], (items, sum) => (
-    items.every((it) => it.freshness >= 2) ? Math.round(sum * 1.2) : sum
-  )),
+  dish('stirfry', '炒菜苔', '家常', 'common', '细秆进锅，花还在。只吃菜苔，别的绿叶子一棵不动。', ['caitai', 'caitai']),
+  dish('tomato_egg', '番茄炒蛋', '家常', 'common', '中式厨房的起手式。红黄一碰，连外卖都要让路。', ['tomato', 'egg', 'egg']),
   dish('scallion_tofu', '小葱拌豆腐', '凉菜', 'common', '不用开火，一清二白，端上桌全靠那把葱花。', ['scallion', 'tofu']),
   dish('smashed_cucumber', '拍黄瓜', '凉菜', 'common', '不用开火。拍一下，蒜和香菜负责像一盘菜。', ['cucumber', 'garlic', 'cilantro']),
   dish('lettuce_salad', '凉拌生菜', '凉菜', 'common', '整棵脑袋撕开，比炒更懂它。', ['lettuce', 'garlic']),
@@ -151,7 +151,7 @@ export const RECIPES: RecipeDef[] = [
   dish('tomato_tofu', '西红柿炒豆腐', '家常', 'common', '没鸡蛋也能红，豆腐负责温柔。', ['tomato', 'tomato', 'tofu']),
   dish('cucumber_egg', '黄瓜炒鸡蛋', '家常', 'common', '清淡到像没做，但比清炒多两个蛋。', ['cucumber', 'egg', 'egg']),
   dish('corn_egg', '玉米炒蛋', '家常', 'common', '金钉子碰金蛋，孩子最肯坐下。', ['corn', 'egg', 'egg']),
-  dish('tomato_egg_soup', '番茄蛋汤', '汤', 'common', '炒腻了就下面，同一对材料第二条活路。', ['tomato', 'egg']),
+  dish('egg_tofu_soup', '豆腐蛋花汤', '汤', 'common', '一盆白的，蛋花一搅就成晚饭。不跟番茄炒蛋抢材料。', ['tofu', 'egg', 'egg']),
   dish('stir_beans', '素炒豆角', '家常', 'common', '一把绿筷子过热锅，比干煸省事。', ['greenbean', 'garlic']),
   dish('blistered_pepper', '虎皮青椒', '家常', 'common', '皮起泡才算数，蒜是收尾。', ['pepper', 'pepper', 'garlic']),
   dish('garlic_pumpkin', '蒜蓉南瓜', '家常', 'common', '甜的，蒜压一压才不像点心。', ['pumpkin', 'garlic']),
@@ -192,10 +192,7 @@ export const RECIPES: RecipeDef[] = [
   dish('chestnut_duck', '板栗烧鸭', '荤', 'rare', '鸭油裹住栗子，甜咸各占一半。', ['duck_leg', 'chestnut', 'chestnut', 'chestnut', 'ginger']),
 
   // ── 稀有（紫）：非得攒紫货不可，一盘顶一天 ──────────────────
-  dish('garlic_shrimp', '蒜蓉虾', '水产', 'epic', '蒜末噼啪一响，三只虾就同意被你卖掉。', ['shrimp', 'shrimp', 'shrimp', 'garlic', 'garlic'], (items, sum) => {
-    const premium = items.filter((it) => it.defId === 'shrimp' && it.inspected && it.quality === 'premium').length;
-    return sum + premium * 12;
-  }),
+  dish('garlic_shrimp', '蒜蓉虾', '水产', 'epic', '蒜末噼啪一响，三只虾就同意被你卖掉。', ['shrimp', 'shrimp', 'shrimp', 'garlic', 'garlic']),
   dish('shrimp_egg', '虾仁炒蛋', '水产', 'epic', '蛋涨份量，虾涨面子。', ['shrimp', 'shrimp', 'egg', 'egg', 'egg']),
   dish('shrimp_tofu', '虾仁豆腐', '水产', 'epic', '嫩对嫩，比蒜蓉虾温柔，也更费虾。', ['shrimp', 'shrimp', 'tofu', 'tofu', 'scallion']),
   dish('ginger_crab', '葱姜炒蟹', '水产', 'epic', '钳子还在挥，葱姜负责把它按住。', ['crab', 'ginger', 'ginger', 'scallion', 'scallion']),
@@ -212,6 +209,29 @@ export const RECIPES: RecipeDef[] = [
   dish('yandu_xian', '腌笃鲜', '汤', 'epic', '咸的鲜的一起笃，笋在里面最耐心。', ['ham', 'pork_belly', 'bamboo_shoot', 'bamboo_shoot', 'tofu']),
 ];
 
+/** 两道菜去重后的食材种类不能撞车，份数不同也算重复。 */
+export function findDuplicateIngredientSets(recipes: readonly RecipeDef[] = RECIPES): Array<[RecipeDef, RecipeDef]> {
+  const seen = new Map<string, RecipeDef>();
+  const dups: Array<[RecipeDef, RecipeDef]> = [];
+  for (const rec of recipes) {
+    const key = ingredientSetKey(rec.needs);
+    const prev = seen.get(key);
+    if (prev) dups.push([prev, rec]);
+    else seen.set(key, rec);
+  }
+  return dups;
+}
+
+{
+  const dups = findDuplicateIngredientSets();
+  if (dups.length) {
+    const detail = dups
+      .map(([a, b]) => `${a.name}(${a.id}) / ${b.name}(${b.id}) → [${ingredientSetKey(a.needs)}]`)
+      .join('；');
+    throw new Error(`菜谱食材种类重复：${detail}`);
+  }
+}
+
 export const START_RECIPES: RecipeId[] = ['stirfry', 'tomato_egg', 'scallion_tofu'];
 
 /**
@@ -219,7 +239,7 @@ export const START_RECIPES: RecipeId[] = ['stirfry', 'tomato_egg', 'scallion_tof
  * 下标 0 = 烹饪台升到内部 1（界面 2 级）新给的三本。
  */
 export const TABLE_UNLOCKS: RecipeId[][] = [
-  ['garlic_bokchoy', 'vinegar_potato', 'tomato_egg_soup'],
+  ['garlic_bokchoy', 'vinegar_potato', 'egg_tofu_soup'],
   ['smashed_cucumber', 'braised_eggplant', 'tomato_tofu'],
   ['cucumber_egg', 'pepper_potato', 'onion_potato'],
   ['vinegar_cabbage', 'blistered_pepper', 'chive_egg'],
@@ -345,10 +365,6 @@ export function recipeNeeds(save: RecipeUnlockView, recipeId: RecipeId): RecipeN
   const foods = usableFoods(save);
   const recipe = recipeById(recipeId);
   if (!recipe) return [];
-  if (recipe.id === 'stirfry') {
-    const veg = foods.filter((it) => isDryVeg(it.defId)).length;
-    return [{ label: '干蔬菜', iconId: 'bokchoy', have: veg, need: 2 }];
-  }
   return tallyNeeds(recipe.needs).map(({ id, n }) => ({
     label: getItem(id).name,
     iconId: id,
@@ -361,10 +377,6 @@ export function pickRecipeFoods(save: RecipeUnlockView, recipeId: RecipeId): Rec
   const foods = usableFoods(save);
   const recipe = recipeById(recipeId);
   if (!recipe) return [];
-  if (recipe.id === 'stirfry') {
-    const veg = foods.filter((it) => isDryVeg(it.defId)).sort((a, b) => b.freshness - a.freshness);
-    return veg.length >= 2 ? veg.slice(0, 2) : [];
-  }
   const picked: RecipeFood[] = [];
   const used = new Set<string>();
   for (const id of recipe.needs) {
