@@ -317,6 +317,94 @@ class PlatformServiceClass {
     this.showToast('广告位稍后接入', 'none');
     onReward();
   }
+
+  getFileSystemManager(): any {
+    try {
+      return this._api?.getFileSystemManager?.() ?? null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  get userDataPath(): string {
+    try {
+      return this._api?.env?.USER_DATA_PATH || '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  /**
+   * 以纯文本取回响应体，绕过宿主对 CloudBase JSON 的协议解析。
+   */
+  requestText(url: string, timeoutMs?: number): Promise<string> {
+    if (typeof this._api?.request === 'function') {
+      return new Promise((resolve, reject) => {
+        this._api.request({
+          url,
+          method: 'GET',
+          responseType: 'text',
+          dataType: 'text',
+          timeout: timeoutMs,
+          success: (res: any) => {
+            const statusCode = Number(res?.statusCode || 0);
+            if (statusCode < 200 || statusCode >= 300) {
+              reject(new Error(`request status=${statusCode || 'unknown'} url=${url}`));
+              return;
+            }
+            const data = res?.data;
+            resolve(typeof data === 'string' ? data : (data ? JSON.stringify(data) : ''));
+          },
+          fail: (err: any) => {
+            const msg = err?.errMsg || err?.message || String(err);
+            reject(new Error(msg));
+          },
+        });
+      });
+    }
+
+    const fetchFn = (globalThis as any).fetch as typeof fetch | undefined;
+    if (typeof fetchFn !== 'function') {
+      return Promise.reject(new Error('no http transport available'));
+    }
+    return fetchFn(url).then((res) => {
+      if (!res.ok) throw new Error(`request status=${res.status} url=${url}`);
+      return res.text();
+    });
+  }
+
+  downloadFile(opts: { url: string; timeoutMs?: number }): Promise<{ tempFilePath: string }> {
+    return new Promise((resolve, reject) => {
+      if (typeof this._api?.downloadFile !== 'function') {
+        reject(new Error('downloadFile unavailable'));
+        return;
+      }
+      try {
+        this._api.downloadFile({
+          url: opts.url,
+          timeout: opts.timeoutMs,
+          success: (res: any) => {
+            const statusCode = Number(res?.statusCode || 0);
+            if (statusCode < 200 || statusCode >= 300) {
+              reject(new Error(`downloadFile status=${statusCode || 'unknown'} url=${opts.url}`));
+              return;
+            }
+            if (!res?.tempFilePath) {
+              reject(new Error(`downloadFile missing tempFilePath url=${opts.url}`));
+              return;
+            }
+            resolve({ tempFilePath: res.tempFilePath });
+          },
+          fail: (err: any) => {
+            const msg = err?.errMsg || err?.message || String(err);
+            reject(new Error(msg));
+          },
+        });
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error(String(e)));
+      }
+    });
+  }
 }
 
 const _global: any = typeof GameGlobal !== 'undefined' ? GameGlobal : globalThis;

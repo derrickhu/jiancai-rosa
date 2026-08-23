@@ -12,6 +12,7 @@ import { DestinationScene } from '@/scenes/DestinationScene';
 import { KitchenScene } from '@/scenes/KitchenScene';
 import { LoadingScene } from '@/scenes/LoadingScene';
 import { MarketScene } from '@/scenes/MarketScene';
+import { CdnAssetService } from '@/core/CdnAssetService';
 import { preloadTextures } from '@/utils/assets';
 import { kitchenBootPaths } from '@/utils/bootAssets';
 
@@ -67,6 +68,7 @@ async function main(): Promise<void> {
     SceneManager.switchTo('kitchen');
   };
 
+  await CdnAssetService.fetchManifest();
   const paths = kitchenBootPaths(SaveManager.data);
   const loaded = preloadTextures(paths, (done, total) => {
     loading.setProgress(done / Math.max(1, total));

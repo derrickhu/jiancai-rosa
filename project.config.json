@@ -52,7 +52,740 @@
   },
   "simulatorPluginLibVersion": {},
   "packOptions": {
-    "ignore": [],
+    "ignore": [
+      {
+        "type": "glob",
+        "value": "subpkg_images/market_*.jpg"
+      },
+      {
+        "type": "glob",
+        "value": "subpkg_images/stall_rummage_*.jpg"
+      },
+      {
+        "type": "glob",
+        "value": "subpkg_images/stall_pile_*.png"
+      },
+      {
+        "type": "glob",
+        "value": "subpkg_images/outing_curtain.jpg"
+      },
+      {
+        "type": "glob",
+        "value": "subpkg_images/dest_*.jpg"
+      },
+      {
+        "type": "glob",
+        "value": "subpkg_images/dish_*.png"
+      },
+      {
+        "type": "glob",
+        "value": "subpkg_images/npc_*.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dest_heyan.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dest_jiangbian.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dest_laocheng.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dest_shanwu.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dest_street_bg.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_bamboo_chicken.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_bamboo_pork.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_blistered_pepper.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_braised_beef.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_braised_eel.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_braised_eggplant.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_braised_hairtail.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_broccoli_garlic.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_cabbage_belly.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_carrot_mushroom.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_celery_dried_tofu.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_chestnut_duck.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_chive_egg.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_clam_soup.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_corn_egg.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_crab_tofu.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_crucian_tofu.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_cucumber_egg.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_dried_tofu_pork.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_egg_tofu_soup.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_garlic_bokchoy.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_garlic_clam.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_garlic_pumpkin.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_garlic_shrimp.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_garlic_water_spinach.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_ginger_crab.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_ham_melon_soup.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_home_tofu.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_lettuce_salad.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_lotus_pepper.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_matsutake_chicken.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_melon_kelp.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_mushroom_bokchoy.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_mushroom_yam_soup.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_onion_egg.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_onion_potato.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_pan_hairtail.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_pan_smallfish.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_pepper_pork.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_pepper_potato.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_potato_chicken.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_radish_ribs.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_radish_tofu.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_rape_tofu.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_scallion_tofu.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_shrimp_egg.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_shrimp_tofu.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_smashed_cucumber.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_spinach_egg_soup.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_sprout_chive.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_steam_yellowfish.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_stir_beans.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_stirfry.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_three_fresh.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_tomato_egg.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_tomato_fish.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_tomato_tofu.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_vinegar_cabbage.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_vinegar_potato.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_wild_fish_soup.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_wood_ear_egg.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_yam_chestnut.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_yandu_xian.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_yellowfish_tofu.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_yuxiang_eggplant.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_card_heyan_bank.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_card_heyan_dock.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_card_heyan_lotus.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_card_heyan_meat.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_card_heyan_uncle.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_card_jiangbian_aunt.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_card_jiangbian_cabin.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_card_jiangbian_meat.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_card_jiangbian_nightcatch.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_card_jiangbian_pier.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_card_laocheng_alley.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_card_laocheng_clerk.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_card_laocheng_cured.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_card_laocheng_gate.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_card_laocheng_meat.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_card_shanwu_cave.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_card_shanwu_fungus.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_card_shanwu_meat.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_card_shanwu_trail.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_card_shanwu_woodcutter.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_cards.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_cards_heyan.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_cards_jiangbian.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_cards_laocheng.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_cards_shanwu.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_overview.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_route_1.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_route_heyan.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_route_heyan_dock.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_route_jiangbian.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_route_jiangbian_cabin.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_route_jiangbian_pier.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_route_laocheng.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_route_laocheng_alley.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_route_laocheng_back.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_route_shanwu.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_route_shanwu_cave.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_route_shanwu_trail.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/npc_heyan_uncle.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/npc_heyan_vendor.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/npc_jiangbian_aunt.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/npc_jiangbian_vendor.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/npc_laocheng_boss.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/npc_laocheng_vendor.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/npc_neighbor.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/npc_shanwu_granny.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/npc_shanwu_vendor.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/npc_vendor.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/outing_curtain.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_egg.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_fish.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_heyan_egg.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_heyan_fish.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_heyan_leaf.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_heyan_lotus.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_heyan_meat.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_heyan_root.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_jiangbian_egg.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_jiangbian_fish.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_jiangbian_leaf.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_jiangbian_meat.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_jiangbian_nightcatch.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_jiangbian_root.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_laocheng_cured.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_laocheng_egg.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_laocheng_fish.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_laocheng_leaf.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_laocheng_meat.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_laocheng_root.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_leaf.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_root.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_shanwu_egg.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_shanwu_fungus.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_shanwu_leaf.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_shanwu_meat.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_shanwu_root.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_egg.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_fish.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_heyan_bank.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_heyan_egg.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_heyan_fish.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_heyan_leaf.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_heyan_lotus.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_heyan_meat.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_heyan_root.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_jiangbian_egg.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_jiangbian_fish.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_jiangbian_leaf.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_jiangbian_meat.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_jiangbian_nightcatch.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_jiangbian_pier.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_jiangbian_root.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_laocheng_cured.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_laocheng_egg.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_laocheng_fish.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_laocheng_leaf.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_laocheng_meat.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_laocheng_root.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_leaf.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_root.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_shanwu_cave.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_shanwu_egg.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_shanwu_fungus.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_shanwu_leaf.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_shanwu_meat.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_shanwu_root.jpg"
+      }
+    ],
     "include": []
   },
   "isGameTourist": false,

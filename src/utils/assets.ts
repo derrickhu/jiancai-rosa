@@ -1,5 +1,6 @@
 import * as PIXI from 'pixi.js';
 import { ImageResource } from '@pixi/core';
+import { CdnAssetService } from '@/core/CdnAssetService';
 import { Platform } from '@/core/PlatformService';
 
 const cache = new Map<string, PIXI.Texture>();
@@ -57,7 +58,12 @@ export function gameTexture(path: string): PIXI.Texture {
     failed.add(path);
     flush(path);
   };
-  img.src = path;
+  void CdnAssetService.resolveOrDownload(path).then((resolved) => {
+    img.src = resolved;
+  }).catch((err) => {
+    console.warn('[assets] CDN 解析失败，回落本地路径', path, err);
+    img.src = path;
+  });
   return tex;
 }
 

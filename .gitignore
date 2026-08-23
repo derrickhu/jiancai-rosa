@@ -17,3 +17,7 @@ minigame/index.html
 .env.*
 
 project.private.config.json
+
+# 本地 CDN 上传凭据与同步状态；勿提交
+scripts/.cdn_secret
+scripts/.cdn_manifest.json

@@ -5,7 +5,9 @@
   "description": "捡菜市集 - 微信小游戏",
   "scripts": {
     "build": "vite build && rimraf minigame/index.html",
-    "dev": "vite build --watch"
+    "dev": "vite build --watch",
+    "upload:cdn": "node scripts/upload_cdn.js",
+    "upload:cdn:dry": "node scripts/upload_cdn.js --dry-run"
   },
   "license": "ISC",
   "dependencies": {
