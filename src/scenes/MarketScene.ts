@@ -528,12 +528,12 @@ export class MarketScene implements Scene {
       return;
     }
 
-    const caveWall = `subpkg_images/stall_rummage_${run.marketId}_cave.jpg`;
-    whenTextureReady(caveWall, () => {
+    const gatherBg = play.bg || sceneBg(run.marketId, run.sceneId);
+    whenTextureReady(gatherBg, () => {
       if (this.container.parent) this._sync(true);
     });
     this._paintScene(
-      isTextureFailed(caveWall) ? sceneBg(run.marketId, run.sceneId) : caveWall,
+      isTextureFailed(gatherBg) ? sceneBg(run.marketId, run.sceneId) : gatherBg,
       'cover',
     );
 
@@ -543,12 +543,12 @@ export class MarketScene implements Scene {
     this._body.addChild(back);
 
     const node = run.map.nodes[play.nodeId];
-    const name = makePaperChip(node?.title || '石壁菌子', { size: 24 });
+    const name = makePaperChip(node?.title || '可摘', { size: 24 });
     name.position.set(168, Game.safeTop + 58);
     this._body.addChild(name);
 
     const tip = makePaperChip(
-      play.picksLeft > 0 ? `点菌摘下来 · 还能摘 ${play.picksLeft} 朵` : '手上摘够了，可以出洞',
+      play.picksLeft > 0 ? `点地上的拿走 · 还能拿 ${play.picksLeft} 份` : '手上拿够了，可以回去',
       { size: 18 },
     );
     tip.position.set(16, Game.safeTop + 110);
@@ -582,7 +582,7 @@ export class MarketScene implements Scene {
       }
       wrap.on('pointertap', () => {
         if (play.picksLeft <= 0) {
-          Platform.showToast('手上摘够了');
+          Platform.showToast('手上拿够了');
           return;
         }
         const result = RunManager.pickGather(spot.uid);

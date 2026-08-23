@@ -4,7 +4,7 @@ import { STALL_FEE } from './packing';
 
 export type CardKind =
   | 'stall' | 'paystall' | 'freebie' | 'fork' | 'deadend' | 'empty' | 'favor' | 'deep' | 'recipe'
-  | 'talk' | 'gather' | 'branch';
+  | 'talk' | 'gather' | 'branch' | 'gate';
 
 export interface MarketPlan {
   /** 天色：一局能付出的步数。走完天黑收摊。 */

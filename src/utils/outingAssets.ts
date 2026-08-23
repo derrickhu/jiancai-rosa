@@ -32,21 +32,12 @@ export function marketBootPaths(marketId: MarketId, run?: RunState): string[] {
     CARD_FRAME,
   ];
   if (run) {
-    const seen = new Set<string>();
-    let ids = run.options.slice();
-    for (let depth = 0; depth < 3 && ids.length; depth++) {
-      const next: string[] = [];
-      ids.forEach((id) => {
-        if (seen.has(id)) return;
-        seen.add(id);
-        const node = run.map.nodes[id];
-        if (node?.cardArt) paths.push(node.cardArt);
-        node?.next.forEach((nid) => {
-          if (!next.includes(nid)) next.push(nid);
-        });
-      });
-      ids = next;
-    }
+    Object.values(run.map.scenes).forEach((scene) => {
+      if (scene.bg) paths.push(scene.bg);
+    });
+    Object.values(run.map.nodes).forEach((node) => {
+      if (node.cardArt) paths.push(node.cardArt);
+    });
   }
   return [...new Set(paths.filter((path): path is string => !!path))];
 }

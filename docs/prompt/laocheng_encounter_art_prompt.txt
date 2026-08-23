@@ -1,0 +1,37 @@
+Cozy casual mobile-game cartoon matching the attached 巷口 / 老城 reference. Clean medium-thick dark-brown outlines (#2A2018), soft flat cel shading, simple readable shapes, warm wood, stone and paper colors, hanging yellow bulbs.
+
+FORBIDDEN: photorealism, cinematic concept art, painterly realism, photography, lens flare, volumetric fog, god-rays, hyper-detailed wood pores or stone grit, muddy blur, 3D render.
+
+NO TEXT, no labels, no numbers, no captions, no watermark, no UI chrome, no Chinese characters, no shop-sign lettering.
+
+--- 路线底图 9:16 ---
+
+market_route_laocheng_back:
+Vertical 9:16 old-shop kitchen / back room. Looking along a stone floor under hanging cured meats. Far stove and beams at top, near stone at bottom. Central column calm: plain stone and soft shadow only. Hams, pork belly, wooden counters, a key hook pushed to LEFT and RIGHT. Warm amber, no people, no animals.
+
+market_route_laocheng_alley:
+Vertical 9:16 narrow slate-stone alley in an old town at dusk. Looking down the alley. Far lantern at top, near wet stones at bottom. Central column calm. Doorways, hanging cloth, a pot of greens on LEFT and RIGHT. No people.
+
+--- 卡面 3:4 ---
+
+market_card_laocheng_clerk:
+3:4 bust-friendly scene of a shop clerk from the side/back-three-quarter: cloth vest, abacus or ledger, warm cartoon. Face optional but simple. No text.
+
+market_card_laocheng_gate:
+3:4 close-up of an old wooden kitchen door with a heavy iron lock and a keyhole. Warm wood, no people.
+
+market_card_laocheng_cured:
+3:4 close-up of hanging cured meats: ham, pork belly, one brisket, wooden beam. No people, no price tags.
+
+market_card_laocheng_alley:
+3:4 close-up of a narrow slate alley mouth, lantern, wet stones. No people.
+
+--- 翻堆底 9:16 ---
+
+stall_rummage_laocheng_cured:
+Vertical 9:16 wooden counter under hanging hams. Empty space in the center for a clickable pile sprite. No people.
+
+--- 遮挡堆 ---
+
+stall_pile_laocheng_cured:
+A single heap of ham, pork belly slices and a brisket on a wooden board, readable silhouette, isolated on plain light background for cutout. No people, no text.

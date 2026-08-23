@@ -42,6 +42,9 @@
 | `stall_pile_*_prompt.txt` | 巷口四摊遮挡堆（点堆抽取） | 1:1 |
 | `stall_scenes_later_markets.txt` | 后四场按市场×摊位的翻堆底 / 遮挡堆 / 肉摊卡 | 9:16 / 1:1 / 3:4 |
 | `shanwu_encounter_art_prompt.txt` | 山坞支线：小路/山洞底图、卡面、菌摊、石壁采集 | 9:16 / 3:4 |
+| `heyan_encounter_art_prompt.txt` | 河沿支线：船坞底、藕摊/刘伯/河滩卡、采集底 | 9:16 / 3:4 |
+| `jiangbian_encounter_art_prompt.txt` | 江边支线：夜栈/船舱底、鲜货筐/阿珠卡、采集底 | 9:16 / 3:4 |
+| `laocheng_encounter_art_prompt.txt` | 老城支线：后厨/青石巷底、门/咸货/伙计卡 | 9:16 / 3:4 |
 | `outing_curtain_prompt.txt` | 出门过场整图（一筐鲜货挡住屏幕） | 9:16 |
 | `vehicles_prompt.txt` | 出门交通工具四件：布鞋 / 带筐自行车 / 带箱电动车 / 装筐小货车 | 1:1 2×2 |
 | `vehicle_walk_prompt.txt` | 步行重画：脚朝外、分边摆好等着穿，鞋带自然 | 1:1 |

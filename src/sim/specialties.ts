@@ -10,6 +10,8 @@ export interface SpecialtyDef {
   common: string[];
   rare: string[];
   epic: string[];
+  epicChance?: number;
+  rareChance?: number;
 }
 
 export const SPECIALTIES: Record<string, SpecialtyDef> = {
@@ -22,6 +24,37 @@ export const SPECIALTIES: Record<string, SpecialtyDef> = {
     rare: ['wood_ear'],
     epic: ['matsutake'],
   },
+  lotus: {
+    id: 'lotus',
+    name: '藕摊',
+    hint: '河沿泥里拔上来的',
+    count: [3, 5],
+    common: ['water_spinach'],
+    rare: ['lotus'],
+    epic: ['kelp'],
+  },
+  nightcatch: {
+    id: 'nightcatch',
+    name: '鲜货筐',
+    hint: '夜里刚起网的',
+    count: [3, 5],
+    common: ['smallfish', 'kelp'],
+    rare: ['clam', 'crucian', 'hairtail'],
+    epic: ['shrimp', 'yellowfish', 'crab'],
+    rareChance: 0.36,
+    epicChance: 0.1,
+  },
+  cured: {
+    id: 'cured',
+    name: '梁上咸货',
+    hint: '老字号挂着的',
+    count: [3, 4],
+    common: ['pork'],
+    rare: ['pork_belly'],
+    epic: ['ham', 'beef_brisket'],
+    rareChance: 0.3,
+    epicChance: 0.08,
+  },
 };
 
 export function getSpecialty(id: string): SpecialtyDef | undefined {
@@ -32,8 +65,8 @@ export function rollSpecialtyItem(id: string, rng: Rng, cookLevel = 1): ItemDef 
   const spec = SPECIALTIES[id];
   if (!spec) return getItem('mushroom');
   const lv = Math.max(0, cookLevel - 1);
-  const epic = 0.04 + lv * 0.004;
-  const rare = 0.22 + lv * 0.01;
+  const epic = spec.epicChance ?? 0.04 + lv * 0.004;
+  const rare = spec.rareChance ?? 0.22 + lv * 0.01;
   const roll = rng();
   let ids = spec.common;
   if (spec.epic.length && roll < epic) ids = spec.epic;

@@ -35,6 +35,7 @@ import {
   GOD_PICK,
   stallPacked,
   talkScript,
+  pickTalkFood,
   tryAutoPlace,
   visibleDefId,
   furnLevel,
@@ -218,7 +219,7 @@ class RunManagerClass {
     }
 
     if (result.enter === 'play') {
-      const enc = nodeEncounter(node);
+      const enc = result.resolved ?? nodeEncounter(node);
       if (enc.type === 'gather') {
         this.run = {
           ...next,
@@ -229,6 +230,7 @@ class RunManagerClass {
             nodeId: id,
             picksLeft: enc.picks,
             spots: this._rollGatherSpots(enc.pool, enc.picks),
+            bg: enc.bg,
           },
         };
         this.emit();
@@ -321,10 +323,10 @@ class RunManagerClass {
         nodeId: play.nodeId,
         kind: 'gather',
         marketId: run.marketId,
-        text: taken ? `摘下一朵${displayName(spot.defId, false, quality)}。` : '篮子满了，先腾个位子。',
+        text: taken ? `拿到${displayName(spot.defId, false, quality)}。` : '篮子满了，先腾个位子。',
         gain: { defId: spot.defId, quality, taken },
       },
-      note: picksLeft > 0 ? `还能再摘 ${picksLeft} 朵。` : '手上摘够了，该出洞了。',
+      note: picksLeft > 0 ? `还能再拿 ${picksLeft} 份。` : '手上拿够了，可以回去。',
     };
     this.emit();
     return taken ? 'placed' : 'need_space';
@@ -357,8 +359,9 @@ class RunManagerClass {
       else bag.push({ id: choice.grantItem, qty: 1 });
       next = { ...next, bag };
     }
-    if (choice.grantFood) {
-      next = this._placeFood(next, ev.nodeId, 'talk', choice.grantFood, 'common', `${choice.label}。`);
+    const food = pickTalkFood(choice.grantFood, this._rng);
+    if (food) {
+      next = this._placeFood(next, ev.nodeId, 'talk', food, 'common', `${choice.label}。`);
     } else {
       next = {
         ...next,

@@ -16,9 +16,9 @@ export type RunItemId = string;
 export type Encounter =
   | { type: 'rummage'; stall?: StallId; specialty?: string }
   | { type: 'talk'; scriptId: string }
-  | { type: 'gather'; pool: string[]; picks: number }
+  | { type: 'gather'; pool: string[]; picks: number; bg?: string }
   | { type: 'branch'; sceneId: string }
-  | { type: 'gate'; need: RunItemId }
+  | { type: 'gate'; need: RunItemId; pass?: Encounter }
   | { type: 'minigame'; game: MinigameId }
   | { type: 'peek' }
   | { type: 'favor' }
@@ -42,6 +42,8 @@ export function encounterFromKind(node: MapNode): Encounter {
       return { type: 'gather', pool: ['mushroom', 'wood_ear', 'matsutake'], picks: 3 };
     case 'branch':
       return { type: 'branch', sceneId: 'main' };
+    case 'gate':
+      return { type: 'gate', need: 'shop_key' };
     default:
       return { type: node.kind };
   }
@@ -73,6 +75,8 @@ export interface EncounterResult {
   state: RunState;
   enter?: 'rummage' | 'play';
   food?: { defId: string; quality: Quality };
+  /** 门打开后真正执行的遭遇。采集 / 翻堆要认这个，别还拿着 gate。 */
+  resolved?: Encounter;
 }
 
 function log(
@@ -97,7 +101,7 @@ export function applyEncounter(ctx: EncounterCtx): EncounterResult {
 
   switch (enc.type) {
     case 'rummage':
-      return { state, enter: 'rummage' };
+      return { state, enter: 'rummage', resolved: enc };
     case 'freebie':
       return { state };
     case 'deadend':
@@ -178,9 +182,10 @@ export function applyEncounter(ctx: EncounterCtx): EncounterResult {
       return {
         state: {
           ...state,
-          note: '石壁上的菌还在长。',
+          note: node.title ? `${node.title}还在这儿。` : '还能再摘。',
         },
         enter: 'play',
+        resolved: enc,
       };
     case 'branch': {
       const scene = state.map.scenes[enc.sceneId];
@@ -208,7 +213,14 @@ export function applyEncounter(ctx: EncounterCtx): EncounterResult {
             note: '门锁着。',
             lastEvent: log(node, state.marketId, '门锁着。身上没有能开它的东西。'),
           },
+          resolved: enc,
         };
+      }
+      if (enc.pass) {
+        return applyEncounter({
+          ...ctx,
+          node: { ...node, encounter: enc.pass },
+        });
       }
       return {
         state: {
@@ -216,6 +228,7 @@ export function applyEncounter(ctx: EncounterCtx): EncounterResult {
           note: '门开了。',
           lastEvent: log(node, state.marketId, '钥匙对上了。门里还有货。'),
         },
+        resolved: enc,
       };
     }
     case 'minigame':

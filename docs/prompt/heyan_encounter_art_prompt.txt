@@ -1,0 +1,37 @@
+Cozy casual mobile-game cartoon matching the attached 巷口 / 河沿 reference. Clean medium-thick dark-brown outlines (#2A2018), soft flat cel shading, simple readable shapes, warm wood and paper colors, hanging yellow bulbs. Same outline weight and simplicity as 巷口.
+
+FORBIDDEN: photorealism, cinematic concept art, painterly realism, photography, lens flare, volumetric fog, god-rays, hyper-detailed wood pores or stone grit, muddy blur, 3D render.
+
+NO TEXT, no labels, no numbers, no captions, no watermark, no UI chrome, no Chinese characters, no shop-sign lettering.
+
+--- 路线底图 9:16，中间两列留给卡片，细节只靠左右 ---
+
+market_route_heyan_dock:
+Vertical 9:16 riverside boatyard at warm sunrise. Looking along wet stone steps down to wooden boats. Far water and boats at top, near damp quay at bottom. Central vertical column (middle two thirds) calm and uncluttered: plain wet stone and soft shadow only. Moored skiffs, coils of rope, lotus roots and water-spinach baskets pushed to LEFT and RIGHT edges. Warm gold morning, no people, no animals.
+
+--- 卡面 3:4，铺满窗口 ---
+
+market_card_heyan_dock:
+3:4 close-up of a wooden riverside dock: wet planks, a small empty skiff, rope, morning light. No people.
+
+market_card_heyan_lotus:
+3:4 close-up of a lotus-root stall: muddy lotus roots, bundles of water spinach, one strip of kelp. Bamboo tray. No people, no price tags.
+
+market_card_heyan_uncle:
+3:4 bust-friendly scene of an older riverside boatman from the side/back-three-quarter: straw hat, brown vest, coil of rope. Face optional but simple if shown. No text.
+
+market_card_heyan_bank:
+3:4 close-up of a muddy riverbank with water spinach and celery growing at the waterline. No people.
+
+--- 翻堆底 9:16 ---
+
+stall_rummage_heyan_lotus:
+Vertical 9:16 lotus stall table on a quay. Bamboo trays of whole lotus roots and water spinach. Empty space in the center for a clickable pile sprite. No people.
+
+stall_rummage_heyan_bank:
+Vertical 9:16 riverbank close enough to pick greens. Wet mud, water spinach, celery, a glimpse of water. Center stays readable for overlay sprites. Warm morning. No people.
+
+--- 遮挡堆透明 PNG ---
+
+stall_pile_heyan_lotus:
+A single heap of muddy lotus roots and water spinach on a bamboo tray, readable silhouette, isolated on plain light background for cutout. No people, no text.

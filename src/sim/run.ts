@@ -12,6 +12,7 @@ import { PACK_RATE, STALL_FEE } from './packing';
 import { FAVOR_PACK_RATE, FREEBIE_STALLS, MARKET_PLAN, paystallPileBonus, stallPileRange, type CardKind } from './marketEvents';
 import { isRummageNode, mapRummageNodes, nodeEncounter } from './encounters';
 import { buildMarketMap, mapStallNodes, type MapNode, type MarketMap } from './marketMap';
+import { bagItemName } from './talkScripts';
 import type { SceneResume } from './routeScenes';
 import { getSpecialty, rollSpecialtyItem } from './specialties';
 import { mulberry32, newSeed, rngInt, rngPick, type Rng } from './rng';
@@ -61,6 +62,7 @@ export interface GatherPlay {
   nodeId: string;
   picksLeft: number;
   spots: GatherSpot[];
+  bg?: string;
 }
 
 export type PlayState = GatherPlay;
@@ -240,6 +242,11 @@ export function cardBlock(
 ): string | null {
   if (!ignoreSteps && node.steps > state.stepsLeft) return '天色不够了';
   if (node.cookNeed > cookLevel) return `厨艺 ${node.cookNeed} 级才认得`;
+  const enc = nodeEncounter(node);
+  if (enc.type === 'gate') {
+    const have = state.bag.some((it) => it.id === enc.need && it.qty > 0);
+    if (!have) return `缺${bagItemName(enc.need)}`;
+  }
   const fee = nodeFee(state, node);
   if (fee > money) return `差 ${fee - money} 金币`;
   return null;

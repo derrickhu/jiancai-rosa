@@ -29,6 +29,7 @@ const KIND_SLOT: Record<CardKind, number> = {
   talk: 9,
   gather: 6,
   branch: 4,
+  gate: 10,
 };
 const BACK_SLOT = 11;
 

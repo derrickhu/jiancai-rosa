@@ -1,0 +1,40 @@
+Cozy casual mobile-game cartoon matching the attached 巷口 / 江边 reference. Clean medium-thick dark-brown outlines (#2A2018), soft flat cel shading, simple readable shapes, warm wood and paper colors, hanging yellow lanterns. Night fish-market lighting.
+
+FORBIDDEN: photorealism, cinematic concept art, painterly realism, photography, lens flare, volumetric fog, god-rays, hyper-detailed wood pores or stone grit, muddy blur, 3D render.
+
+NO TEXT, no labels, no numbers, no captions, no watermark, no UI chrome, no Chinese characters, no shop-sign lettering.
+
+--- 路线底图 9:16 ---
+
+market_route_jiangbian_pier:
+Vertical 9:16 night wooden pier over dark river. Looking along wet boards toward lanterns. Far lanterns and water at top, near planks at bottom. Central column calm: plain wet wood and soft shadow only. Nets, buckets, hanging lanterns, fish baskets pushed to LEFT and RIGHT. Warm amber night, no people, no animals.
+
+market_route_jiangbian_cabin:
+Vertical 9:16 small fishing-boat cabin interior at night. Looking deeper into a timber cabin. Near plank floor at bottom, dark bunk and lantern at top. Central column calm. Nets, crates, a hanging oil lamp only on LEFT and RIGHT. No people.
+
+--- 卡面 3:4 ---
+
+market_card_jiangbian_pier:
+3:4 close-up of a night pier: wet boards, a lantern, hanging nets. No people.
+
+market_card_jiangbian_nightcatch:
+3:4 close-up of a night catch basket: small silver fish, kelp, clams, one shrimp. No people, no price tags.
+
+market_card_jiangbian_aunt:
+3:4 bust-friendly scene of a fisherwoman from the side/back-three-quarter: headscarf, apron, a basket. Face optional but simple. No text.
+
+market_card_jiangbian_cabin:
+3:4 close-up of a boat cabin hatch: timber, a lantern glow inside, a net. No people.
+
+--- 翻堆底 9:16 ---
+
+stall_rummage_jiangbian_nightcatch:
+Vertical 9:16 night fish crate on a pier. Ice, kelp, small fish. Empty center for a pile sprite. No people.
+
+stall_rummage_jiangbian_pier:
+Vertical 9:16 pier boards close enough to pick leftover fish from a net. Wet wood, lantern, net mesh. Center readable for overlay sprites. No people.
+
+--- 遮挡堆 ---
+
+stall_pile_jiangbian_nightcatch:
+A single heap of small fish, kelp and clams in a woven basket, readable silhouette, isolated on plain light background for cutout. No people, no text.
