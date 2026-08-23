@@ -19,8 +19,13 @@ import {
   type RunEventLog,
   type StallId,
   getMarket,
+  getSpecialty,
   MARKET_ART,
+  nodeEncounter,
   RARITY_STYLE,
+  rummageTitle,
+  sceneBg,
+  sceneTitle,
   stallPileArt,
   stallRummageArt,
 } from '@/sim';
@@ -131,6 +136,7 @@ export class MarketScene implements Scene {
       this._body.removeChildren();
       this._mapView = null;
       if (run.mode === 'map') this._drawMap(Game.designWidth);
+      else if (run.mode === 'play') this._drawPlay(Game.designWidth, Game.logicHeight);
       else this._drawRummage(Game.designWidth, Game.logicHeight);
     }
   }
@@ -144,7 +150,11 @@ export class MarketScene implements Scene {
         .join(',');
       return `rummage|${run.currentNodeId}|${pile}`;
     }
-    return `map|${run.atNodeId ?? '-'}|${run.stepsLeft}|${run.options.join(',')}|${run.peeked.length}|${run.note}`;
+    if (run.mode === 'play' && run.play?.type === 'gather') {
+      const spots = run.play.spots.map((s) => `${s.uid}:${s.taken ? 1 : 0}`).join(',');
+      return `play|${run.play.nodeId}|${run.play.picksLeft}|${spots}`;
+    }
+    return `map|${run.sceneId}|${run.atNodeId ?? '-'}|${run.stepsLeft}|${run.options.join(',')}|${run.peeked.length}|${run.note}`;
   }
 
   private _drawHud(): void {
@@ -184,6 +194,7 @@ export class MarketScene implements Scene {
     const room = KitchenManager.fridgeRoom();
     const bag = RunManager.basket.items;
     const bagN = bag.length;
+    const bagNeed = KitchenManager.fridgeSlotsNeeded(bag);
     const bagWet = bag.filter((it) => {
       try {
         return getItem(it.defId).zone === 'wet';
@@ -195,7 +206,7 @@ export class MarketScene implements Scene {
       icon: HUD_ICON.fridge,
       text: room > 0 ? `空${room}` : '满',
       width: 118,
-      ...(bagN > room || room <= 0 ? { fill: 1, fillColor: 0xE07A5F } : {}),
+      ...(bagNeed > room ? { fill: 1, fillColor: 0xE07A5F } : {}),
       onIconReady: redraw,
     });
     ice.position.set(342, y);
@@ -205,7 +216,7 @@ export class MarketScene implements Scene {
       icon: HUD_ICON.basket,
       text: `干${bagN - bagWet}湿${bagWet}`,
       width: 124,
-      ...(bagN > room ? { fill: 1, fillColor: 0xE07A5F } : {}),
+      ...(bagNeed > room ? { fill: 1, fillColor: 0xE07A5F } : {}),
       onIconReady: redraw,
     });
     this._basketBtn.eventMode = 'static';
@@ -226,9 +237,10 @@ export class MarketScene implements Scene {
     const run = RunManager.run!;
     const h = Game.logicHeight;
     const art = MARKET_ART[run.marketId];
-    this._paintScene(art.routeBg, 'cover');
+    this._paintScene(sceneBg(run.marketId, run.sceneId) || art.routeBg, 'cover');
 
-    const marketName = getMarket(run.marketId).name;
+    const sceneName = sceneTitle(run.marketId, run.sceneId);
+    const marketName = sceneName || getMarket(run.marketId).name;
     const seg = run.visited.length ? ` · 走过 ${run.visited.length} 段` : '';
     const title = makePaperChip(`${marketName}${seg}`, { size: 22 });
     title.position.set(20, Game.safeTop + 58);
@@ -279,7 +291,7 @@ export class MarketScene implements Scene {
       this._body.addChild(bypass);
     }
 
-    const tip = makePaperChip('走左边就够不着最右边 · 岔路不耗天色，还把三道全开', { size: 17 });
+    const tip = makePaperChip('走左边就够不着最右边 · 走进小路会换场景', { size: 17 });
     tip.position.set(Math.round((w - tip.width) / 2), h - 84);
     this._body.addChild(tip);
   }
@@ -340,7 +352,7 @@ export class MarketScene implements Scene {
     view.rows[0].forEach((cell) => {
       const chosen = cell === picked;
       // 进摊的卡放得更大，像整个人钻进摊子里
-      const grow = chosen ? (cell.option.node.stall ? 1.8 : 1.45) : 1.1;
+      const grow = chosen ? (cell.option.node.encounter?.type === 'rummage' || cell.option.node.stall ? 1.8 : 1.45) : 1.1;
       TweenManager.to({
         target: cell.card,
         props: { y: cell.card.y + (chosen ? 170 : 96), alpha: 0 },
@@ -398,6 +410,13 @@ export class MarketScene implements Scene {
     this._shownEvent = ev.nodeId;
     if (ev.gain) this._popFreebie(ev);
     else if (ev.kind === 'recipe' && KitchenManager.peekRecipeUnlock()) ensureRecipeUnlockPanel().present();
+    else if (ev.choices?.length) {
+      this._event.open(ev, (index) => {
+        if (!RunManager.chooseTalk(index)) return false;
+        const after = RunManager.run?.lastEvent;
+        if (after?.gain) this._popFreebie(after);
+      });
+    }
     else this._event.open(ev);
   }
 
@@ -496,24 +515,112 @@ export class MarketScene implements Scene {
     });
   }
 
+  /** 山洞采菌：石壁上看得见的菌，点一下摘一朵，限次数。 */
+  private _drawPlay(w: number, h: number): void {
+    const run = RunManager.run!;
+    const play = run.play;
+    if (!play || play.type !== 'gather') {
+      this._paintScene(sceneBg(run.marketId, run.sceneId), 'cover');
+      const back = makeHudButton('回路线', 140, 44, 0xEFE6D6, 0x3A3228);
+      back.position.set(16, Game.safeTop + 58);
+      back.on('pointertap', () => RunManager.leavePlay());
+      this._body.addChild(back);
+      return;
+    }
+
+    const caveWall = `subpkg_images/stall_rummage_${run.marketId}_cave.jpg`;
+    whenTextureReady(caveWall, () => {
+      if (this.container.parent) this._sync(true);
+    });
+    this._paintScene(
+      isTextureFailed(caveWall) ? sceneBg(run.marketId, run.sceneId) : caveWall,
+      'cover',
+    );
+
+    const back = makeHudButton('回路线', 140, 44, 0xEFE6D6, 0x3A3228);
+    back.position.set(16, Game.safeTop + 58);
+    back.on('pointertap', () => RunManager.leavePlay());
+    this._body.addChild(back);
+
+    const node = run.map.nodes[play.nodeId];
+    const name = makePaperChip(node?.title || '石壁菌子', { size: 24 });
+    name.position.set(168, Game.safeTop + 58);
+    this._body.addChild(name);
+
+    const tip = makePaperChip(
+      play.picksLeft > 0 ? `点菌摘下来 · 还能摘 ${play.picksLeft} 朵` : '手上摘够了，可以出洞',
+      { size: 18 },
+    );
+    tip.position.set(16, Game.safeTop + 110);
+    this._body.addChild(tip);
+
+    play.spots.forEach((spot) => {
+      if (spot.taken) return;
+      const path = `subpkg_images/${spot.defId}.png`;
+      whenTextureReady(path, () => {
+        if (this.container.parent) this._sync(true);
+      });
+      const tex = itemTexture(spot.defId);
+      const x = Math.round(w * spot.x);
+      const y = Math.round(h * spot.y);
+      const wrap = new PIXI.Container();
+      wrap.position.set(x, y);
+      wrap.eventMode = 'static';
+      wrap.cursor = play.picksLeft > 0 ? 'pointer' : 'default';
+      wrap.hitArea = new PIXI.Rectangle(-56, -56, 112, 112);
+      if (isTextureReady(tex)) {
+        const sp = new PIXI.Sprite(tex);
+        sp.anchor.set(0.5);
+        fitSpriteInBox(sp, 110, 110);
+        wrap.addChild(sp);
+      } else {
+        const fallback = new PIXI.Graphics();
+        fallback.beginFill(0x6B4A32);
+        fallback.drawCircle(0, 0, 28);
+        fallback.endFill();
+        wrap.addChild(fallback);
+      }
+      wrap.on('pointertap', () => {
+        if (play.picksLeft <= 0) {
+          Platform.showToast('手上摘够了');
+          return;
+        }
+        const result = RunManager.pickGather(spot.uid);
+        const ev = RunManager.run?.lastEvent;
+        if (ev?.gain) this._popFreebie(ev);
+        if (result === 'need_space') this._basket.open();
+      });
+      this._body.addChild(wrap);
+    });
+  }
+
   private _drawRummage(w: number, h: number): void {
     const run = RunManager.run!;
     const nodeId = run.currentNodeId!;
-    const stallId = run.map.nodes[nodeId].stall as StallId;
-    const stall = STALLS.find((s) => s.id === stallId);
-    itemsForStall(stallId).forEach((def) => {
-      gameTexture(`subpkg_images/${def.id}.png`);
-      gameTexture(`subpkg_images/${def.id}_rotten.png`);
+    const node = run.map.nodes[nodeId];
+    const enc = nodeEncounter(node);
+    const specialty = enc.type === 'rummage' ? enc.specialty : undefined;
+    const stallId = (enc.type === 'rummage' && enc.stall) || node.stall;
+    const stall = stallId ? STALLS.find((s) => s.id === stallId) : undefined;
+    const spec = specialty ? getSpecialty(specialty) : undefined;
+    const preloadIds = spec
+      ? [...spec.common, ...spec.rare, ...spec.epic]
+      : stallId
+        ? itemsForStall(stallId).map((def) => def.id)
+        : [];
+    preloadIds.forEach((id) => {
+      gameTexture(`subpkg_images/${id}.png`);
+      gameTexture(`subpkg_images/${id}_rotten.png`);
     });
     if (stallId === 'fish') gameTexture(GOD_FISH);
-    this._paintScene(stallRummageArt(run.marketId, stallId), 'cover');
+    this._paintScene(stallRummageArt(run.marketId, stallId, specialty), 'cover');
 
     const back = makeHudButton('回路线', 140, 44, 0xEFE6D6, 0x3A3228);
     back.position.set(16, Game.safeTop + 58);
     back.on('pointertap', () => RunManager.leaveStall());
     this._body.addChild(back);
 
-    const name = makePaperChip(stall?.name ?? '', { size: 24 });
+    const name = makePaperChip(rummageTitle(node) || stall?.name || node.title || '摊', { size: 24 });
     name.position.set(168, Game.safeTop + 58);
     this._body.addChild(name);
 
@@ -528,7 +635,7 @@ export class MarketScene implements Scene {
       h: 280,
     };
     this._stackPos = { x: Math.round(w * 0.5), y: Math.round(h * 0.60) };
-    this._body.addChild(this._stallPile(nodeId, stallId, this._stackPos.x, this._stackPos.y));
+    this._body.addChild(this._stallPile(nodeId, stallId, this._stackPos.x, this._stackPos.y, specialty));
 
     const placed = this._packPile(RunManager.currentPile(), table);
     placed.forEach((slot) => {
@@ -554,7 +661,7 @@ export class MarketScene implements Scene {
     });
   }
 
-  private _stallPile(nodeId: string, stallId: StallId, cx: number, cy: number): PIXI.Container {
+  private _stallPile(nodeId: string, stallId: StallId | undefined, cx: number, cy: number, specialty?: string): PIXI.Container {
     const root = new PIXI.Container();
     const left = RunManager.crateLeft().length;
     if (this._crateMax[nodeId] == null) this._crateMax[nodeId] = Math.max(left, 1);
@@ -563,7 +670,7 @@ export class MarketScene implements Scene {
     const kick = this._pileKick;
     this._pileKick = 0;
     const fromRatio = left < max && kick > 0 ? Math.min(1, (left + kick) / max) : ratio;
-    const path = stallPileArt(RunManager.run!.marketId, stallId);
+    const path = stallPileArt(RunManager.run!.marketId, stallId, specialty);
     const tex = gameTexture(path);
     whenTextureReady(path, () => {
       if (this.container.parent) this._sync(true);
@@ -836,7 +943,7 @@ export class MarketScene implements Scene {
       return;
     }
     const result = RunManager.take(uid);
-    if (result === 'rotten') Platform.showToast('坏了，丢掉');
+    if (result === 'rotten') Platform.showToast('坏了，捡不了');
     if (result === 'need_space') this._basket.open(uid);
   }
 

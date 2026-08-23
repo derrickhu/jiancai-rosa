@@ -1,13 +1,17 @@
 import type { MarketId } from './destinations';
+import { encounterFromKind, type Encounter } from './encounters';
 import { STALLS, stallsForMarket, type StallId } from './items';
 import {
   CARD_WEIGHTS,
   EXTRA_LAYERS,
+  MARKET_ART,
   MARKET_PLAN,
+  RECIPE_VISIT_CHANCE,
   STALL_WEIGHTS,
   paystallFee,
   type CardKind,
 } from './marketEvents';
+import { getSpecialty } from './specialties';
 import { mulberry32, rngInt, rngPick, rngShuffle, rngWeighted, type Rng } from './rng';
 
 /** 左中右三条道。卡片按车道对齐摆，「选了左边右边就过不去」才看得出来。 */
@@ -25,17 +29,29 @@ export interface MapNode {
   fee: number;
   /** 厨艺门槛，0 为不限 */
   cookNeed: number;
-  /** 耗几步天色。岔路 0 步。 */
+  /** 耗几步天色 */
   steps: number;
   next: string[];
+  templateId?: string;
+  encounter?: Encounter;
+  title?: string;
+  cardArt?: string;
+  sceneId?: string;
+}
+
+export interface RouteScene {
+  id: string;
+  bg: string;
+  layers: string[][];
 }
 
 export interface MarketMap {
   marketId: MarketId;
   seed: number;
   nodes: Record<string, MapNode>;
-  /** 每层的 nodeId，纵向推进 */
+  /** 主路每层的 nodeId */
   layers: string[][];
+  scenes: Record<string, RouteScene>;
 }
 
 /** 这几种卡要走过一次才明牌，之前只显示背面。 */
@@ -60,30 +76,41 @@ const CARD_NAME: Record<CardKind, string> = {
   favor: '街坊人情',
   deep: '巷子深处',
   recipe: '油纸菜谱',
+  talk: '路人',
+  gather: '可摘',
+  branch: '小路',
 };
 
 const CARD_HINT: Record<CardKind, string> = {
   stall: '进去翻剩货',
   paystall: '要价高，剩得多',
   freebie: '白捡一件进篮',
-  fork: '不耗天色，三道全开',
+  fork: '走哪边，后面的牌会不一样',
   deadend: '白走一步',
   empty: '没货，看清下一层',
   favor: '下一摊免费还慢',
   deep: '再往里走一段',
   recipe: '一张油纸，上面有菜',
+  talk: '说两句，可能有东西',
+  gather: '看得见，点了就摘',
+  branch: '走进去，场景会换',
 };
 
 export function cardName(node: MapNode, revealed: boolean): string {
   if (!revealed && isMysteryCard(node.kind)) return '？';
-  if (node.kind === 'stall') return STALL_NAME[node.stall!];
-  // 卡面窄，收费摊去掉「摊」字腾出「好货」两个字
-  if (node.kind === 'paystall') return `${STALL_NAME[node.stall!].replace(/摊$/, '')}·好货`;
+  if (node.title) return node.title;
+  if (node.kind === 'stall' && node.stall) return STALL_NAME[node.stall];
+  if (node.kind === 'stall' && node.encounter && 'specialty' in node.encounter && node.encounter.specialty) {
+    return getSpecialty(node.encounter.specialty)?.name ?? '专属摊';
+  }
+  if (node.kind === 'paystall' && node.stall) return `${STALL_NAME[node.stall].replace(/摊$/, '')}·好货`;
   return CARD_NAME[node.kind];
 }
 
 export function cardHint(node: MapNode, revealed: boolean): string {
   if (!revealed && isMysteryCard(node.kind)) return '走过才知道';
+  if (node.kind === 'empty' && !node.next.length) return '没货，这条到头了';
+  if (node.kind === 'stall' || node.kind === 'paystall') return CARD_HINT[node.kind];
   return CARD_HINT[node.kind];
 }
 
@@ -122,9 +149,9 @@ export function buildMarketMap(marketId: MarketId, seed: number, opts?: { allowR
       const pool = CARD_WEIGHTS[marketId].filter(([kind]) => {
         if (kind === 'deep' && !plan.allowDeep) return false;
         if (kind === 'deadend' && deadends >= plan.maxDeadend) return false;
-        if (kind === 'recipe' && opts?.allowRecipe === false) return false;
-        // 开局第一层不给死胡同，也不给岔路，别让人第一下就白走
-        if (layer === 0 && (kind === 'deadend' || kind === 'fork')) return false;
+        if (kind === 'recipe') return false;
+        if (kind === 'fork') return false;
+        if (layer === 0 && kind === 'deadend') return false;
         return true;
       });
       for (let i = 0; i < width; i++) {
@@ -157,8 +184,9 @@ export function buildMarketMap(marketId: MarketId, seed: number, opts?: { allowR
         kind,
         fee: 0,
         cookNeed: 0,
-        steps: kind === 'fork' ? 0 : 1,
+        steps: 1,
         next: [],
+        sceneId: 'main',
       };
       if (kind === 'stall' || kind === 'paystall') {
         let stall = stallCycle[cursor % stallCycle.length];
@@ -180,7 +208,17 @@ export function buildMarketMap(marketId: MarketId, seed: number, opts?: { allowR
   });
 
   linkLayers(rng, nodes, layers);
-  return { marketId, seed, nodes, layers };
+  Object.values(nodes).forEach((node) => {
+    if (!node.encounter) node.encounter = encounterFromKind(node);
+  });
+
+  const scenes: Record<string, RouteScene> = {
+    main: { id: 'main', bg: MARKET_ART[marketId].routeBg, layers },
+  };
+  if (marketId === 'shanwu') applyShanwuBeats(nodes, layers, scenes, rng);
+  placeVisitRecipe(nodes, layers, rng, opts?.allowRecipe !== false);
+
+  return { marketId, seed, nodes, layers, scenes };
 }
 
 /** 两张卡时换着贴左/贴右/分两边，别每层都长一个样。 */
@@ -221,7 +259,7 @@ function nearestInLane(nodes: Record<string, MapNode>, ids: string[], lane: numb
 
 /**
  * 只能走到相邻车道，最多两张：选了左边，最右边那张就过不去。
- * 岔路例外，它把整排都打开——这才是「岔路」的意思。
+ * 「岔路」是走哪边，不是一张名叫岔路的卡。
  */
 function linkLayers(rng: Rng, nodes: Record<string, MapNode>, layers: string[][]): void {
   for (let i = 0; i < layers.length - 1; i++) {
@@ -229,10 +267,6 @@ function linkLayers(rng: Rng, nodes: Record<string, MapNode>, layers: string[][]
     const nxt = layers[i + 1];
     cur.forEach((id) => {
       const node = nodes[id];
-      if (node.kind === 'fork') {
-        node.next = nxt.slice();
-        return;
-      }
       if (node.kind === 'deadend') {
         node.next = [nearestInLane(nodes, nxt, node.lane)];
         return;
@@ -261,5 +295,222 @@ function linkLayers(rng: Rng, nodes: Record<string, MapNode>, layers: string[][]
 }
 
 export function mapStallNodes(map: MarketMap): MapNode[] {
-  return Object.values(map.nodes).filter((n) => !!n.stall);
+  return Object.values(map.nodes).filter((n) => !!n.stall || n.encounter?.type === 'rummage');
+}
+
+function makeNode(partial: Omit<MapNode, 'fee' | 'cookNeed' | 'next'> & Partial<MapNode>): MapNode {
+  const node: MapNode = {
+    fee: 0,
+    cookNeed: 0,
+    next: [],
+    ...partial,
+  };
+  if (!node.encounter) node.encounter = encounterFromKind(node);
+  return node;
+}
+
+const RECIPE_HOST: CardKind[] = ['freebie', 'empty', 'favor', 'deadend'];
+
+/** 一局最多一张油纸。先掷整局概率，再挑一张主路事件卡换掉。 */
+function placeVisitRecipe(
+  nodes: Record<string, MapNode>,
+  layers: string[][],
+  rng: Rng,
+  allow: boolean,
+): void {
+  const extra = Object.values(nodes).filter((n) => n.kind === 'recipe').slice(allow ? 1 : 0);
+  for (const node of extra) {
+    node.kind = 'empty';
+    node.encounter = encounterFromKind(node);
+  }
+  if (!allow || Object.values(nodes).some((n) => n.kind === 'recipe')) return;
+  if (rng() >= RECIPE_VISIT_CHANCE) return;
+  const hosts = layers.flatMap((ids, layer) => (
+    layer === 0 ? [] : ids.filter((id) => {
+      const n = nodes[id];
+      return (!n.sceneId || n.sceneId === 'main') && RECIPE_HOST.includes(n.kind);
+    })
+  ));
+  const id = hosts.length ? rngPick(rng, hosts) : undefined;
+  if (!id) return;
+  const old = nodes[id];
+  nodes[id] = {
+    ...old,
+    kind: 'recipe',
+    stall: undefined,
+    title: undefined,
+    templateId: undefined,
+    encounter: { type: 'recipe' },
+  };
+}
+
+/** 山坞：主路侧道塞一条杂草小路，走进去换场景；另放一张菌摊。 */
+function applyShanwuBeats(
+  nodes: Record<string, MapNode>,
+  layers: string[][],
+  scenes: Record<string, RouteScene>,
+  rng: Rng,
+): void {
+  const replaceable = (id: string) => {
+    const n = nodes[id];
+    return n.kind !== 'stall' && n.kind !== 'paystall' && n.kind !== 'recipe';
+  };
+  const side = layers
+    .slice(4, 9)
+    .flatMap((ids) => ids)
+    .filter((id) => replaceable(id) && nodes[id].lane !== 1);
+  const pathId = side.length ? rngPick(rng, side) : layers.flat().find(replaceable);
+  if (pathId) {
+    const old = nodes[pathId];
+    nodes[pathId] = {
+      ...old,
+      kind: 'branch',
+      stall: undefined,
+      title: '杂草小路',
+      templateId: 'shanwu_hidden_path',
+      cardArt: 'subpkg_images/market_card_shanwu_trail.jpg',
+      encounter: { type: 'branch', sceneId: 'shanwu_trail' },
+    };
+  }
+
+  const fungusCandidates = layers
+    .slice(2, 7)
+    .flatMap((ids) => ids)
+    .filter((id) => id !== pathId && replaceable(id));
+  const fungusId = fungusCandidates.length ? rngPick(rng, fungusCandidates) : undefined;
+  if (fungusId) {
+    const old = nodes[fungusId];
+    nodes[fungusId] = {
+      ...old,
+      kind: 'stall',
+      stall: undefined,
+      title: '菌摊',
+      templateId: 'shanwu_fungus',
+      cardArt: 'subpkg_images/market_card_shanwu_fungus.jpg',
+      encounter: { type: 'rummage', specialty: 'fungus' },
+    };
+  }
+
+  const trail: MapNode[] = [
+    makeNode({
+      id: 'sw_t0_0',
+      layer: 0,
+      lane: 0,
+      kind: 'freebie',
+      steps: 1,
+      sceneId: 'shanwu_trail',
+      title: '篓底一把',
+      templateId: 'shanwu_trail_freebie',
+    }),
+    makeNode({
+      id: 'sw_t0_1',
+      layer: 0,
+      lane: 1,
+      kind: 'talk',
+      steps: 1,
+      sceneId: 'shanwu_trail',
+      title: '砍柴的',
+      templateId: 'shanwu_woodcutter',
+      cardArt: 'subpkg_images/market_card_shanwu_woodcutter.jpg',
+      encounter: { type: 'talk', scriptId: 'shanwu_woodcutter' },
+    }),
+    makeNode({
+      id: 'sw_t0_2',
+      layer: 0,
+      lane: 2,
+      kind: 'empty',
+      steps: 1,
+      sceneId: 'shanwu_trail',
+      title: '收完的摊',
+      templateId: 'shanwu_trail_empty',
+    }),
+    makeNode({
+      id: 'sw_t1_0',
+      layer: 1,
+      lane: 0,
+      kind: 'deadend',
+      steps: 1,
+      sceneId: 'shanwu_trail',
+      title: '竹林断了',
+      templateId: 'shanwu_trail_deadend',
+    }),
+    makeNode({
+      id: 'sw_t1_1',
+      layer: 1,
+      lane: 1,
+      kind: 'branch',
+      steps: 1,
+      sceneId: 'shanwu_trail',
+      title: '山洞',
+      templateId: 'shanwu_cave_mouth',
+      cardArt: 'subpkg_images/market_card_shanwu_cave.jpg',
+      encounter: { type: 'branch', sceneId: 'shanwu_cave' },
+    }),
+    makeNode({
+      id: 'sw_t1_2',
+      layer: 1,
+      lane: 2,
+      kind: 'stall',
+      steps: 1,
+      sceneId: 'shanwu_trail',
+      title: '菌摊',
+      templateId: 'shanwu_trail_fungus',
+      cardArt: 'subpkg_images/market_card_shanwu_fungus.jpg',
+      encounter: { type: 'rummage', specialty: 'fungus' },
+    }),
+  ];
+  const cave: MapNode[] = [
+    makeNode({
+      id: 'sw_c0_0',
+      layer: 0,
+      lane: 0,
+      kind: 'freebie',
+      steps: 1,
+      sceneId: 'shanwu_cave',
+      title: '石缝里',
+      templateId: 'shanwu_cave_freebie',
+    }),
+    makeNode({
+      id: 'sw_c0_1',
+      layer: 0,
+      lane: 1,
+      kind: 'gather',
+      steps: 1,
+      sceneId: 'shanwu_cave',
+      title: '石壁菌子',
+      templateId: 'shanwu_mushroom_wall',
+      cardArt: 'subpkg_images/market_card_shanwu_cave.jpg',
+      encounter: { type: 'gather', pool: ['mushroom', 'wood_ear', 'matsutake'], picks: 3 },
+    }),
+    makeNode({
+      id: 'sw_c0_2',
+      layer: 0,
+      lane: 2,
+      kind: 'deadend',
+      steps: 1,
+      sceneId: 'shanwu_cave',
+      title: '塌方了',
+      templateId: 'shanwu_cave_deadend',
+    }),
+  ];
+  [...trail, ...cave].forEach((node) => {
+    nodes[node.id] = node;
+  });
+  const trailLayers = [
+    ['sw_t0_0', 'sw_t0_1', 'sw_t0_2'],
+    ['sw_t1_0', 'sw_t1_1', 'sw_t1_2'],
+  ];
+  const caveLayers = [['sw_c0_0', 'sw_c0_1', 'sw_c0_2']];
+  linkLayers(rng, nodes, trailLayers);
+  linkLayers(rng, nodes, caveLayers);
+  scenes.shanwu_trail = {
+    id: 'shanwu_trail',
+    bg: 'subpkg_images/market_route_shanwu_trail.jpg',
+    layers: trailLayers,
+  };
+  scenes.shanwu_cave = {
+    id: 'shanwu_cave',
+    bg: 'subpkg_images/market_route_shanwu_cave.jpg',
+    layers: caveLayers,
+  };
 }

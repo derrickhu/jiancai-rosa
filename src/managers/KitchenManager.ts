@@ -14,8 +14,13 @@ import {
   cookRecipe,
   COOK_LEVEL_MAX,
   clampCookLevel,
+  fridgeAcceptsOuting,
+  fridgeCanFit,
   fridgeOwnCap,
   fridgeRoom,
+  fridgeSlotsNeeded,
+  fridgeUnpackNeed,
+  type FridgeDraft,
   furnLevel,
   grantCookXp,
   houseLevel,
@@ -23,7 +28,9 @@ import {
   noteDex,
   regenStamina,
   sellItems,
+  selectVehicle,
   spendStamina,
+  buyVehicle as purchaseVehicle,
   todayKey,
   type KitchenSave,
   type RecipeId,
@@ -32,6 +39,7 @@ import { foamWetCols, outingDryCells } from '@/sim/basket';
 import { furnLabel, houseLabel, type FurnId } from '@/sim/kitchenLayout';
 import type { CardKind } from '@/sim/marketEvents';
 import type { MarketId } from '@/sim/destinations';
+import { vehicleById, type VehicleId } from '@/sim/vehicles';
 import type { ExtractedItem } from '@/sim/run';
 
 class KitchenManagerClass {
@@ -82,7 +90,7 @@ class KitchenManagerClass {
   }
 
   receiveExtract(items: ExtractedItem[]): { needsPick: boolean } {
-    if (items.length <= fridgeRoom(this.save)) {
+    if (fridgeCanFit(this.save, items)) {
       this.pendingHaul = null;
       SaveManager.replace(ingestExtract(this.save, items));
       this.emit();
@@ -93,8 +101,7 @@ class KitchenManagerClass {
   }
 
   unpackNeed(): number {
-    const haul = this.pendingHaul ?? [];
-    return Math.max(0, haul.length - fridgeRoom(this.save));
+    return fridgeUnpackNeed(this.save, this.pendingHaul ?? []);
   }
 
   commitUnpack(sellHaulUids: string[], sellFridgeUids: string[]): { error?: string; gained: number; kept: number } {
@@ -106,6 +113,9 @@ class KitchenManagerClass {
     const keep = haul.filter((it) => !haulSet.has(it.uid));
     const soldHaul = haul.filter((it) => haulSet.has(it.uid));
     const fridgeSold = sellItems(this.save, sellFridgeUids);
+    if (!fridgeCanFit(fridgeSold.save, keep)) {
+      return { error: '还是装不下，再卖掉几件', gained: 0, kept: 0 };
+    }
     const gold = soldHaul.reduce((sum, it) => sum + it.sell, 0);
     let save = noteDex(fridgeSold.save, haul);
     save = ingestExtract({ ...save, money: save.money + gold }, keep);
@@ -117,6 +127,33 @@ class KitchenManagerClass {
 
   fridgeRoom(): number {
     return fridgeRoom(this.save);
+  }
+
+  fridgeAcceptsOuting(): boolean {
+    return fridgeAcceptsOuting(this.save);
+  }
+
+  fridgeSlotsNeeded(items: FridgeDraft[]): number {
+    return fridgeSlotsNeeded(this.save, items);
+  }
+
+  buyVehicle(id: VehicleId): boolean {
+    const { save, error } = purchaseVehicle(this.save, id);
+    if (error) {
+      Platform.showToast(error);
+      return false;
+    }
+    SaveManager.replace(save);
+    this.emit();
+    Platform.showToast(`${vehicleById(id).name} 买下了`, 'success');
+    return true;
+  }
+
+  setVehicle(id: VehicleId): void {
+    const next = selectVehicle(this.save, id);
+    if (next === this.save) return;
+    SaveManager.replace(next);
+    this.emit();
   }
 
   trySpend(amount: number): boolean {
@@ -135,12 +172,10 @@ class KitchenManagerClass {
       Platform.showToast('先点选冰箱里的食材');
       return;
     }
-    const rotten = this.save.fridge.filter((it) => uids.includes(it.uid) && it.quality === 'rotten');
     const { save, gained } = sellItems(this.save, uids);
     SaveManager.replace(save);
     this.emit();
     if (gained > 0) Platform.showToast(`卖出 ${gained} 金币`);
-    else if (rotten.length === uids.length) Platform.showToast('坏了卖不掉，扔掉了');
     else Platform.showToast('这些卖不掉');
   }
 

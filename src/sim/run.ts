@@ -10,12 +10,15 @@ import {
 import type { MarketId } from './destinations';
 import { PACK_RATE, STALL_FEE } from './packing';
 import { FAVOR_PACK_RATE, FREEBIE_STALLS, MARKET_PLAN, paystallPileBonus, stallPileRange, type CardKind } from './marketEvents';
+import { isRummageNode, mapRummageNodes, nodeEncounter } from './encounters';
 import { buildMarketMap, mapStallNodes, type MapNode, type MarketMap } from './marketMap';
+import type { SceneResume } from './routeScenes';
+import { getSpecialty, rollSpecialtyItem } from './specialties';
 import { mulberry32, newSeed, rngInt, rngPick, type Rng } from './rng';
 import type { BasketItem, BasketState } from './basket';
 
-/** 天色（步数）管全局。摊内不再倒计时装箱。 */
-export type RunMode = 'map' | 'rummage';
+/** 天色（步数）管全局。摊内不再倒计时装箱。play 是采集 / 小游戏。 */
+export type RunMode = 'map' | 'rummage' | 'play';
 export type ExtractKind = 'safe' | 'messy';
 
 export interface PileItem {
@@ -39,7 +42,28 @@ export interface RunEventLog {
   text: string;
   /** 白捡到的东西；没捡到东西的卡是 null */
   gain: { defId: string; quality: Quality; taken: boolean } | null;
+  scriptId?: string;
+  speaker?: string;
+  portrait?: string | null;
+  choices?: Array<{ label: string; steps?: number }>;
 }
+
+export interface GatherSpot {
+  uid: string;
+  defId: string;
+  taken: boolean;
+  x: number;
+  y: number;
+}
+
+export interface GatherPlay {
+  type: 'gather';
+  nodeId: string;
+  picksLeft: number;
+  spots: GatherSpot[];
+}
+
+export type PlayState = GatherPlay;
 
 export interface RunState {
   seed: number;
@@ -71,6 +95,11 @@ export interface RunState {
   note: string;
   /** 最近一张事件卡的战果，给弹窗用 */
   lastEvent?: RunEventLog;
+  sceneId: string;
+  bag: Array<{ id: string; qty: number }>;
+  flags: string[];
+  returnStack: SceneResume[];
+  play?: PlayState;
 }
 
 export interface ExtractedItem {
@@ -120,14 +149,19 @@ export function createRun(opts: {
 
   const piles: Record<string, PileItem[]> = {};
   const packing: Record<string, number> = {};
-  for (const node of mapStallNodes(map)) {
-    const range = stallPileRange(marketId, node.stall!);
+  for (const node of mapRummageNodes(map)) {
+    const enc = nodeEncounter(node);
+    if (enc.type !== 'rummage') continue;
     const paid = node.kind === 'paystall';
+    const spec = enc.specialty ? getSpecialty(enc.specialty) : undefined;
+    const range = spec ? spec.count : stallPileRange(marketId, node.stall ?? 'egg');
     const bonus = paid ? paystallPileBonus(marketId) : 0;
     const n = rngInt(rng, range[0] + bonus, range[1] + bonus);
     const list: PileItem[] = [];
     for (let i = 0; i < n; i++) {
-      const def = rollMarketItem(marketId, node.stall!, cookLevel, rng, opts.wanted);
+      const def = spec
+        ? rollSpecialtyItem(spec.id, rng, cookLevel)
+        : rollMarketItem(marketId, node.stall ?? 'egg', cookLevel, rng, opts.wanted);
       list.push({
         uid: nextUid('p'),
         defId: def.id,
@@ -175,6 +209,10 @@ export function createRun(opts: {
     ended: false,
     extract: undefined,
     note: '天还没黑，挑条路走。',
+    sceneId: 'main',
+    bag: [],
+    flags: [],
+    returnStack: [],
   };
 }
 
@@ -184,11 +222,11 @@ export function hasGodPick(state: RunState): boolean {
 
 /** 摊位费：第一摊白翻，人情也白翻，之后按摊型收。收费摊按卡上的标价。 */
 export function nodeFee(state: RunState, node: MapNode): number {
-  if (!node.stall) return 0;
+  if (!isRummageNode(node)) return 0;
   if (state.paid.includes(node.id)) return 0;
   if (state.freePass) return 0;
   if (node.kind === 'paystall') return node.fee;
-  return state.paid.length === 0 ? 0 : STALL_FEE[node.stall];
+  return state.paid.length === 0 ? 0 : STALL_FEE[node.stall ?? 'egg'];
 }
 
 /** 天色不够、钱不够、厨艺不够都拦在这。看得见进不去，别把卡藏起来。 */
@@ -212,7 +250,11 @@ export function currentNode(state: RunState): MapNode | null {
 }
 
 export function currentStallId(state: RunState): StallId | null {
-  return currentNode(state)?.stall ?? null;
+  const node = currentNode(state);
+  if (!node) return null;
+  const enc = nodeEncounter(node);
+  if (enc.type === 'rummage' && enc.stall) return enc.stall;
+  return node.stall ?? null;
 }
 
 export function packRate(state: RunState, nodeId: string): number {
@@ -245,7 +287,7 @@ export function rollFreebie(
 }
 
 export function settleExtract(kind: ExtractKind, basket: BasketState): ExtractResult {
-  const items: ExtractedItem[] = basket.items.map((it) => ({
+  const items: ExtractedItem[] = basket.items.filter((it) => it.quality !== 'rotten').map((it) => ({
     uid: it.uid,
     defId: it.defId,
     quality: it.quality,

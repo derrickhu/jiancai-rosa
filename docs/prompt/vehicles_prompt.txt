@@ -1,0 +1,13 @@
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading, gentle highlights, warm wood and paper colors. Whole unprocessed ingredients only: never sliced, never cross-section, never plated garnish cuts. Readable silhouette at 64px. Warm market-kitchen lighting, slightly golden, tidy not grimy, no horror, no photorealism, no pixel art, no neon. NO TEXT, no labels, no numbers, no captions, no watermark, no UI chrome.
+
+A 2x2 even grid on solid white. Four isolated outing-to-market props, one per cell, three-quarter view, centered, generous margin, no object crossing cell edges, no people, no road, no storefront.
+
+1 top-left: a pair of worn cream cloth shoes for walking to the night market, tied together by the laces, a small woven veggie basket and a cloth grocery sack tucked beside them, one green leaf peeking out. Shoes are the hero.
+
+2 top-right: a cute cream-and-walnut bicycle for hauling leftovers. Front wicker basket stuffed with whole bokchoy and a cloth bag. Rear rack has two hanging canvas panniers and a small metal water bucket. Kickstand down. No rider.
+
+3 bottom-left: a cute small electric scooter / e-bike, cream body, walnut seat, rear crate box with a foam cooler and hanging produce bags, a plastic water jug strapped on. Looks ready for a long market run. No rider.
+
+4 bottom-right: a tiny cream-and-walnut kei farm truck, open cargo bed stacked with wood crates, woven baskets, a water bucket and a foam cooler. Cab empty. Clearly a grocery-run truck, not a construction vehicle.
+
+Each cell is a single game item icon, same scale language, white background only.

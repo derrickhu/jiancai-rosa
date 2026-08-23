@@ -1,0 +1,40 @@
+Cozy casual mobile-game cartoon matching the attached 巷口 / 山坞 reference. Clean medium-thick dark-brown outlines (#2A2018), soft flat cel shading, simple readable shapes, warm wood and paper colors, hanging yellow bulbs. Same outline weight and simplicity as 巷口.
+
+FORBIDDEN: photorealism, cinematic concept art, painterly realism, photography, lens flare, volumetric fog, god-rays, hyper-detailed wood pores or stone grit, muddy blur, 3D render.
+
+NO TEXT, no labels, no numbers, no captions, no watermark, no UI chrome, no Chinese characters, no shop-sign lettering.
+
+--- 路线底图 9:16，中间两列留给卡片，细节只靠左右 ---
+
+market_route_shanwu_trail:
+Vertical 9:16 mountain trail. Looking forward along a narrow grass-and-stone footpath through bamboo and pines. Far path at top, near damp stones at bottom. Central vertical column (middle two thirds) calm and uncluttered: plain path and soft shadow only. Ferns, moss, fallen bamboo leaves, a distant cave mouth hint pushed to LEFT and RIGHT edges. Cool green, warm gold sunrise. No people, no animals.
+
+market_route_shanwu_cave:
+Vertical 9:16 cave interior. Looking deeper into a stone cave. Near damp floor at bottom, dark tunnel at top. Central column calm: plain wet stone floor, low contrast. Stalactites, moss, faint yellow lantern glow, mushroom clusters only on LEFT and RIGHT walls. Cool slate and warm amber. No people, no animals, no text.
+
+--- 卡面 3:4，铺满窗口 ---
+
+market_card_shanwu_trail:
+3:4 close-up of a hidden grassy mountain path between tall weeds and bamboo. Worn stepping stones, no people, no animals. Warm cartoon.
+
+market_card_shanwu_cave:
+3:4 close-up of a round cave mouth in a mossy rock face, dark inside, a few mushrooms at the rim. No people.
+
+market_card_shanwu_fungus:
+3:4 close-up of a mountain fungus stall: bamboo tray, whole shiitake, wood ear clusters, one matsutake. No people, no price tags.
+
+market_card_shanwu_woodcutter:
+3:4 bust-friendly scene of a mountain woodcutter from the side/back-three-quarter: straw hat, brown jacket, bundle of firewood, warm cartoon. Face optional but simple if shown. No text.
+
+--- 翻堆底 9:16 ---
+
+stall_rummage_shanwu_fungus:
+Vertical 9:16 fungus stall table in a mountain hollow. Bamboo trays of whole shiitake and wood ear, mossy stone, straw mat. Empty space in the center for a clickable pile sprite. No people.
+
+stall_rummage_shanwu_cave:
+Vertical 9:16 cave wall close enough to pick mushrooms. Damp grey-brown stone, moss, a few painted mushrooms as atmosphere on the sides. Center stays readable for overlay sprites. Warm lantern. No people.
+
+--- 遮挡堆透明 PNG ---
+
+stall_pile_shanwu_fungus:
+A single heap of whole mountain mushrooms and wood ear on a bamboo tray, readable silhouette, isolated on plain light background for cutout. No people, no text.

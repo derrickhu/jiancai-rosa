@@ -130,9 +130,15 @@ export class VerticalScroller {
   }
 
   private _onDown = (e: PIXI.FederatedPointerEvent): void => {
-    if (!this._visible() || this._max <= 0) return;
+    if (!this._visible() || this._max <= 0) {
+      this.moved = false;
+      return;
+    }
     const p = this._host.toLocal(e.global);
-    if (!this._inHit(p)) return;
+    if (!this._inHit(p)) {
+      this.moved = false;
+      return;
+    }
     this._dragging = true;
     this.moved = false;
     this._dragY = p.y;
@@ -158,9 +164,15 @@ export class VerticalScroller {
   private _onWxStart = (res: {
     touches?: Array<{ clientX?: number; clientY?: number; x?: number; y?: number }>;
   }): void => {
-    if (!this._visible() || this._max <= 0) return;
+    if (!this._visible() || this._max <= 0) {
+      this.moved = false;
+      return;
+    }
     const p = this._wxPoint(res);
-    if (!p || !this._inHit(p)) return;
+    if (!p || !this._inHit(p)) {
+      this.moved = false;
+      return;
+    }
     this._dragging = true;
     this.moved = false;
     this._dragY = p.y;

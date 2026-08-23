@@ -27,6 +27,7 @@ export interface RecipeFood {
   inspected: boolean;
   freshness: number;
   kind?: string;
+  qty?: number;
 }
 
 export interface RecipeDef {
@@ -353,6 +354,10 @@ export function remainingMarketRecipes(marketId: MarketId, found: RecipeId[]): R
   return MARKET_RECIPE_POOL[marketId].filter((id) => !have.has(id));
 }
 
+function foodQty(it: RecipeFood): number {
+  return Math.max(1, Math.floor(it.qty ?? 1));
+}
+
 function usableFoods(save: RecipeUnlockView): RecipeFood[] {
   return save.fridge.filter((it) => it.kind !== 'dish' && it.quality !== 'rotten');
 }
@@ -368,7 +373,7 @@ export function recipeNeeds(save: RecipeUnlockView, recipeId: RecipeId): RecipeN
   return tallyNeeds(recipe.needs).map(({ id, n }) => ({
     label: getItem(id).name,
     iconId: id,
-    have: foods.filter((it) => it.defId === id).length,
+    have: foods.filter((it) => it.defId === id).reduce((sum, it) => sum + foodQty(it), 0),
     need: n,
   }));
 }
@@ -378,18 +383,29 @@ export function pickRecipeFoods(save: RecipeUnlockView, recipeId: RecipeId): Rec
   const recipe = recipeById(recipeId);
   if (!recipe) return [];
   const picked: RecipeFood[] = [];
-  const used = new Set<string>();
+  const left = new Map<string, number>();
+  for (const it of foods) {
+    if (it.uid) left.set(it.uid, foodQty(it));
+  }
   for (const id of recipe.needs) {
-    const hit = freshest(foods.filter((it) => it.defId === id && !used.has(it.uid ?? '')));
+    const hit = freshest(foods.filter((it) => it.defId === id && (it.uid ? (left.get(it.uid) ?? 0) > 0 : true)));
     if (!hit) return [];
-    if (hit.uid) used.add(hit.uid);
-    picked.push(hit);
+    if (hit.uid) left.set(hit.uid, (left.get(hit.uid) ?? 1) - 1);
+    picked.push({ ...hit, qty: 1 });
   }
   return picked;
 }
 
 export function recipeCanCook(save: RecipeUnlockView, recipeId: RecipeId): boolean {
-  return isRecipeUnlocked(save, recipeId) && pickRecipeFoods(save, recipeId).length > 0;
+  return recipeCookCount(save, recipeId) > 0;
+}
+
+/** 按冰箱现有份数，这道菜现在能连做几份。材料共用时各自独立算。 */
+export function recipeCookCount(save: RecipeUnlockView, recipeId: RecipeId): number {
+  if (!isRecipeUnlocked(save, recipeId)) return 0;
+  const needs = recipeNeeds(save, recipeId);
+  if (!needs.length) return 0;
+  return Math.min(...needs.map((row) => Math.floor(row.have / row.need)));
 }
 
 export function recipeXp(save: { recipesCooked: readonly RecipeId[] }, recipeId: RecipeId): number {

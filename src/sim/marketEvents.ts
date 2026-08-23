@@ -2,7 +2,9 @@ import type { MarketId } from './destinations';
 import { STALLS, type StallId } from './items';
 import { STALL_FEE } from './packing';
 
-export type CardKind = 'stall' | 'paystall' | 'freebie' | 'fork' | 'deadend' | 'empty' | 'favor' | 'deep' | 'recipe';
+export type CardKind =
+  | 'stall' | 'paystall' | 'freebie' | 'fork' | 'deadend' | 'empty' | 'favor' | 'deep' | 'recipe'
+  | 'talk' | 'gather' | 'branch';
 
 export interface MarketPlan {
   /** 天色：一局能付出的步数。走完天黑收摊。 */
@@ -16,7 +18,7 @@ export interface MarketPlan {
   allowDeep: boolean;
 }
 
-/** 层数比步数多，天色才是真的紧；岔路 0 步 = 白送一层。 */
+/** 层数比步数多，天色才是真的紧。走哪边由车道连通决定，不再发「岔路」卡。 */
 export const EXTRA_LAYERS = 3;
 
 export const MARKET_PLAN: Record<MarketId, MarketPlan> = {
@@ -27,57 +29,53 @@ export const MARKET_PLAN: Record<MarketId, MarketPlan> = {
   laocheng: { steps: 15, stallLayers: 5, width: [3, 3], maxDeadend: 3, allowDeep: false },
 };
 
-/** 填非保底层用。三个菜场同一套卡型，只改权重。 */
+/**
+ * 油纸不进公共权重。每局先掷这一下，中了才放一张。
+ * 大约七八进才碰上一次。
+ */
+export const RECIPE_VISIT_CHANCE = 0.12;
+
+/** 填非保底层用。公共权重池；每场独特内容靠脚本节拍另挂，不靠这张表。 */
 export const CARD_WEIGHTS: Record<MarketId, Array<[CardKind, number]>> = {
   xiangko: [
-    ['stall', 30],
-    ['freebie', 15],
-    ['fork', 13],
-    ['empty', 11],
-    ['favor', 9],
-    ['deadend', 8],
-    ['paystall', 6],
-    ['recipe', 5],
+    ['stall', 40],
+    ['freebie', 16],
+    ['empty', 12],
+    ['favor', 10],
+    ['deadend', 9],
+    ['paystall', 7],
   ],
   heyan: [
-    ['stall', 32],
-    ['freebie', 12],
-    ['fork', 12],
-    ['empty', 10],
-    ['favor', 8],
-    ['deadend', 9],
-    ['paystall', 10],
-    ['recipe', 5],
+    ['stall', 40],
+    ['freebie', 13],
+    ['empty', 11],
+    ['favor', 9],
+    ['deadend', 10],
+    ['paystall', 11],
   ],
   shanwu: [
-    ['stall', 30],
+    ['stall', 38],
+    ['freebie', 12],
+    ['empty', 12],
+    ['favor', 9],
+    ['deadend', 11],
+    ['paystall', 12],
+  ],
+  jiangbian: [
+    ['stall', 38],
     ['freebie', 11],
-    ['fork', 12],
     ['empty', 11],
     ['favor', 8],
     ['deadend', 11],
-    ['paystall', 11],
-    ['recipe', 6],
-  ],
-  jiangbian: [
-    ['stall', 30],
-    ['freebie', 10],
-    ['fork', 11],
-    ['empty', 10],
-    ['favor', 7],
-    ['deadend', 10],
-    ['paystall', 14],
-    ['recipe', 4],
+    ['paystall', 15],
   ],
   laocheng: [
-    ['stall', 28],
-    ['freebie', 8],
-    ['fork', 11],
-    ['empty', 10],
-    ['favor', 7],
+    ['stall', 36],
+    ['freebie', 9],
+    ['empty', 11],
+    ['favor', 8],
     ['deadend', 12],
     ['paystall', 18],
-    ['recipe', 6],
   ],
 };
 
@@ -167,14 +165,18 @@ const XIANGKO_PILE: Record<StallId, string> = {
   meat: 'subpkg_images/stall_pile_egg.png',
 };
 
-/** 翻堆底图：巷口沿用旧文件，后四个场按市场×摊位各一张。 */
-export function stallRummageArt(marketId: MarketId, stall: StallId): string {
+/** 翻堆底图：巷口沿用旧文件，后四个场按市场×摊位各一张。专属摊走 specialty。 */
+export function stallRummageArt(marketId: MarketId, stall?: StallId, specialty?: string): string {
+  if (specialty) return `subpkg_images/stall_rummage_${marketId}_${specialty}.jpg`;
+  if (!stall) return XIANGKO_RUMMAGE.egg;
   if (marketId === 'xiangko') return XIANGKO_RUMMAGE[stall];
   return `subpkg_images/stall_rummage_${marketId}_${stall}.jpg`;
 }
 
 /** 可点遮挡堆：巷口沿用旧文件，后四个场按市场×摊位各一张。 */
-export function stallPileArt(marketId: MarketId, stall: StallId): string {
+export function stallPileArt(marketId: MarketId, stall?: StallId, specialty?: string): string {
+  if (specialty) return `subpkg_images/stall_pile_${marketId}_${specialty}.png`;
+  if (!stall) return XIANGKO_PILE.egg;
   if (marketId === 'xiangko') return XIANGKO_PILE[stall];
   return `subpkg_images/stall_pile_${marketId}_${stall}.png`;
 }

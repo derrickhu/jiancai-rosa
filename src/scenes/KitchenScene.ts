@@ -48,6 +48,8 @@ import {
 } from '@/sim';
 import { HUD_ICON, fillRect, makeButton, makeCookSkillPill, makeLabel, makeStatPill } from '@/utils/ui';
 import { applyFit, fitSpriteInBox, fitWidthBottom, gameTexture, isTextureFailed, isTextureReady, mapNorm, whenTextureReady } from '@/utils/assets';
+import { OutingCurtain } from '@/gameobjects/ui/OutingCurtain';
+import { destinationBootPaths } from '@/utils/outingAssets';
 
 type HotspotId = 'door' | 'basket' | 'recipe' | 'fridge' | 'foam' | 'wok' | 'board' | 'sell';
 type UpgradePick = FurnId | 'house';
@@ -1005,7 +1007,11 @@ export class KitchenScene implements Scene {
       Platform.showToast('体力不足，看个广告也能出门');
       return;
     }
-    SceneManager.switchTo('destinations');
+    if (OutingCurtain.busy) return;
+    OutingCurtain.play({
+      paths: destinationBootPaths(),
+      then: () => SceneManager.switchTo('destinations'),
+    });
   }
 }
 

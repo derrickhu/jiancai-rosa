@@ -4,21 +4,54 @@ import { SceneManager, type Scene } from '@/core/SceneManager';
 import { Platform } from '@/core/PlatformService';
 import { KitchenManager } from '@/managers/KitchenManager';
 import { RunManager } from '@/managers/RunManager';
-import { MARKETS, STAMINA_MAX, cookXpView, isMarketUnlocked, type MarketDef } from '@/sim';
+import {
+  STAMINA_MAX,
+  cookXpView,
+  isMarketUnlocked,
+  marketsForVehicle,
+  neighborVehicle,
+  ownsRouteToMarket,
+  ownsVehicle,
+  vehicleById,
+  vehicleOffer,
+  vehicleForMarket,
+  type MarketDef,
+  type VehicleId,
+} from '@/sim';
 import { HUD_ICON, fillRect, makeCookSkillPill, makeLabel, makeSlicedButton, makeStatPill } from '@/utils/ui';
 import { VerticalScroller } from '@/utils/scroll';
-import { applyFit, fitCover, fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from '@/utils/assets';
+import { applyGray, applyFit, fitCover, fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from '@/utils/assets';
+import { OutingCurtain } from '@/gameobjects/ui/OutingCurtain';
+import { marketBootPaths } from '@/utils/outingAssets';
 
 const DEST_BG = 'subpkg_images/dest_street_bg.jpg';
 /** 卡高 200 + 间距 14。菜场超过四个就得滚，别把「回家」挤下屏。 */
 const CARD_STEP = 214;
 const DRAG_SLOP = 10;
+const VEHICLE_H = 220;
+const DOCK_TITLE_H = 44;
+const HOME_H = 64;
+/** 出行区和回家钮拉开，鞋底下不要贴着回家。 */
+const HOME_GAP = 168;
+/** 回家钮回到靠近屏底的位置。 */
+const HOME_BOTTOM = 20;
+const TITLE_FONT = 'Songti SC, STSong, PingFang SC, serif';
+const WALNUT = 0x8B5A2B;
+const TERRACOTTA = 0xC46A3A;
+/** 走路鞋团得紧，车要铺满盒子，看起来才比鞋大。 */
+const DOCK_ZOOM: Record<VehicleId, number> = {
+  walk: 0.72,
+  bike: 1,
+  ebike: 1,
+  truck: 1,
+};
 
 export class DestinationScene implements Scene {
   readonly name = 'destinations';
   readonly container = new PIXI.Container();
   private _ui = new PIXI.Container();
   private _scroller: VerticalScroller;
+  private _browse: VehicleId = 'walk';
 
   constructor() {
     this.container.eventMode = 'static';
@@ -30,6 +63,7 @@ export class DestinationScene implements Scene {
   }
 
   onEnter(): void {
+    this._browse = KitchenManager.save.vehicle;
     this._scroller.enable();
     this.relayout();
   }
@@ -87,23 +121,39 @@ export class DestinationScene implements Scene {
     this._ui.addChild(staPill);
 
     const room = KitchenManager.fridgeRoom();
+    const canStack = KitchenManager.fridgeAcceptsOuting();
     const icePill = makeStatPill({
       icon: HUD_ICON.fridge,
-      text: room > 0 ? `空 ${room}` : '满了',
+      text: room > 0 ? `空 ${room}` : canStack ? '可叠' : '满了',
       width: 200,
-      ...(room > 0 ? {} : { fill: 1, fillColor: 0xE07A5F }),
+      ...(room > 0 || canStack ? {} : { fill: 1, fillColor: 0xE07A5F }),
       onIconReady: redraw,
     });
     icePill.position.set(454, pillsY);
     this._ui.addChild(icePill);
 
     const listTop = pillsY + 52;
-    const listH = Math.max(240, h - 96 - listTop);
-    const contentH = MARKETS.length * CARD_STEP;
+    const homeY = h - HOME_H - HOME_BOTTOM;
+    const dockY = homeY - HOME_GAP - VEHICLE_H - DOCK_TITLE_H;
+    const listH = Math.max(180, dockY - 10 - listTop);
+    const offer = vehicleOffer(KitchenManager.save, this._browse);
+    const spots = offer === 'locked' ? [] : marketsForVehicle(this._browse);
+    const contentH = Math.max(spots.length, 1) * CARD_STEP;
     const list = new PIXI.Container();
-    MARKETS.forEach((market, i) => {
+    spots.forEach((market, i) => {
       list.addChild(this._card(market, 24, i * CARD_STEP, w - 48));
     });
+    if (!spots.length) {
+      const empty = makeLabel(
+        offer === 'locked' ? '先买上一辆才能开这辆' : '更远的菜场还在路上',
+        22,
+        0xFFF8F0,
+        { fontWeight: '600' },
+      );
+      empty.anchor.set(0.5);
+      empty.position.set(w / 2, listH / 2);
+      list.addChild(empty);
+    }
     this._ui.addChild(list);
     if (contentH > listH) {
       const mask = new PIXI.Graphics();
@@ -119,19 +169,8 @@ export class DestinationScene implements Scene {
       hit: { x: 0, y: listTop, w, h: listH },
     });
 
-    const back = makeSlicedButton({
-      label: '回家',
-      width: w - 64,
-      height: 56,
-      skin: 'terracotta',
-      onReady: redraw,
-    });
-    back.position.set(32, h - 80);
-    back.on('pointertap', () => {
-      if (this._scroller.moved) return;
-      SceneManager.switchTo('kitchen');
-    });
-    this._ui.addChild(back);
+    this._ui.addChild(this._vehicleDock(24, dockY, w - 48, VEHICLE_H + DOCK_TITLE_H, redraw));
+    this._ui.addChild(this._homeBtn((w - 280) / 2, homeY, 280, HOME_H, redraw));
   }
 
   private _drawTitle(w: number, top: number, onReady: () => void): number {
@@ -166,7 +205,10 @@ export class DestinationScene implements Scene {
 
   private _card(market: MarketDef, x: number, y: number, width: number): PIXI.Container {
     const root = new PIXI.Container();
-    const unlocked = isMarketUnlocked(market.id, KitchenManager.save.level);
+    const save = KitchenManager.save;
+    const routed = ownsRouteToMarket(save, market.id);
+    const unlocked = routed && isMarketUnlocked(market.id, save.level);
+    const needRide = vehicleForMarket(market.id);
     const height = 200;
     const frame = new PIXI.Graphics();
     fillRect(frame, x, y, width, height, 0x5A4636, 18);
@@ -242,10 +284,11 @@ export class DestinationScene implements Scene {
         this._depart(market);
       });
       root.addChild(go);
-      root.addChild(this._staminaCost(x + 416, y + 136, market.staminaCost, KitchenManager.save.stamina < market.staminaCost));
+      root.addChild(this._staminaCost(x + 416, y + 136, market.staminaCost, save.stamina < market.staminaCost));
     } else {
+      const label = routed ? `厨艺 ${market.unlockLevel} 解锁` : `先买${needRide.name}`;
       const need = makeSlicedButton({
-        label: `厨艺 ${market.unlockLevel} 解锁`,
+        label,
         width: 168,
         height: 48,
         skin: 'wood',
@@ -262,7 +305,11 @@ export class DestinationScene implements Scene {
       root.hitArea = new PIXI.Rectangle(x, y, width, height);
       root.on('pointertap', () => {
         if (this._scroller.moved) return;
-        Platform.showToast(`${market.name} · 厨艺 ${market.unlockLevel} 解锁`);
+        Platform.showToast(
+          routed
+            ? `${market.name} · 厨艺 ${market.unlockLevel} 解锁`
+            : `${market.name} · 买了${needRide.name}才能去`,
+        );
       });
     }
     return root;
@@ -299,16 +346,177 @@ export class DestinationScene implements Scene {
     return root;
   }
 
+  private _switchVehicle(dir: -1 | 1): void {
+    this._browse = neighborVehicle(this._browse, dir);
+    if (ownsVehicle(KitchenManager.save, this._browse)) {
+      KitchenManager.setVehicle(this._browse);
+    }
+    this._scroller.reset();
+    this.relayout();
+  }
+
+  private _vehicleDock(x: number, y: number, width: number, height: number, onReady: () => void): PIXI.Container {
+    const root = new PIXI.Container();
+    const ride = vehicleById(this._browse);
+    const offer = vehicleOffer(KitchenManager.save, ride.id);
+    const title = makeLabel('选择出行工具', 30, 0xFFF6EA, {
+      fontFamily: TITLE_FONT,
+      fontWeight: '700',
+      letterSpacing: 5,
+      stroke: 0x3A2416,
+      strokeThickness: 6,
+      lineJoin: 'round',
+      dropShadow: true,
+      dropShadowColor: '#2A2018',
+      dropShadowAlpha: 0.4,
+      dropShadowDistance: 2,
+      dropShadowAngle: Math.PI / 2,
+      dropShadowBlur: 0,
+    });
+    title.anchor.set(0.5);
+    title.position.set(x + width / 2, y + 20);
+    root.addChild(title);
+
+    const bodyY = y + DOCK_TITLE_H;
+    const bodyH = height - DOCK_TITLE_H;
+    const imgH = bodyH;
+    const imgW = width - 80;
+    const zoom = DOCK_ZOOM[ride.id];
+    const cx = x + width / 2;
+    const cy = bodyY + imgH / 2;
+
+    whenTextureReady(ride.art, onReady);
+    const tex = gameTexture(ride.art);
+    let artW = 200;
+    if (isTextureReady(tex)) {
+      const sprite = new PIXI.Sprite(tex);
+      fitSpriteInBox(sprite, imgW * zoom, imgH * zoom);
+      sprite.anchor.set(0.5);
+      sprite.position.set(cx, cy);
+      sprite.eventMode = 'none';
+      if (offer === 'buyable') applyGray(sprite);
+      if (offer === 'locked') sprite.tint = 0x14110E;
+      root.addChild(sprite);
+      artW = sprite.width;
+    }
+
+    if (offer === 'buyable') {
+      const buy = makeSlicedButton({
+        label: `${ride.cost}`,
+        width: 168,
+        height: 44,
+        skin: 'terracotta',
+        onReady,
+      });
+      buy.position.set(x + (width - 168) / 2, y + height - 44);
+      buy.on('pointertap', (e) => {
+        e.stopPropagation();
+        if (!KitchenManager.buyVehicle(ride.id)) return;
+        this._browse = ride.id;
+        this._scroller.reset();
+        this.relayout();
+      });
+      root.addChild(buy);
+      whenTextureReady(HUD_ICON.coin, onReady);
+      const coin = new PIXI.Sprite(gameTexture(HUD_ICON.coin));
+      if (isTextureReady(coin.texture)) {
+        fitSpriteInBox(coin, 30, 30);
+        coin.anchor.set(1, 0.5);
+        coin.position.set(x + (width - 168) / 2 + 52, y + height - 22);
+        coin.eventMode = 'none';
+        root.addChild(coin);
+      }
+    }
+
+    const arrowGap = 38;
+    root.addChild(this._arrow(cx - artW / 2 - arrowGap, cy, -1));
+    root.addChild(this._arrow(cx + artW / 2 + arrowGap, cy, 1));
+    return root;
+  }
+
+  private _homeBtn(x: number, y: number, width: number, height: number, onReady: () => void): PIXI.Container {
+    const root = new PIXI.Container();
+    const btn = makeSlicedButton({
+      label: '回家',
+      width,
+      height,
+      skin: 'terracotta',
+      labelOffsetX: 22,
+      onReady,
+    });
+    btn.position.set(x, y);
+    btn.on('pointertap', (e) => {
+      e.stopPropagation();
+      SceneManager.switchTo('kitchen');
+    });
+    root.addChild(btn);
+    whenTextureReady(HUD_ICON.home, onReady);
+    const house = new PIXI.Sprite(gameTexture(HUD_ICON.home));
+    if (isTextureReady(house.texture)) {
+      fitSpriteInBox(house, 58, 58);
+      house.anchor.set(0.5);
+      house.position.set(x + 44, y + height / 2 - 2);
+      house.eventMode = 'none';
+      root.addChild(house);
+    }
+    return root;
+  }
+
+  private _arrow(cx: number, cy: number, dir: -1 | 1): PIXI.Container {
+    const root = new PIXI.Container();
+    const bg = new PIXI.Graphics();
+    bg.beginFill(0xE8DFD0, 1);
+    bg.lineStyle(2, WALNUT, 1);
+    bg.drawCircle(0, 0, 22);
+    bg.endFill();
+    const tri = new PIXI.Graphics();
+    tri.beginFill(TERRACOTTA, 1);
+    if (dir < 0) {
+      tri.moveTo(6, -10);
+      tri.lineTo(6, 10);
+      tri.lineTo(-8, 0);
+    } else {
+      tri.moveTo(-6, -10);
+      tri.lineTo(-6, 10);
+      tri.lineTo(8, 0);
+    }
+    tri.closePath();
+    tri.endFill();
+    root.addChild(bg, tri);
+    root.position.set(cx, cy);
+    root.eventMode = 'static';
+    root.cursor = 'pointer';
+    root.hitArea = new PIXI.Circle(0, 0, 28);
+    root.on('pointertap', (e) => {
+      e.stopPropagation();
+      this._switchVehicle(dir);
+    });
+    return root;
+  }
+
   private _depart(market: MarketDef): void {
+    if (!ownsRouteToMarket(KitchenManager.save, market.id)) {
+      const ride = vehicleForMarket(market.id);
+      Platform.showToast(`买了${ride.name}才能去${market.name}`);
+      return;
+    }
+    if (!isMarketUnlocked(market.id, KitchenManager.save.level)) {
+      Platform.showToast(`${market.name} · 厨艺 ${market.unlockLevel} 解锁`);
+      return;
+    }
     if (!KitchenManager.canGoMarket()) {
       Platform.showToast('体力不足，看个广告也能出门');
       return;
     }
-    if (KitchenManager.fridgeRoom() <= 0) {
+    if (!KitchenManager.fridgeAcceptsOuting()) {
       Platform.showToast('冰箱满了，先卖掉或做菜再出门');
       return;
     }
+    if (OutingCurtain.busy) return;
     if (!RunManager.start(market.id)) return;
-    SceneManager.switchTo('market');
+    OutingCurtain.play({
+      paths: marketBootPaths(market.id, RunManager.run ?? undefined),
+      then: () => SceneManager.switchTo('market'),
+    });
   }
 }

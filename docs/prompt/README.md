@@ -17,6 +17,7 @@
 | `kitchen_table_camp_island_prompt.txt` | 烹饪台 4 级起：蛋卷桌→岛台→大理石 | 1:1 |
 | `kitchen_fridge_lv6_9_prompt.txt` | 冰箱 6–9：加大并换色（蓝/银对开） | 1:1 |
 | `hud_coin_prompt.txt` / `hud_stamina_prompt.txt` | 顶栏货币/体力图标 | 1:1 |
+| `hud_home_prompt.txt` | 选点页回家：小屋图标 | 1:1 |
 | `icon_wechat_shared.txt` / `icon_01`–`icon_05_*` | 微信小游戏头像《天黑请捡漏》五风格 | 1:1 |
 | `loading_bg_prompt.txt` | 启动页夜市底图（圆月+街上果蔬水产，无字） | 9:16 |
 | `title_logo_prompt.txt` | 标题字「扫荡菜场」：扫荡张狂、菜场果蔬笔画 | 16:9 |
@@ -40,6 +41,10 @@
 | `stall_rummage_*_prompt.txt` | 巷口四摊翻堆底 | 9:16 |
 | `stall_pile_*_prompt.txt` | 巷口四摊遮挡堆（点堆抽取） | 1:1 |
 | `stall_scenes_later_markets.txt` | 后四场按市场×摊位的翻堆底 / 遮挡堆 / 肉摊卡 | 9:16 / 1:1 / 3:4 |
+| `shanwu_encounter_art_prompt.txt` | 山坞支线：小路/山洞底图、卡面、菌摊、石壁采集 | 9:16 / 3:4 |
+| `outing_curtain_prompt.txt` | 出门过场整图（一筐鲜货挡住屏幕） | 9:16 |
+| `vehicles_prompt.txt` | 出门交通工具四件：布鞋 / 带筐自行车 / 带箱电动车 / 装筐小货车 | 1:1 2×2 |
+| `vehicle_walk_prompt.txt` | 步行重画：脚朝外、分边摆好等着穿，鞋带自然 | 1:1 |
 | `items_leaf_prompt.txt` 等 | 食材表 | 4:3 |
 | `dishes_prompt.txt` | 三道熟菜共用风格 | 1:1 |
 | `dish_stirfry_prompt.txt` / `dish_tomato_egg_prompt.txt` / `dish_garlic_shrimp_prompt.txt` | 装盘成品菜（旧三道） | 1:1 |

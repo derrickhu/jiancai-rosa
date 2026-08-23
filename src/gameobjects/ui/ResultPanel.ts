@@ -8,6 +8,7 @@ import { Platform } from '@/core/PlatformService';
 import {
   fridgeItemName,
   fridgeItemPrice,
+  fridgeItemQty,
   fridgeKind,
   fridgeRoom,
   type ExtractResult,
@@ -103,13 +104,6 @@ export class ResultPanel extends PIXI.Container {
     this._root.addChild(sub);
 
     let y = Game.safeTop + 160;
-    const rottenN = data.items.filter((it) => it.quality === 'rotten').length;
-    if (rottenN > 0) {
-      const note = makeLabel(`有 ${rottenN} 件是坏的，也带回来了`, 22, 0xE07A5F);
-      note.position.set(64, y);
-      this._root.addChild(note);
-      y += 36;
-    }
     for (const it of data.items.slice(0, 10)) {
       const row = makeLabel(`${it.name}  ·  ${it.sell} 金币`, 22, 0xF4EFE6);
       row.position.set(64, y);
@@ -154,7 +148,7 @@ export class ResultPanel extends PIXI.Container {
 
     const room = fridgeRoom(KitchenManager.save);
     const hint = makeLabel(
-      `还能装 ${room} 件，带回 ${haul.length} 件。点选要卖掉的，至少卖掉 ${need} 件。`,
+      `还能装 ${room} 格，带回 ${haul.length} 件。同种食材一格叠 10 个。点选要卖掉的，至少卖掉 ${need} 件。`,
       20,
       0xC9B8A4,
       { wordWrap: true, breakWords: true, wordWrapWidth: w - 120 },
@@ -199,9 +193,10 @@ export class ResultPanel extends PIXI.Container {
     }
     addHead('冰箱里也可以卖');
     for (const it of KitchenManager.save.fridge) {
+      const qty = fridgeItemQty(it);
       list.addChild(this._pickRow({
         key: `f:${it.uid}`,
-        name: fridgeItemName(it),
+        name: qty > 1 ? `${fridgeItemName(it)} ×${qty}` : fridgeItemName(it),
         sell: fridgeItemPrice(it),
         defId: it.defId,
         dish: fridgeKind(it) === 'dish',

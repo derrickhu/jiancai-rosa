@@ -1,6 +1,7 @@
 import { EventBus } from '@/core/EventBus';
 import { EV } from '@/config/events';
 import {
+  applyEncounter,
   cardBlock,
   createBasket,
   createRun,
@@ -9,33 +10,41 @@ import {
   freebieToBasketDraft,
   hasGodPick,
   isMysteryCard,
+  isRummageNode,
   mulberry32,
   newSeed,
+  nextUid,
+  nodeEncounter,
   nodeFee,
+  rngInt,
   rngPick,
+  rollGatherSpot,
   shapeLabel,
   pileToBasketDraft,
   place,
   removeItem,
+  resumeScenes,
   tryRelocate,
   rollFreebie,
   settleExtract,
   eventVoice,
   remainingMarketRecipes,
-  recipeById,
   recipeUnlockView,
   unlockedIngredients,
   cookLevel,
   GOD_PICK,
   stallPacked,
+  talkScript,
   tryAutoPlace,
   visibleDefId,
   furnLevel,
   type BasketItem,
   type BasketState,
   type ExtractResult,
+  type GatherSpot,
   type MapNode,
   type PileItem,
+  type Quality,
   type Rng,
   type RunEventLog,
   type RunState,
@@ -143,7 +152,7 @@ class RunManagerClass {
         || KitchenManager.cardSeen(run.marketId, node.kind),
       blocked: cardBlock(run, node, KitchenManager.save.money, KitchenManager.save.level, ahead),
       fee: nodeFee(run, node),
-      left: node.stall ? (run.piles[id] ?? []).filter((it) => !it.washed).length : 0,
+      left: isRummageNode(node) ? (run.piles[id] ?? []).filter((it) => !it.washed).length : 0,
     };
   }
 
@@ -167,7 +176,8 @@ class RunManagerClass {
     if (fee > 0 && !KitchenManager.trySpend(fee)) return;
     KitchenManager.markCardSeen(run.marketId, node.kind);
 
-    const favored = !!node.stall && run.freePass;
+    const rummage = isRummageNode(node);
+    const favored = rummage && run.freePass;
     let next: RunState = {
       ...run,
       stepsLeft: Math.max(0, run.stepsLeft - node.steps),
@@ -177,14 +187,28 @@ class RunManagerClass {
       freePass: favored ? false : run.freePass,
     };
 
-    if (node.stall) {
+    const result = applyEncounter({
+      rng: this._rng,
+      state: next,
+      node,
+      cookLevel: cookLevel(KitchenManager.save),
+      recipesFound: KitchenManager.save.recipesFound,
+      findRecipe: (rid) => KitchenManager.findRecipe(rid),
+      voice: (kind) => {
+        const lines = eventVoice(next.marketId, kind)?.lines;
+        return lines?.length ? rngPick(this._rng, lines) : '';
+      },
+    });
+    next = result.state;
+
+    if (result.enter === 'rummage') {
       this.run = {
         ...next,
         mode: 'rummage',
         currentNodeId: id,
         paid: next.paid.includes(id) ? next.paid : [...next.paid, id],
         slowNodes: favored ? [...next.slowNodes, id] : next.slowNodes,
-        note: '摊上还剩一堆，慢慢翻。',
+        note: next.note || '摊上还剩一堆，慢慢翻。',
       };
       if (fee > 0) Platform.showToast(`买下这摊剩货 ${fee} 金币`);
       else if (favored) Platform.showToast('街坊打过招呼，这摊白翻，老板也不急');
@@ -193,8 +217,34 @@ class RunManagerClass {
       return;
     }
 
-    next = this.resolveEvent(next, node);
-    this.run = next;
+    if (result.enter === 'play') {
+      const enc = nodeEncounter(node);
+      if (enc.type === 'gather') {
+        this.run = {
+          ...next,
+          mode: 'play',
+          currentNodeId: id,
+          play: {
+            type: 'gather',
+            nodeId: id,
+            picksLeft: enc.picks,
+            spots: this._rollGatherSpots(enc.pool, enc.picks),
+          },
+        };
+        this.emit();
+        return;
+      }
+      this.run = { ...next, mode: 'map' };
+      this.emit();
+      this.checkDayEnd();
+      return;
+    }
+
+    if (nodeEncounter(node).type === 'freebie') {
+      next = this._takeFreebie(next, node);
+    }
+
+    this.run = resumeScenes(next);
     this.emit();
     this.checkDayEnd();
   }
@@ -229,92 +279,180 @@ class RunManagerClass {
   /** 从摊面退回路线。天色可能已经在进摊那一步用完了。 */
   leaveStall(): void {
     if (!this.run || this.run.ended) return;
-    this.run = { ...this.run, mode: 'map', currentNodeId: null, note: '出了摊，接着挑路。' };
+    this.run = resumeScenes({ ...this.run, mode: 'map', currentNodeId: null, note: '出了摊，接着挑路。' });
     this.emit();
     this.checkDayEnd();
   }
 
-  /** 事件结算只写进 state，话由弹窗去说，别再叠 toast。 */
-  private resolveEvent(state: RunState, node: MapNode): RunState {
-    const log = (text: string, gain: RunEventLog['gain'] = null): RunEventLog => ({
-      nodeId: node.id,
-      kind: node.kind,
-      marketId: state.marketId,
-      text,
-      gain,
+  /** 采集 / 小游戏退回路线。洞内走完靠 returnStack 回主路。 */
+  leavePlay(): void {
+    if (!this.run || this.run.ended) return;
+    this.run = resumeScenes({
+      ...this.run,
+      mode: 'map',
+      currentNodeId: null,
+      play: undefined,
+      note: this.run.sceneId === 'main' ? '接着挑路。' : '出了这儿，接着走。',
     });
-    const voice = (): string => {
-      const lines = eventVoice(state.marketId, node.kind)?.lines;
-      return lines?.length ? rngPick(this._rng, lines) : '';
-    };
+    this.emit();
+    this.checkDayEnd();
+  }
 
-    switch (node.kind) {
-      case 'freebie': {
-        const { defId, quality } = rollFreebie(
-          this._rng,
-          state.marketId,
-          cookLevel(KitchenManager.save),
-          this._wanted(),
-        );
-        const name = displayName(defId, false, quality);
-        const placed = tryAutoPlace(this.basket, freebieToBasketDraft(defId, quality));
-        if (!placed) {
-          const draft = freebieToBasketDraft(defId, quality);
-          this.pendingLoot = [...this.pendingLoot, draft];
-          return {
-            ...state,
-            note: '地上有货，可篮子塞不下。',
-            lastEvent: log('篮子满了，先腾个位子再捡。', { defId, quality, taken: false }),
-          };
-        }
-        this.basket = { ...this.basket, items: [...this.basket.items, placed] };
-        return {
-          ...state,
-          note: `地上捡到一份${name}。`,
-          lastEvent: log('摊主收筐时漏下的，还新鲜着，捡回去。', { defId, quality, taken: true }),
-        };
-      }
-      case 'deadend':
-        return { ...state, note: '死胡同，天色白耗了一步。', lastEvent: log(voice()) };
-      case 'empty':
-        return {
-          ...state,
-          peeked: [...state.peeked, ...node.next],
-          note: '摊上收干净了，倒是看清了前面的路。',
-          lastEvent: log(voice()),
-        };
-      case 'favor':
-        return {
-          ...state,
-          freePass: true,
-          note: '街坊打了招呼，下一摊白翻，老板还慢慢收。',
-          lastEvent: log(voice()),
-        };
-      case 'fork':
-        return { ...state, note: '路分成两条，这一步没耗天色。' };
-      case 'recipe': {
-        const left = remainingMarketRecipes(state.marketId, KitchenManager.save.recipesFound);
-        const id = left.length ? rngPick(this._rng, left) : null;
-        if (!id) {
-          return { ...state, note: '纸上的字看不清了。', lastEvent: log('油纸湿透了，字认不出来。') };
-        }
-        KitchenManager.findRecipe(id);
-        const name = recipeById(id)?.name ?? '一道菜';
-        return {
-          ...state,
-          note: `记下了「${name}」。`,
-          lastEvent: log(`${voice()}\n记下了：${name}`),
-        };
-      }
-      default:
-        return state;
+  pickGather(uid: string): 'placed' | 'need_space' | 'gone' | 'done' {
+    const run = this.run;
+    if (!run || run.mode !== 'play' || run.play?.type !== 'gather') return 'gone';
+    const play = run.play;
+    const spot = play.spots.find((s) => s.uid === uid);
+    if (!spot || spot.taken) return 'gone';
+    if (play.picksLeft <= 0) return 'done';
+
+    const quality = 'common' as const;
+    const placed = tryAutoPlace(this.basket, freebieToBasketDraft(spot.defId, quality));
+    const taken = !!placed;
+    if (placed) this.basket = { ...this.basket, items: [...this.basket.items, placed] };
+    else this.pendingLoot = [...this.pendingLoot, freebieToBasketDraft(spot.defId, quality)];
+
+    const spots = play.spots.map((s) => (s.uid === uid ? { ...s, taken: true } : s));
+    const picksLeft = play.picksLeft - 1;
+    this.run = {
+      ...run,
+      play: { ...play, spots, picksLeft },
+      lastEvent: {
+        nodeId: play.nodeId,
+        kind: 'gather',
+        marketId: run.marketId,
+        text: taken ? `摘下一朵${displayName(spot.defId, false, quality)}。` : '篮子满了，先腾个位子。',
+        gain: { defId: spot.defId, quality, taken },
+      },
+      note: picksLeft > 0 ? `还能再摘 ${picksLeft} 朵。` : '手上摘够了，该出洞了。',
+    };
+    this.emit();
+    return taken ? 'placed' : 'need_space';
+  }
+
+  chooseTalk(index: number): boolean {
+    const run = this.run;
+    const ev = run?.lastEvent;
+    if (!run || !ev?.scriptId || !ev.choices) return false;
+    const script = talkScript(ev.scriptId);
+    const choice = script?.choices[index];
+    if (!choice) return false;
+    const cost = choice.steps ?? 0;
+    if (cost > run.stepsLeft) {
+      Platform.showToast('天色不够了');
+      return false;
     }
+
+    let next: RunState = {
+      ...run,
+      stepsLeft: Math.max(0, run.stepsLeft - cost),
+      flags: choice.setFlag && !run.flags.includes(choice.setFlag)
+        ? [...run.flags, choice.setFlag]
+        : run.flags,
+    };
+    if (choice.grantItem) {
+      const bag = next.bag.map((it) => ({ ...it }));
+      const hit = bag.find((it) => it.id === choice.grantItem);
+      if (hit) hit.qty += 1;
+      else bag.push({ id: choice.grantItem, qty: 1 });
+      next = { ...next, bag };
+    }
+    if (choice.grantFood) {
+      next = this._placeFood(next, ev.nodeId, 'talk', choice.grantFood, 'common', `${choice.label}。`);
+    } else {
+      next = {
+        ...next,
+        note: choice.label,
+        lastEvent: {
+          nodeId: ev.nodeId,
+          kind: 'talk',
+          marketId: run.marketId,
+          text: choice.label,
+          gain: null,
+          speaker: script?.speaker,
+          portrait: script?.portrait,
+        },
+      };
+    }
+    this.run = resumeScenes(next);
+    this.emit();
+    this.checkDayEnd();
+    return true;
+  }
+
+  private _rollGatherSpots(pool: string[], picks: number): GatherSpot[] {
+    const n = rngInt(this._rng, Math.max(6, picks), 8);
+    const layout = [
+      { x: 0.22, y: 0.34 },
+      { x: 0.48, y: 0.30 },
+      { x: 0.74, y: 0.36 },
+      { x: 0.18, y: 0.52 },
+      { x: 0.40, y: 0.48 },
+      { x: 0.62, y: 0.50 },
+      { x: 0.82, y: 0.46 },
+      { x: 0.34, y: 0.64 },
+    ];
+    return Array.from({ length: n }, (_, i) => ({
+      uid: nextUid('g'),
+      defId: rollGatherSpot(pool, this._rng),
+      taken: false,
+      x: layout[i]?.x ?? 0.5,
+      y: layout[i]?.y ?? 0.45,
+    }));
+  }
+
+  private _takeFreebie(state: RunState, node: MapNode): RunState {
+    const { defId, quality } = rollFreebie(
+      this._rng,
+      state.marketId,
+      cookLevel(KitchenManager.save),
+      this._wanted(),
+    );
+    return this._placeFood(state, node.id, node.kind, defId, quality, '摊主收筐时漏下的，还新鲜着，捡回去。');
+  }
+
+  private _placeFood(
+    state: RunState,
+    nodeId: string,
+    kind: RunEventLog['kind'],
+    defId: string,
+    quality: Quality,
+    text: string,
+  ): RunState {
+    const name = displayName(defId, false, quality);
+    const placed = tryAutoPlace(this.basket, freebieToBasketDraft(defId, quality));
+    if (!placed) {
+      this.pendingLoot = [...this.pendingLoot, freebieToBasketDraft(defId, quality)];
+      return {
+        ...state,
+        note: '地上有货，可篮子塞不下。',
+        lastEvent: {
+          nodeId,
+          kind,
+          marketId: state.marketId,
+          text: '篮子满了，先腾个位子再捡。',
+          gain: { defId, quality, taken: false },
+        },
+      };
+    }
+    this.basket = { ...this.basket, items: [...this.basket.items, placed] };
+    return {
+      ...state,
+      note: `拿到一份${name}。`,
+      lastEvent: {
+        nodeId,
+        kind,
+        marketId: state.marketId,
+        text,
+        gain: { defId, quality, taken: true },
+      },
+    };
   }
 
   /** 天黑被赶出来是 messy，逛到街尾从容回家算 safe。 */
   private checkDayEnd(): void {
     const run = this.run;
-    if (!run || run.ended || run.mode === 'rummage') return;
+    if (!run || run.ended || run.mode === 'rummage' || run.mode === 'play') return;
     if (run.stepsLeft <= 0) {
       Platform.showToast('天黑了，收摊');
       this.extract(false);
@@ -380,11 +518,7 @@ class RunManagerClass {
     if (!this.run) return 'gone';
     const item = this.findPile(uid);
     if (!item || !item.revealed || item.washed) return 'gone';
-    if (item.quality === 'rotten') {
-      this.removeFromPile(uid);
-      this.emit();
-      return 'rotten';
-    }
+    if (item.quality === 'rotten') return 'rotten';
     this._revealGodPick(uid, opts?.quiet);
     const draft = pileToBasketDraft(this.findPile(uid) ?? { ...item, inspected: true });
     const placed = tryAutoPlace(this.basket, draft);
@@ -420,7 +554,7 @@ class RunManagerClass {
       out.push(it);
     }
     for (const it of this.currentPile()) {
-      if (seen.has(it.uid)) continue;
+      if (it.quality === 'rotten' || seen.has(it.uid)) continue;
       seen.add(it.uid);
       out.push(pileToBasketDraft(it));
     }
@@ -429,11 +563,7 @@ class RunManagerClass {
 
   dropStagingToCell(uid: string, x: number, y: number, rot: 0 | 1 = 0): string | null {
     const pile = this.findPile(uid);
-    if (pile?.quality === 'rotten') {
-      this.removeFromPile(uid);
-      this.emit();
-      return '坏了，丢掉';
-    }
+    if (pile?.quality === 'rotten') return '坏了，捡不了';
     this._revealGodPick(uid);
     const loot = this.stagingItems().find((it) => it.uid === uid);
     if (!loot) return '已经不在手里';
@@ -498,11 +628,7 @@ class RunManagerClass {
     if (!this.run) return '不在局内';
     const pile = this.findPile(uid);
     if (!pile) return '已经不在堆里';
-    if (pile.quality === 'rotten') {
-      this.removeFromPile(uid);
-      this.emit();
-      return '坏了，丢掉';
-    }
+    if (pile.quality === 'rotten') return '坏了，捡不了';
     this._revealGodPick(uid);
     const base = pileToBasketDraft(this.findPile(uid) ?? { ...pile, inspected: true });
     const tryRot = (r: 0 | 1): string | null => {

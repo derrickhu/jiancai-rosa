@@ -7,7 +7,9 @@ import {
   fridgeItemBlurb,
   fridgeItemName,
   fridgeItemPrice,
+  fridgeItemQty,
   fridgeKind,
+  fridgeQtySum,
   itemRarity,
   recipeRarity,
   type FridgeItem,
@@ -120,6 +122,8 @@ export class FridgePanel extends PIXI.Container {
     const foodSlots = Math.max(foods.length, cap - dishes.length);
     const dishSlots = Math.max(dishes.length, cap - foods.length);
     const slotCount = this._tab === 'food' ? foodSlots : dishSlots;
+    const foodCount = fridgeQtySum(foods);
+    const dishCount = fridgeQtySum(dishes);
 
     const box = this._fridgeBox(w, h);
     const shell = new PIXI.Container();
@@ -142,8 +146,8 @@ export class FridgePanel extends PIXI.Container {
 
     shell.addChild(this._title(midX, hy + hh * 0.24, used, cap));
     const tabY = hy + hh - 64;
-    shell.addChild(this._tabBtn('食材', 'food', cx, tabY, chipW, foods.length));
-    shell.addChild(this._tabBtn('饭菜', 'dish', cx + chipW + gap, tabY, chipW, dishes.length));
+    shell.addChild(this._tabBtn('食材', 'food', cx, tabY, chipW, foodCount));
+    shell.addChild(this._tabBtn('饭菜', 'dish', cx + chipW + gap, tabY, chipW, dishCount));
     const pad = 8;
     const cell = Math.max(48, Math.floor((cw - pad * 2) / cols));
     const gridW = cols * cell;
@@ -192,9 +196,10 @@ export class FridgePanel extends PIXI.Container {
     const fh = box.h * FOOTER.h;
     const picked = items.filter((it) => this.selected.has(it.uid));
     const uids = picked.map((it) => it.uid);
+    const sellN = fridgeQtySum(picked);
     const btnH = 46;
     const btnY = fy + Math.max(6, (fh - btnH) * 0.28) + 20;
-    const sell = this._chip(uids.length ? `卖掉 ${uids.length}` : '卖掉', chipW, btnH, uids.length ? 'primary' : 'idle');
+    const sell = this._chip(uids.length ? `卖掉 ${sellN}个` : '卖掉', chipW, btnH, uids.length ? 'primary' : 'idle');
     sell.position.set(cx, btnY);
     sell.on('pointertap', () => {
       if (!uids.length) return;
@@ -417,6 +422,17 @@ export class FridgePanel extends PIXI.Container {
       icon.eventMode = 'none';
       root.addChild(icon);
     }
+    const qty = fridgeItemQty(it);
+    if (qty > 1) {
+      const n = makeLabel(`×${qty}`, 15, INK, {
+        fontWeight: '700',
+        stroke: '#FFF8F0',
+        strokeThickness: 4,
+      });
+      n.anchor.set(1, 1);
+      n.position.set(x + size - 5, y + size - 3);
+      root.addChild(n);
+    }
     root.eventMode = 'static';
     root.cursor = 'pointer';
     root.hitArea = new PIXI.Rectangle(x, y, size, size);
@@ -487,7 +503,8 @@ export class FridgePanel extends PIXI.Container {
     iconHost.position.set(28, 28);
     card.addChild(iconHost);
 
-    const name = makeLabel(fridgeItemName(it), 28, INK, { fontWeight: '700' });
+    const qty = fridgeItemQty(it);
+    const name = makeLabel(qty > 1 ? `${fridgeItemName(it)}  ×${qty}` : fridgeItemName(it), 28, INK, { fontWeight: '700' });
     name.position.set(132, 36);
     card.addChild(name);
 
@@ -529,7 +546,7 @@ export class FridgePanel extends PIXI.Container {
     card.addChild(blurb);
 
     const btnW = cardW - 56;
-    const sellOne = this._chip('卖出', btnW, 48, price > 0 ? 'primary' : 'idle');
+    const sellOne = this._chip(qty > 1 ? `卖出这一格 ×${qty}` : '卖出', btnW, 48, price > 0 ? 'primary' : 'idle');
     sellOne.position.set(28, cardH - 68);
     sellOne.on('pointertap', () => {
       if (price <= 0) return;

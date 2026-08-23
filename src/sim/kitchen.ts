@@ -1,4 +1,5 @@
 import { displayName, getItem, GOD_PICK, sellPrice, type Quality } from './items';
+import { VEHICLES, migrateVehicles, ownsVehicle, vehicleById, vehicleIndex, vehicleOffer, type VehicleId } from './vehicles';
 import { nextUid, type ExtractedItem } from './run';
 import {
   RECIPES,
@@ -15,6 +16,7 @@ export {
   RECIPES,
   recipeNeeds,
   recipeCanCook,
+  recipeCookCount,
   recipeXp,
   pickRecipeFoods,
   isRecipeUnlocked,
@@ -52,6 +54,8 @@ export const STAMINA_REGEN_MS = 30 * 60 * 1000;
 export const FRIDGE_BASE = 12;
 /** 冰箱内部 0–9 级的格数。回家后干湿饭菜都进这些格，不分仓。每升一级 +6。 */
 export const FRIDGE_CAP = [12, 18, 24, 30, 36, 42, 48, 54, 60, 66];
+/** 同一格里同种食材/饭菜最多叠多少份。多了另开一格。 */
+export const FRIDGE_STACK = 10;
 export const UPGRADE_BASKET_I = 80;
 export const UPGRADE_BASKET_II = 200;
 export const UPGRADE_FRIDGE = 60;
@@ -77,9 +81,18 @@ export interface FridgeItem {
   quality: Quality;
   inspected: boolean;
   freshness: number;
+  /** 这一格叠了几份。旧存档没有就当 1。 */
+  qty?: number;
   /** 熟菜出锅时记下的售价。 */
   value?: number;
 }
+
+export type FridgeDraft = Pick<FridgeItem, 'defId' | 'quality' | 'inspected' | 'freshness'> & {
+  uid?: string;
+  kind?: FridgeKind;
+  qty?: number;
+  value?: number;
+};
 
 export function fridgeKind(it: FridgeItem): FridgeKind {
   return it.kind === 'dish' ? 'dish' : 'food';
@@ -92,9 +105,27 @@ export function fridgeItemName(it: FridgeItem): string {
   return displayName(it.defId, it.inspected, it.quality);
 }
 
-export function fridgeItemPrice(it: FridgeItem): number {
+export function fridgeItemQty(it: { qty?: number }): number {
+  return Math.max(1, Math.floor(it.qty ?? 1));
+}
+
+export function fridgeQtySum(items: readonly { qty?: number }[]): number {
+  return items.reduce((sum, it) => sum + fridgeItemQty(it), 0);
+}
+
+/** 能叠进同一格：同类、同 id、同品质、同鉴定状态。 */
+export function fridgeStackKey(it: FridgeDraft): string {
+  const kind = it.kind === 'dish' ? 'dish' : 'food';
+  return `${kind}|${it.defId}|${it.quality}|${it.inspected ? 1 : 0}`;
+}
+
+export function fridgeItemUnitPrice(it: FridgeItem): number {
   if (fridgeKind(it) === 'dish') return Math.max(0, it.value ?? 0);
   return sellPrice(it.defId, it.quality, it.inspected, it.freshness);
+}
+
+export function fridgeItemPrice(it: FridgeItem): number {
+  return fridgeItemUnitPrice(it) * fridgeItemQty(it);
 }
 
 export function fridgeItemBlurb(it: FridgeItem): string {
@@ -134,6 +165,10 @@ export interface KitchenSave {
   xp: number;
   /** 明牌记忆：走过的卡型，存 `菜场:卡型`。地图每局重生，所以不记节点 id。 */
   seenCards: string[];
+  /** 出门选点页当前骑的那辆。走路开局就有。 */
+  vehicle: VehicleId;
+  /** 已买下的交通工具。走路不写也算有。 */
+  vehicles: VehicleId[];
 }
 
 export function todayKey(now = Date.now()): string {
@@ -161,6 +196,8 @@ export function defaultSave(now = Date.now()): KitchenSave {
     level: 1,
     xp: 0,
     seenCards: [],
+    vehicle: 'walk',
+    vehicles: ['walk'],
   };
 }
 
@@ -181,6 +218,7 @@ export function normalizeSave(raw: Partial<KitchenSave> | null, now = Date.now()
     recipesCooked: migrateRecipeIds(raw.recipesCooked),
     recipesFound: migrateRecipeIds((raw as KitchenSave).recipesFound),
     seenCards: Array.isArray(raw.seenCards) ? raw.seenCards : [],
+    ...migrateVehicles(raw),
   };
   next.basketLevel = next.furnLevels.basket;
   next.fridgeExtra = next.furnLevels.fridge > 0 || next.furnLevels.foam > 0;
@@ -201,7 +239,7 @@ function migrateRecipeIds(raw: unknown): RecipeId[] {
 
 function migrateFridgeItems(raw: unknown): FridgeItem[] {
   if (!Array.isArray(raw)) return [];
-  return raw.map((it) => {
+  const mapped = raw.map((it) => {
     const row = it as FridgeItem;
     const dish = row.kind === 'dish';
     const defId = dish && typeof row.defId === 'string'
@@ -215,8 +253,10 @@ function migrateFridgeItems(raw: unknown): FridgeItem[] {
       kind: dish ? 'dish' as const : 'food' as const,
       quality,
       inspected: dish || row.defId === 'wild_yellowfish' ? true : (row.inspected ?? true),
+      qty: fridgeItemQty(row),
     };
   });
+  return compactFridge(mapped.filter((it) => it.kind === 'dish' || it.quality !== 'rotten'));
 }
 
 function migrateHouseLevel(raw: Partial<KitchenSave>): number {
@@ -259,6 +299,103 @@ export function fridgeRoom(save: KitchenSave): number {
   return Math.max(0, fridgeCap(save) - save.fridge.length);
 }
 
+/** 还有空格，或已有格子没叠满，出门还能往回塞。 */
+export function fridgeAcceptsOuting(save: KitchenSave): boolean {
+  if (fridgeRoom(save) > 0) return true;
+  return save.fridge.some((it) => fridgeItemQty(it) < FRIDGE_STACK);
+}
+
+function asFridgeItem(it: FridgeDraft): FridgeItem {
+  return {
+    uid: it.uid ?? nextUid(it.kind === 'dish' ? 'd' : 'f'),
+    kind: it.kind === 'dish' ? 'dish' : 'food',
+    defId: it.defId,
+    quality: it.quality,
+    inspected: it.inspected,
+    freshness: it.freshness,
+    qty: fridgeItemQty(it),
+    value: it.value,
+  };
+}
+
+export function putIntoFridge(fridge: FridgeItem[], item: FridgeItem): FridgeItem[] {
+  let left = fridgeItemQty(item);
+  const key = fridgeStackKey(item);
+  const next = fridge.map((it) => ({ ...it }));
+  for (const it of next) {
+    if (left <= 0) break;
+    if (fridgeStackKey(it) !== key) continue;
+    const space = FRIDGE_STACK - fridgeItemQty(it);
+    if (space <= 0) continue;
+    const add = Math.min(space, left);
+    it.qty = fridgeItemQty(it) + add;
+    it.freshness = Math.max(it.freshness, item.freshness);
+    if (item.value != null) it.value = Math.max(it.value ?? 0, item.value);
+    left -= add;
+  }
+  let first = true;
+  while (left > 0) {
+    const add = Math.min(FRIDGE_STACK, left);
+    next.push({
+      ...item,
+      uid: first && item.uid ? item.uid : nextUid(item.kind === 'dish' ? 'd' : 'f'),
+      qty: add,
+    });
+    first = false;
+    left -= add;
+  }
+  return next;
+}
+
+function compactFridge(items: FridgeItem[]): FridgeItem[] {
+  return items.reduce((fridge, it) => putIntoFridge(fridge, { ...it, qty: fridgeItemQty(it) }), [] as FridgeItem[]);
+}
+
+export function simulateIngest(fridge: FridgeItem[], items: FridgeDraft[]): FridgeItem[] {
+  return items.reduce((next, it) => putIntoFridge(next, asFridgeItem(it)), fridge.map((row) => ({ ...row })));
+}
+
+export function fridgeCanFit(save: KitchenSave, items: FridgeDraft[]): boolean {
+  return simulateIngest(save.fridge, items).length <= fridgeCap(save);
+}
+
+/** 这批货还要新开几格。能叠进现有格子的不算。 */
+export function fridgeSlotsNeeded(save: KitchenSave, items: FridgeDraft[]): number {
+  return Math.max(0, simulateIngest(save.fridge, items).length - save.fridge.length);
+}
+
+/** 至少卖掉几件（篓里或冰箱里）剩下的才能装下。 */
+export function fridgeUnpackNeed(save: KitchenSave, haul: FridgeDraft[]): number {
+  if (fridgeCanFit(save, haul)) return 0;
+  const ranked = [...haul].sort((a, b) => {
+    const space = (it: FridgeDraft) => {
+      const key = fridgeStackKey(it);
+      return save.fridge.reduce((n, row) => (
+        fridgeStackKey(row) === key ? n + Math.max(0, FRIDGE_STACK - fridgeItemQty(row)) : n
+      ), 0);
+    };
+    const da = space(b) - space(a);
+    if (da) return da;
+    return fridgeStackKey(a).localeCompare(fridgeStackKey(b));
+  });
+  const keep: FridgeDraft[] = [];
+  for (const it of ranked) {
+    if (fridgeCanFit(save, [...keep, it])) keep.push(it);
+  }
+  return haul.length - keep.length;
+}
+
+function consumeFridgeQty(fridge: FridgeItem[], used: Map<string, number>): FridgeItem[] {
+  const next: FridgeItem[] = [];
+  for (const it of fridge) {
+    const take = used.get(it.uid) ?? 0;
+    const qty = fridgeItemQty(it) - take;
+    if (qty <= 0) continue;
+    next.push(qty === fridgeItemQty(it) ? it : { ...it, qty });
+  }
+  return next;
+}
+
 export function regenStamina(save: KitchenSave, now = Date.now()): KitchenSave {
   if (save.stamina >= STAMINA_MAX) return { ...save, staminaAt: now };
   const elapsed = Math.max(0, now - save.staminaAt);
@@ -284,19 +421,21 @@ export function noteDex(save: KitchenSave, items: ExtractedItem[]): KitchenSave 
 }
 
 export function ingestExtract(save: KitchenSave, items: ExtractedItem[], now = Date.now()): KitchenSave {
-  const incoming: FridgeItem[] = items.map((it) => ({
+  const keep = items.filter((it) => it.quality !== 'rotten');
+  const incoming: FridgeItem[] = keep.map((it) => ({
     uid: it.uid,
     kind: 'food',
     defId: it.defId,
     quality: it.quality,
     inspected: it.inspected,
     freshness: it.freshness,
+    qty: 1,
   }));
-  const next = noteDex(save, items);
+  const next = noteDex(save, keep);
   return {
     ...next,
-    fridge: [...next.fridge, ...incoming],
-    dailyGodPickDate: items.some((it) => it.defId === 'wild_yellowfish') ? todayKey(now) : save.dailyGodPickDate,
+    fridge: incoming.reduce((fridge, it) => putIntoFridge(fridge, it), next.fridge),
+    dailyGodPickDate: keep.some((it) => it.defId === 'wild_yellowfish') ? todayKey(now) : save.dailyGodPickDate,
   };
 }
 
@@ -323,13 +462,17 @@ export function cookRecipe(
   const view = recipeUnlockView(save);
   if (!isRecipeUnlocked(view, recipeId)) return { save, error: '还不会这道菜' };
   const items = uids?.length
-    ? save.fridge.filter((it) => uids.includes(it.uid))
+    ? pickRecipeFoods({ ...view, fridge: save.fridge.filter((it) => uids.includes(it.uid)) }, recipeId)
     : pickRecipeFoods(view, recipeId);
   if (!items.length) return { save, error: `材料不够：${recipe.desc}` };
   if (items.some((it) => it.quality === 'rotten')) return { save, error: '坏了，不能下锅' };
   if (!recipe.match(items)) return { save, error: `材料不对：${recipe.desc}` };
   const value = recipe.cook(items);
-  const usedIds = new Set(items.map((it) => it.uid).filter((uid): uid is string => !!uid));
+  const used = new Map<string, number>();
+  for (const it of items) {
+    if (!it.uid) continue;
+    used.set(it.uid, (used.get(it.uid) ?? 0) + 1);
+  }
   const dish: FridgeItem = {
     uid: nextUid('d'),
     kind: 'dish',
@@ -337,19 +480,15 @@ export function cookRecipe(
     quality: 'fresh',
     inspected: true,
     freshness: 4,
+    qty: 1,
     value,
   };
+  const fridge = putIntoFridge(consumeFridgeQty(save.fridge, used), dish);
+  if (fridge.length > fridgeCap(save)) return { save, error: '冰箱满了，腾一格再做菜' };
   const first = !save.recipesCooked.includes(recipeId);
   const recipesCooked = first ? [...save.recipesCooked, recipeId] : save.recipesCooked;
   const gained = recipe.xp + (first ? recipe.firstXp : 0);
-  const next = grantCookXp(
-    {
-      ...save,
-      fridge: [...save.fridge.filter((it) => !usedIds.has(it.uid)), dish],
-      recipesCooked,
-    },
-    gained,
-  );
+  const next = grantCookXp({ ...save, fridge, recipesCooked }, gained);
   return { save: next.save, xp: next.gained, levels: next.levels };
 }
 
@@ -547,6 +686,24 @@ export function buyFurnUpgrade(save: KitchenSave, id: FurnId): { save: KitchenSa
 export function buyUpgrade(save: KitchenSave, kind: 'basket1' | 'basket2' | 'fridge'): { save: KitchenSave; error?: string } {
   if (kind === 'fridge') return buyFurnUpgrade(save, 'fridge');
   return buyFurnUpgrade(save, 'basket');
+}
+
+export function buyVehicle(save: KitchenSave, id: VehicleId): { save: KitchenSave; error?: string } {
+  const def = vehicleById(id);
+  if (def.cost <= 0) return { save, error: '走路不用买' };
+  if (ownsVehicle(save, id)) return { save, error: '已经有了' };
+  if (vehicleOffer(save, id) === 'locked') {
+    const prev = VEHICLES[vehicleIndex(id) - 1];
+    return { save, error: `先买${prev?.name ?? '上一辆'}` };
+  }
+  if (save.money < def.cost) return { save, error: `差 ${def.cost - save.money} 金币，先回家卖点菜` };
+  const vehicles = save.vehicles.includes(id) ? save.vehicles : [...save.vehicles, id];
+  return { save: { ...save, money: save.money - def.cost, vehicles, vehicle: id } };
+}
+
+export function selectVehicle(save: KitchenSave, id: VehicleId): KitchenSave {
+  if (!ownsVehicle(save, id) || save.vehicle === id) return save;
+  return { ...save, vehicle: id };
 }
 
 export function spendStamina(save: KitchenSave, now = Date.now()): { save: KitchenSave; error?: string } {

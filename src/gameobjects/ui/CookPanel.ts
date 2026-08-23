@@ -7,6 +7,7 @@ import {
   itemRarity,
   rarityLabel,
   recipeCanCook,
+  recipeCookCount,
   recipeNeeds,
   recipeUnlockView,
   recipeXp,
@@ -190,7 +191,9 @@ export class CookPanel extends PIXI.Container {
         tab.endFill();
         tab.eventMode = 'none';
         row.addChild(tab);
-        row.alpha = recipeCanCook(view, recipe.id) || on ? 1 : 0.75;
+        const can = recipeCookCount(view, recipe.id);
+        row.alpha = can > 0 || on ? 1 : 0.75;
+        if (can > 0) row.addChild(this._readyBadge(rowW, can));
         row.position.set(x + 6, cy);
         row.on('pointertap', () => {
           if (this._scroller.moved) return;
@@ -397,6 +400,26 @@ export class CookPanel extends PIXI.Container {
     name.anchor.set(0.5, 0);
     name.position.set(x + size / 2, y + size + 4);
     root.addChild(name);
+    return root;
+  }
+
+  private _readyBadge(rowW: number, count: number): PIXI.Container {
+    const root = new PIXI.Container();
+    const text = count > 99 ? '99+' : `${count}`;
+    const wide = text.length > 1;
+    const w = wide ? 28 : 22;
+    const h = 22;
+    const g = new PIXI.Graphics();
+    g.beginFill(0xD94A3A, 1);
+    g.drawRoundedRect(0, 0, w, h, h / 2);
+    g.endFill();
+    g.eventMode = 'none';
+    const n = makeLabel(text, 13, PAPER, { fontWeight: '700' });
+    n.anchor.set(0.5);
+    n.position.set(w / 2, h / 2 + 0.5);
+    root.addChild(g, n);
+    root.eventMode = 'none';
+    root.position.set(rowW - w + 4, -7);
     return root;
   }
 

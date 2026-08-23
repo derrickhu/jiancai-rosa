@@ -26,6 +26,9 @@ const KIND_SLOT: Record<CardKind, number> = {
   favor: 9,
   deep: 10,
   recipe: 10,
+  talk: 9,
+  gather: 6,
+  branch: 4,
 };
 const BACK_SLOT = 11;
 
@@ -59,7 +62,8 @@ export function slotForNode(node: { kind: CardKind; stall?: StallId }, revealed:
 function infoLine(opt: RouteOption): string {
   const { node, revealed, fee, left } = opt;
   if (!revealed) return cardHint(node, false);
-  if (node.kind === 'stall' || node.kind === 'paystall') {
+  const rummage = node.kind === 'stall' || node.kind === 'paystall' || node.encounter?.type === 'rummage';
+  if (rummage) {
     const price = fee > 0 ? `${fee} 金币` : '免费';
     return `${price} · 剩 ${left} 件`;
   }
@@ -86,20 +90,24 @@ export function makeRouteCard(opts: {
   const height = Math.round(width * FRAME_RATIO);
   const locked = !!option.blocked;
   const root = new PIXI.Container();
-  const meatPath = option.node.stall === 'meat' && option.revealed ? opts.meatCard : undefined;
+  const artPath = option.revealed && option.node.cardArt
+    ? option.node.cardArt
+    : option.node.stall === 'meat' && option.revealed
+      ? opts.meatCard
+      : undefined;
 
   whenTextureReady(CARD_FRAME, () => opts.onReady?.());
   whenTextureReady(atlas, () => opts.onReady?.());
-  if (meatPath) whenTextureReady(meatPath, () => opts.onReady?.());
+  if (artPath) whenTextureReady(artPath, () => opts.onReady?.());
 
   const winX = Math.round(width * WIN.x);
   const winY = Math.round(height * WIN.y);
   const winW = Math.round(width * WIN.w);
   const winH = Math.round(height * WIN.h);
 
-  const meatTex = meatPath ? gameTexture(meatPath) : null;
-  const thumb = meatTex && isTextureReady(meatTex)
-    ? meatTex
+  const artTex = artPath ? gameTexture(artPath) : null;
+  const thumb = artTex && isTextureReady(artTex)
+    ? artTex
     : slotTexture(atlas, slotForNode(option.node, option.revealed));
   if (thumb) {
     const sp = new PIXI.Sprite(thumb);

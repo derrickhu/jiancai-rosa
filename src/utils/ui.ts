@@ -288,6 +288,7 @@ export const HUD_ICON = {
   basket: 'subpkg_images/hud_basket.png',
   dex: 'subpkg_images/hud_dex.png',
   destBanner: 'subpkg_images/ui_dest_banner.png',
+  home: 'subpkg_images/hud_home.png',
 } as const;
 
 export const UI_BTN = {
@@ -321,6 +322,8 @@ export function makeSlicedButton(opts: {
   height?: number;
   skin?: keyof typeof UI_BTN;
   textColor?: number;
+  /** 文案相对正中的水平偏移，左边叠图标时把字往右让。 */
+  labelOffsetX?: number;
   onReady?: () => void;
 }): PIXI.Container {
   const height = opts.height ?? 48;
@@ -356,7 +359,7 @@ export function makeSlicedButton(opts: {
   }
   const text = makeLabel(opts.label, Math.min(24, height * 0.42), opts.textColor ?? 0xFFF8F0, { fontWeight: '700' });
   text.anchor.set(0.5);
-  text.position.set(opts.width / 2, height / 2 + 1);
+  text.position.set(opts.width / 2 + (opts.labelOffsetX ?? 0), height / 2 + 1);
   root.addChild(text);
   root.eventMode = 'static';
   root.cursor = 'pointer';
