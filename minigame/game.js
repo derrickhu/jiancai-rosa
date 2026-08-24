@@ -112,7 +112,7 @@ function _loadImagesThenStart() {
   if (_isDevtools()) {
     if (_requireImagesEntry()) _diag('devtools 已 require 图片分包入口');
     if (_requireKitchenEntry()) _diag('devtools 已 require 厨房分包入口');
-    _startGame('devtools 跳过 loadSubpackage');
+    _startGame('devtools 跳过等待 loadSubpackage');
     return;
   }
 
@@ -149,6 +149,7 @@ function _loadImagesThenStart() {
     } catch (e) {
       clearTimeout(timer);
       _diag('厨房 loadSubpackage 异常:' + e);
+      if (_requireKitchenEntry()) _diag('异常后 require 厨房入口 OK');
       _startGame('厨房分包异常仍启动');
     }
   }

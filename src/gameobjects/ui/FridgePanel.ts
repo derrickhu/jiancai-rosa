@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js';
+import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { KitchenManager } from '@/managers/KitchenManager';
@@ -17,7 +18,7 @@ import {
   type Rarity,
   type RecipeId,
 } from '@/sim';
-import { FONT, drawRarityFrame, fillRect, makeLabel } from '@/utils/ui';
+import { FONT, bindUiClick, drawRarityFrame, fillRect, makeLabel } from '@/utils/ui';
 import { VerticalScroller } from '@/utils/scroll';
 import {
   dishTexture,
@@ -82,6 +83,7 @@ export class FridgePanel extends PIXI.Container {
   }
 
   open(tab?: FridgeKind): void {
+    if (!this._isOpen) AudioManager.play('fridge_open');
     this.prune();
     if (tab) this._tab = tab;
     this._isOpen = true;
@@ -93,7 +95,8 @@ export class FridgePanel extends PIXI.Container {
     OverlayManager.bringToFront();
   }
 
-  close(): void {
+  close(silent = false): void {
+    if (this._isOpen && !silent) AudioManager.play('ui_close');
     this._isOpen = false;
     this.visible = false;
     this._scroller.disable();
@@ -199,7 +202,7 @@ export class FridgePanel extends PIXI.Container {
     const sellN = fridgeQtySum(picked);
     const btnH = 46;
     const btnY = fy + Math.max(6, (fh - btnH) * 0.28) + 20;
-    const sell = this._chip(uids.length ? `卖掉 ${sellN}个` : '卖掉', chipW, btnH, uids.length ? 'primary' : 'idle');
+    const sell = this._chip(uids.length ? `卖掉 ${sellN}个` : '卖掉', chipW, btnH, uids.length ? 'primary' : 'idle', true);
     sell.position.set(cx, btnY);
     sell.on('pointertap', () => {
       if (!uids.length) return;
@@ -293,7 +296,13 @@ export class FridgePanel extends PIXI.Container {
     return root;
   }
 
-  private _chip(label: string, width: number, height: number, kind: 'primary' | 'wood' | 'idle' | 'on' | 'off'): PIXI.Container {
+  private _chip(
+    label: string,
+    width: number,
+    height: number,
+    kind: 'primary' | 'wood' | 'idle' | 'on' | 'off',
+    silent = false,
+  ): PIXI.Container {
     const path = kind === 'wood' ? BTN.wood : (kind === 'primary' || kind === 'on' ? BTN.terracotta : BTN.cream);
     const texts = {
       primary: PAPER,
@@ -341,6 +350,7 @@ export class FridgePanel extends PIXI.Container {
     root.eventMode = 'static';
     root.cursor = 'pointer';
     root.hitArea = new PIXI.Rectangle(0, 0, width, height);
+    if (!silent) bindUiClick(root);
     return root;
   }
 
@@ -546,7 +556,7 @@ export class FridgePanel extends PIXI.Container {
     card.addChild(blurb);
 
     const btnW = cardW - 56;
-    const sellOne = this._chip(qty > 1 ? `卖出这一格 ×${qty}` : '卖出', btnW, 48, price > 0 ? 'primary' : 'idle');
+    const sellOne = this._chip(qty > 1 ? `卖出这一格 ×${qty}` : '卖出', btnW, 48, price > 0 ? 'primary' : 'idle', true);
     sellOne.position.set(28, cardH - 68);
     sellOne.on('pointertap', () => {
       if (price <= 0) return;

@@ -30,6 +30,8 @@ export const BACKEND_TOKEN_KEY = `${GAME_KEY}_token`;
 export const BACKEND_ANON_ID_KEY = `${GAME_KEY}_anon_id`;
 
 export const SAVE_KEY = `${GAME_KEY}_save`;
+/** 音量开关只留本地，不进云同步。 */
+export const AUDIO_SETTINGS_KEY = `${GAME_KEY}_audio`;
 
 export const CLOUD_SYNC_SCHEMA_VERSION = 1;
 export const CLOUD_SYNC_META_KEY = `${GAME_KEY}_cloud_meta`;
@@ -42,6 +44,7 @@ export const CLOUD_SYNC_ALLOWLIST = [
 export const CLOUD_SYNC_EXCLUDE_KEYS = [
   BACKEND_TOKEN_KEY,
   BACKEND_ANON_ID_KEY,
+  AUDIO_SETTINGS_KEY,
 ] as const;
 
 export const CLOUD_SYNC_STARTUP_TIMEOUT_MS = 2500;

@@ -40,10 +40,7 @@ class CdnAssetServiceClass {
   isCdnPath(path: string): boolean {
     const normalized = this._normalize(path);
     if (!this.enabled || this.isBundledPath(normalized)) return false;
-    if (this._config.cdnPrefixes.length > 0) {
-      return this._config.cdnPrefixes.some(prefix => this._matchPrefix(normalized, prefix));
-    }
-    return this._cdnDirPrefixes.some(prefix => normalized.startsWith(prefix));
+    return this._matchesCdnPrefix(normalized);
   }
 
   isBundledPath(path: string): boolean {
@@ -76,8 +73,52 @@ class CdnAssetServiceClass {
     const ok = await this.download(logicalPath);
     if (ok && this._isCacheValid(logicalPath)) return this._getCachePath(logicalPath);
 
+    // CDN 专属资源不在微信包里。再回落相对路径只会让图片/音效二次失败。
+    if (this._config.baseUrl) {
+      console.warn(`[CDN] 本地缓存未就绪，直连云端: ${logicalPath}`);
+      return this._getCdnUrl(logicalPath);
+    }
+
     console.warn(`[CDN] 资源未从云端就绪，使用本地分包路径: ${logicalPath}`);
     return logicalPath;
+  }
+
+  /** 开发者工具 USER_DATA_PATH 是 http://usr，图片能读，InnerAudio 必须 wxfile://。 */
+  toInnerAudioSrc(path: string): string {
+    if (/^https?:\/\/usr\//.test(path)) return path.replace(/^https?:\/\/usr\//, 'wxfile://usr/');
+    return path;
+  }
+
+  publicUrl(path: string): string {
+    return this._getCdnUrl(this._normalize(path));
+  }
+
+  /** 给 InnerAudio：优先本地 wxfile；开发者工具 http://usr 必须改走 https，否则 set src request:fail。 */
+  async resolveAudioSrc(path: string): Promise<string> {
+    const logicalPath = this._normalize(path);
+    const resolved = await this.resolveOrDownload(logicalPath);
+    if (/^https?:\/\/usr\//.test(resolved) && this._config.baseUrl && this.isCdnPath(logicalPath)) {
+      return this.publicUrl(logicalPath);
+    }
+    const playable = this.toInnerAudioSrc(resolved);
+    if (
+      playable.startsWith('wxfile://')
+      || playable.startsWith('https://')
+      || playable.startsWith('http://tmp')
+    ) {
+      return playable;
+    }
+    if (this.isCdnPath(logicalPath) && this._config.baseUrl) return this.publicUrl(logicalPath);
+    return playable;
+  }
+
+  invalidateCache(path: string): void {
+    const logicalPath = this._normalize(path);
+    const cachePath = this._getCachePath(logicalPath);
+    this._localExistsCache.delete(cachePath);
+    const fs = this._getFs();
+    try { fs?.unlinkSync(cachePath); } catch (_) {}
+    try { fs?.unlinkSync(`${cachePath}.meta`); } catch (_) {}
   }
 
   async fetchManifest(): Promise<boolean> {
@@ -196,12 +237,21 @@ class CdnAssetServiceClass {
         if (!res.tempFilePath) throw new Error('downloadFile missing tempFilePath');
 
         fs.copyFileSync(res.tempFilePath, cachePath);
+        const size = this._getLocalFileSize(cachePath);
+        const expected = this._manifest?.files?.[logicalPath]?.size;
+        if (size < 64 || (typeof expected === 'number' && expected > 0 && size !== expected)) {
+          this._localExistsCache.set(cachePath, false);
+          try { fs.unlinkSync(cachePath); } catch (_) {}
+          try { fs.unlinkSync(`${cachePath}.meta`); } catch (_) {}
+          throw new Error(`bad size ${size} expected ${expected || '>=64'}`);
+        }
         this._localExistsCache.set(cachePath, true);
         const hash = this._manifest?.files?.[logicalPath]?.hash || '';
         try { fs.writeFileSync(`${cachePath}.meta`, hash, 'utf-8'); } catch (_) {}
         return true;
       } catch (e) {
-        if (attempt >= this._config.downloadRetry) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes('status=404') || attempt >= this._config.downloadRetry) {
           console.warn(`[CDN] 下载失败 ${logicalPath}:`, e);
           return false;
         }
@@ -242,8 +292,10 @@ class CdnAssetServiceClass {
 
   private _isCacheValid(logicalPath: string): boolean {
     if (!this._cacheFileExists(logicalPath)) return false;
+    const localSize = this._getLocalFileSize(this._getCachePath(logicalPath));
+    if (localSize < 64) return false;
     const entry = this._manifest?.files?.[logicalPath];
-    if (entry?.size && this._getLocalFileSize(this._getCachePath(logicalPath)) !== entry.size) {
+    if (entry?.size && localSize !== entry.size) {
       return false;
     }
     if (!entry?.hash) return true;
@@ -336,6 +388,13 @@ class CdnAssetServiceClass {
   private _touch(logicalPath: string): void {
     this._accessFrame++;
     this._accessLog.set(logicalPath, this._accessFrame);
+  }
+
+  private _matchesCdnPrefix(path: string): boolean {
+    if (this._config.cdnPrefixes.length > 0) {
+      return this._config.cdnPrefixes.some(prefix => this._matchPrefix(path, prefix));
+    }
+    return this._cdnDirPrefixes.some(prefix => path.startsWith(prefix));
   }
 
   private _matchPrefix(path: string, prefix: string): boolean {

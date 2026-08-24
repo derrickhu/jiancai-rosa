@@ -70,9 +70,7 @@ export function minHouseForFurn(id: FurnId, furnLevel: number): number {
 
 export function houseRoomCandidates(house: number): string[] {
   const h = clampHouseLevel(house);
-  const paths = [`subpkg_kitchen/kitchen_room_${h}.jpg`];
-  if (h === 2) paths.push('subpkg_images/kitchen_room.jpg');
-  return paths;
+  return [`subpkg_kitchen/kitchen_room_${h}.jpg`];
 }
 
 export function houseDoor(_house: number): { nx: number; ny: number; nw: number; nh: number } {

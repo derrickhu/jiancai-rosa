@@ -237,7 +237,9 @@ function syncPackIgnore(remotePaths) {
   const pack = project.packOptions || { ignore: [], include: [] };
   const keep = (pack.ignore || []).filter((entry) => {
     const value = String(entry.value || '');
-    return !value.startsWith('subpkg_images/');
+    return !value.startsWith('subpkg_images/')
+      && !value.startsWith('subpkg_audio/')
+      && !value.startsWith('audio/');
   });
   const globs = [
     { type: 'glob', value: 'subpkg_images/market_*.jpg' },
@@ -247,6 +249,8 @@ function syncPackIgnore(remotePaths) {
     { type: 'glob', value: 'subpkg_images/dest_*.jpg' },
     { type: 'glob', value: 'subpkg_images/dish_*.png' },
     { type: 'glob', value: 'subpkg_images/npc_*.png' },
+    { type: 'glob', value: 'subpkg_audio/*' },
+    { type: 'glob', value: 'audio/*.mp3' },
   ];
   const files = [...remotePaths].sort().map((value) => ({ type: 'file', value }));
   pack.ignore = [...keep, ...globs, ...files];
@@ -266,9 +270,14 @@ async function main() {
   if (!cfg.enabled) throw new Error('CDN_CONFIG.enabled=false，已停止上传');
   if (!BUCKET) throw new Error('缺少 CDN_CLOUD_BUCKET / CdnConfig.cloudBucket');
 
+  const scanRoots = new Set(CDN_LOCAL_DIRS.map(d => d.local));
+  for (const prefix of CDN_PREFIXES) {
+    const root = String(prefix).split('/')[0];
+    if (root) scanRoots.add(root);
+  }
   const allFiles = [];
-  for (const dir of CDN_LOCAL_DIRS) {
-    allFiles.push(...walkDir(path.join(PROJECT_ROOT, 'minigame', dir.local), dir.remote));
+  for (const dir of scanRoots) {
+    allFiles.push(...walkDir(path.join(PROJECT_ROOT, 'minigame', dir), dir));
   }
   const localManifest = {};
   let localBytes = 0;
@@ -277,8 +286,10 @@ async function main() {
     localBytes += f.size;
   }
   console.log(`扫描完成: ${allFiles.length} 个文件，${formatSize(localBytes)}`);
-  syncPackIgnore(allFiles.map(f => f.remote));
-  console.log('已同步 project.config.json packOptions.ignore，上传包将排除这些大图。');
+  if (!DRY_RUN) {
+    syncPackIgnore(allFiles.map(f => f.remote));
+    console.log('已同步 project.config.json packOptions.ignore，上传包将排除这些大图。');
+  }
 
   if (!SECRET_ID || !SECRET_KEY) {
     if (DRY_RUN) {

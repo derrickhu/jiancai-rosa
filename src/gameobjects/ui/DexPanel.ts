@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js';
+import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { Platform } from '@/core/PlatformService';
@@ -79,6 +80,7 @@ export class DexPanel extends PIXI.Container {
     this._view = { kind: 'home' };
     this._scrollY = 0;
     this._inspect = null;
+    if (!this._isOpen) AudioManager.play('ui_open');
     this._isOpen = true;
     this.visible = true;
     this.relayout();
@@ -86,7 +88,8 @@ export class DexPanel extends PIXI.Container {
     this._bindWx(true);
   }
 
-  close(): void {
+  close(silent = false): void {
+    if (this._isOpen && !silent) AudioManager.play('ui_close');
     this._isOpen = false;
     this.visible = false;
     this._inspect = null;

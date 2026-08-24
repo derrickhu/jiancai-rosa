@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js';
+import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { EventBus } from '@/core/EventBus';
@@ -6,12 +7,13 @@ import { Platform } from '@/core/PlatformService';
 import { EV } from '@/config/events';
 import { RunManager, type OutingLoot } from '@/managers/RunManager';
 import {
-  canPlace,
   footprint,
   getItem,
   occupiedCells,
   displayName,
+  previewDrop,
   type BasketItem,
+  type DropPreview,
 } from '@/sim';
 import { drawRarityFrame, fillRect, makeLabel, makeSlicedButton } from '@/utils/ui';
 import { fitSpriteInBox, gameTexture, isTextureReady, itemTexture, whenTextureReady } from '@/utils/assets';
@@ -24,6 +26,7 @@ const WALNUT = 0x8B5A2B;
 const WET = 0x3A6A72;
 const DRY = 0xC4A574;
 const OK = 0x5C8A3A;
+const SWAP = 0xC48A22;
 const BAD = 0xB04A3A;
 const STAGE = { x: 0.13, y: 0.168, w: 0.74, h: 0.168 };
 const CAVITY = { x: 0.12, y: 0.368, w: 0.76, h: 0.42 };
@@ -57,7 +60,7 @@ export class BasketPanel extends PIXI.Container {
     liftAt: number;
     gx: number;
     gy: number;
-    ok: boolean;
+    preview: DropPreview;
     source: PIXI.Container | null;
   } | null = null;
 
@@ -76,6 +79,7 @@ export class BasketPanel extends PIXI.Container {
   }
 
   open(placingUid?: string): void {
+    if (!this._isOpen) AudioManager.play('ui_open');
     this.placingUid = placingUid ?? null;
     this.selectedUid = placingUid ?? null;
     this._rot = 0;
@@ -99,7 +103,8 @@ export class BasketPanel extends PIXI.Container {
     OverlayManager.bringToFront();
   }
 
-  close(): void {
+  close(silent = false): void {
+    if (this._isOpen && !silent) AudioManager.play('ui_close');
     this._isOpen = false;
     this.visible = false;
     this.placingUid = null;
@@ -246,7 +251,7 @@ export class BasketPanel extends PIXI.Container {
   }
 
   private _drawStage(shell: PIXI.Container, stage: { x: number; y: number; w: number; h: number }, items: OutingLoot[]): void {
-    const label = makeLabel(items.length ? '刚拿到 · 拖进篮子，或把篮里的拖回来腾位' : '篮里的菜可以拖着换格', 16, WALNUT, {
+    const label = makeLabel(items.length ? '刚拿到 · 拖进空格，压到一件会换上来' : '篮里的菜可以拖着换格、点旋转', 16, WALNUT, {
       fontWeight: '600',
     });
     label.position.set(stage.x + 6, stage.y - 2);
@@ -318,8 +323,10 @@ export class BasketPanel extends PIXI.Container {
     const def = getItem(drag.defId);
     const { w: fw, h: fh } = footprint(def, drag.rot);
     const { x, y, cell } = this._grid;
-    this._ghost.beginFill(drag.ok ? OK : BAD, 0.38);
-    this._ghost.lineStyle(3, drag.ok ? 0x8FCB6B : 0xE07A5F, 0.95);
+    const tone = drag.preview === 'empty' ? OK : drag.preview === 'swap' ? SWAP : BAD;
+    const line = drag.preview === 'empty' ? 0x8FCB6B : drag.preview === 'swap' ? 0xE0A100 : 0xE07A5F;
+    this._ghost.beginFill(tone, 0.38);
+    this._ghost.lineStyle(3, line, 0.95);
     this._ghost.drawRoundedRect(x + drag.gx * cell, y + drag.gy * cell, fw * cell - 3, fh * cell - 3, 8);
     this._ghost.endFill();
   }
@@ -416,7 +423,7 @@ export class BasketPanel extends PIXI.Container {
         liftAt: 0,
         gx: 0,
         gy: 0,
-        ok: false,
+        preview: 'blocked',
         source: root,
       };
       this._syncGhost(e.global.x, e.global.y);
@@ -459,16 +466,20 @@ export class BasketPanel extends PIXI.Container {
       this.relayout();
       return;
     }
-    if (!drag.ok) {
-      Platform.showToast('这里放不下');
+    if (drag.preview === 'blocked') {
       this.relayout();
       return;
     }
     const err = drag.from === 'basket'
       ? RunManager.moveBasketItem(drag.uid, drag.gx, drag.gy, drag.rot)
       : RunManager.dropStagingToCell(drag.uid, drag.gx, drag.gy, drag.rot);
-    if (err) Platform.showToast(err);
-    else this.placingUid = null;
+    if (err) {
+      AudioManager.play('ui_deny');
+      Platform.showToast(err);
+    } else {
+      AudioManager.play('basket_place');
+      this.placingUid = null;
+    }
     this.relayout();
   }
 
@@ -498,35 +509,22 @@ export class BasketPanel extends PIXI.Container {
   private _syncGhost(gx: number, gy: number): void {
     const drag = this._drag;
     if (!drag) return;
-    const cell = this._cellAt(gx - drag.ox, gy - drag.oy);
+    const cell = this._cellAt(gx, gy);
     if (!cell) {
-      drag.ok = false;
+      drag.preview = 'blocked';
       return;
     }
-    drag.gx = cell.x;
-    drag.gy = cell.y;
-    const draft = { uid: drag.uid, defId: drag.defId, x: cell.x, y: cell.y, rot: drag.rot };
-    if (drag.from === 'basket') {
-      const result = canPlace(
-        { ...RunManager.basket, items: RunManager.basket.items.filter((it) => it.uid !== drag.uid) },
-        draft,
-      );
-      drag.ok = result.ok || this._canSwap(drag.uid, cell.x, cell.y, drag.rot);
-    } else {
-      drag.ok = canPlace(RunManager.basket, draft).ok;
-    }
-  }
-
-  private _canSwap(uid: string, x: number, y: number, rot: 0 | 1): boolean {
-    const item = RunManager.basket.items.find((it) => it.uid === uid);
-    if (!item) return false;
-    const probe = { ...item, x, y, rot };
-    const hit = RunManager.basket.items.filter((it) => {
-      if (it.uid === uid) return false;
-      const a = new Set(occupiedCells(probe).map((c) => `${c.x},${c.y}`));
-      return occupiedCells(it).some((c) => a.has(`${c.x},${c.y}`));
+    const def = getItem(drag.defId);
+    const { w, h } = footprint(def, drag.rot);
+    drag.gx = Math.max(0, Math.min(cell.x, this._grid.cols - w));
+    drag.gy = Math.max(0, Math.min(cell.y, this._grid.rows - h));
+    drag.preview = previewDrop(RunManager.basket, {
+      uid: drag.uid,
+      defId: drag.defId,
+      x: drag.gx,
+      y: drag.gy,
+      rot: drag.rot,
     });
-    return hit.length === 1;
   }
 
   private _boundUp = (e: PIXI.FederatedPointerEvent): void => {
@@ -573,14 +571,14 @@ export class BasketPanel extends PIXI.Container {
     if (this._drag) {
       this._drag.rot = this._rot;
       this._lift(this._drag);
-      this._syncGhost(this._drag.startX, this._drag.startY);
-      this.relayout();
+      this._syncGhost(this._drag.lastX, this._drag.lastY);
+      this._drawGhost();
       return;
     }
     const selected = RunManager.basket.items.find((it) => it.uid === this.selectedUid);
     if (selected) {
-      const err = RunManager.moveBasketItem(selected.uid, selected.x, selected.y, this._rot);
-      if (err) Platform.showToast(err);
+      RunManager.rotateBasketItem(selected.uid);
+      this.relayout();
       return;
     }
     this.relayout();
@@ -589,9 +587,11 @@ export class BasketPanel extends PIXI.Container {
   private _discard(): void {
     const uid = this.selectedUid;
     if (!uid) {
+      AudioManager.play('ui_deny');
       Platform.showToast('先点一件');
       return;
     }
+    AudioManager.play('basket_discard');
     if (RunManager.basket.items.some((it) => it.uid === uid)) {
       RunManager.discard(uid);
     } else {

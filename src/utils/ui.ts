@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js';
+import { AudioManager } from '@/core/AudioManager';
 import { RARITY_STYLE, type Rarity } from '@/sim/rarity';
 import { fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from './assets';
 
@@ -108,6 +109,7 @@ export function makeButton(
 
   root.eventMode = 'static';
   root.cursor = 'pointer';
+  attachUiClick(root);
   (root as any)._bg = bg;
   (root as any)._label = text;
   (root as any)._w = width;
@@ -321,13 +323,17 @@ export function makeSlicedButton(opts: {
   width: number;
   height?: number;
   skin?: keyof typeof UI_BTN;
+  /** 自定义按钮皮，优先于 skin。 */
+  path?: string;
   textColor?: number;
   /** 文案相对正中的水平偏移，左边叠图标时把字往右让。 */
   labelOffsetX?: number;
   onReady?: () => void;
+  /** 卖出等已有专属音的按钮不要再叠通用点击。 */
+  silent?: boolean;
 }): PIXI.Container {
   const height = opts.height ?? 48;
-  const path = UI_BTN[opts.skin ?? 'terracotta'];
+  const path = opts.path ?? UI_BTN[opts.skin ?? 'terracotta'];
   const root = new PIXI.Container();
   whenTextureReady(path, () => opts.onReady?.());
   const slices = buttonSlices(path);
@@ -364,6 +370,7 @@ export function makeSlicedButton(opts: {
   root.eventMode = 'static';
   root.cursor = 'pointer';
   root.hitArea = new PIXI.Rectangle(0, 0, opts.width, height);
+  if (!opts.silent) attachUiClick(root);
   return root;
 }
 
@@ -391,6 +398,7 @@ export function makeHudButton(
 
   root.eventMode = 'static';
   root.cursor = 'pointer';
+  attachUiClick(root);
   (root as any)._bg = bg;
   (root as any)._label = text;
   (root as any)._w = width;
@@ -420,5 +428,59 @@ export function makePaperChip(
   label.position.set(w / 2, h / 2);
   root.addChild(label);
   root.eventMode = 'none';
+  return root;
+}
+
+/** 没有单独音效的按钮，默认播通用点击。 */
+export function bindUiClick(root: PIXI.Container): void {
+  root.on('pointertap', () => AudioManager.play('ui_click'));
+}
+
+function attachUiClick(root: PIXI.Container): void {
+  bindUiClick(root);
+}
+
+/** 顶栏小喇叭：一点切静音。 */
+export function makeMuteButton(size = 44): PIXI.Container {
+  const root = new PIXI.Container();
+  const paint = (): void => {
+    root.removeChildren();
+    const muted = AudioManager.isMuted();
+    const g = new PIXI.Graphics();
+    g.lineStyle(2, 0x8B5A2B, 1);
+    g.beginFill(0xFFF8F0);
+    g.drawRoundedRect(0, 0, size, size, 12);
+    g.endFill();
+    const cx = size * 0.38;
+    const cy = size * 0.5;
+    g.beginFill(0x2A2018);
+    g.drawRoundedRect(cx - 10, cy - 5, 8, 10, 2);
+    g.moveTo(cx - 2, cy - 5);
+    g.lineTo(cx + 7, cy - 11);
+    g.lineTo(cx + 7, cy + 11);
+    g.lineTo(cx - 2, cy + 5);
+    g.closePath();
+    g.endFill();
+    if (muted) {
+      g.lineStyle(3, 0xC46A3A, 1);
+      g.moveTo(size * 0.22, size * 0.22);
+      g.lineTo(size * 0.78, size * 0.78);
+    } else {
+      g.lineStyle(2.5, 0x2A2018, 1);
+      g.arc(cx + 6, cy, 8, -0.7, 0.7);
+      g.arc(cx + 6, cy, 13, -0.7, 0.7);
+    }
+    root.addChild(g);
+  };
+  paint();
+  root.eventMode = 'static';
+  root.cursor = 'pointer';
+  root.hitArea = new PIXI.Rectangle(0, 0, size, size);
+  root.on('pointertap', (e) => {
+    e.stopPropagation();
+    AudioManager.play('ui_click');
+    AudioManager.toggleMuted();
+    paint();
+  });
   return root;
 }

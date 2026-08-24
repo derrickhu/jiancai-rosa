@@ -1,0 +1,2 @@
+结算不再自造。成品是菜猪 `game_assets/caizhu-rosa/bgm/通关.mp3`。
+去封面、loudnorm 后同时用于 result_safe 与 result_dusk。禁止 --force 覆盖。

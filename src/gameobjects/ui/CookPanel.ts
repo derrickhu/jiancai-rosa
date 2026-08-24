@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js';
+import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { KitchenManager } from '@/managers/KitchenManager';
@@ -14,7 +15,7 @@ import {
   unlockedRecipes,
   type RecipeId,
 } from '@/sim';
-import { FONT, drawRarityFrame, fillRect, makeLabel } from '@/utils/ui';
+import { FONT, bindUiClick, drawRarityFrame, fillRect, makeLabel } from '@/utils/ui';
 import { VerticalScroller } from '@/utils/scroll';
 import {
   dishTexture,
@@ -61,6 +62,7 @@ export class CookPanel extends PIXI.Container {
   }
 
   open(): void {
+    if (!this._isOpen) AudioManager.play('cook_done');
     this._isOpen = true;
     this.visible = true;
     const known = unlockedRecipes(recipeUnlockView(KitchenManager.save));
@@ -71,7 +73,8 @@ export class CookPanel extends PIXI.Container {
     OverlayManager.bringToFront();
   }
 
-  close(): void {
+  close(silent = false): void {
+    if (this._isOpen && !silent) AudioManager.play('ui_close');
     this._isOpen = false;
     this.visible = false;
     this._scroller.disable();
@@ -470,6 +473,7 @@ export class CookPanel extends PIXI.Container {
     root.eventMode = 'static';
     root.cursor = 'pointer';
     root.hitArea = new PIXI.Rectangle(0, 0, width, height);
+    bindUiClick(root);
     return root;
   }
 

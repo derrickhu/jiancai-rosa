@@ -15,7 +15,6 @@ export function kitchenBootPaths(save: KitchenSave): string[] {
   for (const id of FURN_IDS) {
     const lv = furnLevel(save, id);
     paths.push(`subpkg_kitchen/kitchen_${id}_${lv}.png`);
-    paths.push(`subpkg_images/kitchen_${id}_${lv}.png`);
   }
   return paths;
 }

@@ -35,6 +35,7 @@ export const CDN_CONFIG: CdnConfig = {
   downloadTimeoutMs: 30000,
   cdnDirs: [
     'subpkg_images',
+    'subpkg_audio',
   ],
   cdnPrefixes: [
     'subpkg_images/market_route_',
@@ -46,6 +47,7 @@ export const CDN_CONFIG: CdnConfig = {
     'subpkg_images/dest_',
     'subpkg_images/dish_',
     'subpkg_images/npc_',
+    'subpkg_audio/',
   ],
   bundledDirs: [
     'boot',

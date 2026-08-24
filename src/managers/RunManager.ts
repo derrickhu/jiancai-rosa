@@ -24,7 +24,8 @@ import {
   place,
   removeItem,
   resumeScenes,
-  tryRelocate,
+  tryDrop,
+  tryRotateItem,
   rollFreebie,
   settleExtract,
   eventVoice,
@@ -48,6 +49,7 @@ import {
   type Quality,
   type Rng,
   type RunEventLog,
+  type DropResult,
   type RunState,
 } from '@/sim';
 import { KitchenManager } from './KitchenManager';
@@ -541,11 +543,13 @@ class RunManagerClass {
   }
 
   moveBasketItem(uid: string, x: number, y: number, rot: 0 | 1): string | null {
-    const result = tryRelocate(this.basket, uid, x, y, rot);
-    if (!result.ok) return result.reason;
-    this.basket = result.state;
-    this.emit();
-    return null;
+    const item = this.basket.items.find((it) => it.uid === uid);
+    if (!item) return '篮里没有';
+    return this._finishDrop(tryDrop(this.basket, { ...item, x, y, rot }));
+  }
+
+  rotateBasketItem(uid: string): string | null {
+    return this._finishDrop(tryRotateItem(this.basket, uid));
   }
 
   stagingItems(): OutingLoot[] {
@@ -570,14 +574,14 @@ class RunManagerClass {
     this._revealGodPick(uid);
     const loot = this.stagingItems().find((it) => it.uid === uid);
     if (!loot) return '已经不在手里';
-    const err = this.tryManualPlace({
+    const err = this._applyDrop(tryDrop(this.basket, {
       ...loot,
       x,
       y,
       rot,
       pinned: false,
       dampened: false,
-    });
+    }));
     if (err) return err;
     this.pendingLoot = this.pendingLoot.filter((it) => it.uid !== uid);
     if (this.findPile(uid)) this.removeFromPile(uid);
@@ -634,18 +638,10 @@ class RunManagerClass {
     if (pile.quality === 'rotten') return '坏了，捡不了';
     this._revealGodPick(uid);
     const base = pileToBasketDraft(this.findPile(uid) ?? { ...pile, inspected: true });
-    const tryRot = (r: 0 | 1): string | null => {
-      return this.tryManualPlace({
-        ...base,
-        x,
-        y,
-        rot: r,
-        pinned: false,
-        dampened: false,
-      });
-    };
-    let err = tryRot(rot);
-    if (err) err = tryRot(rot === 0 ? 1 : 0);
+    const incoming = { ...base, x, y, rot, pinned: false, dampened: false };
+    let result = tryDrop(this.basket, incoming);
+    if (!result.ok) result = tryDrop(this.basket, { ...incoming, rot: rot === 0 ? 1 : 0 });
+    const err = this._applyDrop(result);
     if (err) return err;
     this.removeFromPile(uid);
     this.emit();
@@ -726,6 +722,31 @@ class RunManagerClass {
       piles[nid] = piles[nid].filter((it) => it.uid !== uid);
     });
     this.run = { ...this.run, piles };
+  }
+
+  private _pushTray(item: BasketItem): void {
+    const loot: OutingLoot = {
+      uid: item.uid,
+      defId: item.defId,
+      quality: item.quality,
+      inspected: item.inspected,
+      freshness: item.freshness,
+    };
+    this.pendingLoot = [...this.pendingLoot.filter((it) => it.uid !== loot.uid), loot];
+  }
+
+  private _applyDrop(result: DropResult): string | null {
+    if (!result.ok) return result.reason;
+    this.basket = result.state;
+    if (result.evicted) this._pushTray(result.evicted);
+    return null;
+  }
+
+  private _finishDrop(result: DropResult): string | null {
+    const err = this._applyDrop(result);
+    if (err) return err;
+    this.emit();
+    return null;
   }
 
   private emit(): void {

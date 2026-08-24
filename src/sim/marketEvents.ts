@@ -1,6 +1,5 @@
 import type { MarketId } from './destinations';
 import { STALLS, type StallId } from './items';
-import { STALL_FEE } from './packing';
 
 export type CardKind =
   | 'stall' | 'paystall' | 'freebie' | 'fork' | 'deadend' | 'empty' | 'favor' | 'deep' | 'recipe'
@@ -110,9 +109,57 @@ export function paystallPileBonus(marketId: MarketId): number {
   return marketId === 'xiangko' ? 1 : 2;
 }
 
-/** 收费摊：货更足，进场费也更狠。 */
-export function paystallFee(stall: StallId): number {
-  return STALL_FEE[stall] * 3 + 8;
+/**
+ * 普通摊底价。巷口一律 1 金，后场才按货量和出好货概率加价。
+ * 第一摊仍免费，见 run.nodeFee。
+ */
+const MARKET_ENTRY: Record<MarketId, number> = {
+  xiangko: 1,
+  heyan: 2,
+  shanwu: 3,
+  jiangbian: 3,
+  laocheng: 4,
+};
+
+/** 鱼摊/肉摊货贵、蓝紫多，普通摊之上再加。巷口不加，避免开局鱼摊也劝退。 */
+const STALL_ENTRY_EXTRA: Record<StallId, number> = {
+  leaf: 0,
+  root: 0,
+  egg: 0,
+  fish: 2,
+  meat: 3,
+};
+
+const SPECIALTY_ENTRY_EXTRA: Record<string, number> = {
+  fungus: 2,
+  lotus: 2,
+  nightcatch: 4,
+  cured: 4,
+};
+
+export function stallEntryFee(marketId: MarketId, stall: StallId = 'egg'): number {
+  if (marketId === 'xiangko') return 1;
+  return MARKET_ENTRY[marketId] + (STALL_ENTRY_EXTRA[stall] ?? 0);
+}
+
+/** 收费摊货更多、坏货更少。巷口只贵到 3，后场再叠摊型。 */
+export function paystallFee(marketId: MarketId, stall: StallId): number {
+  if (marketId === 'xiangko') return 3;
+  return stallEntryFee(marketId, stall) + 3 + (STALL_ENTRY_EXTRA[stall] ?? 0);
+}
+
+/** 菌摊 / 藕摊 / 夜鲜 / 咸货：件数多、好货概率高。 */
+export function specialtyFee(marketId: MarketId, specialty: string): number {
+  return MARKET_ENTRY[marketId] + (SPECIALTY_ENTRY_EXTRA[specialty] ?? 2);
+}
+
+export function rummageEntryFee(
+  marketId: MarketId,
+  opts: { kind: CardKind; stall?: StallId; specialty?: string },
+): number {
+  if (opts.kind === 'paystall') return paystallFee(marketId, opts.stall ?? 'egg');
+  if (opts.specialty) return specialtyFee(marketId, opts.specialty);
+  return stallEntryFee(marketId, opts.stall ?? 'egg');
 }
 
 /** 白捡只出这几摊的货，地上不会躺着活蟹。 */

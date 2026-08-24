@@ -82,6 +82,142 @@
         "value": "subpkg_images/npc_*.png"
       },
       {
+        "type": "glob",
+        "value": "subpkg_audio/*"
+      },
+      {
+        "type": "glob",
+        "value": "audio/*.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/basket_discard.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/basket_place.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/bgm_kitchen.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/bgm_market_heyan.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/bgm_market_jiangbian.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/bgm_market_laocheng.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/bgm_market_shanwu.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/bgm_market_xiangko.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/bgm_outing.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/coin_gain.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/coin_spend.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/cook_done.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/cook_sizzle.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/event_pop.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/fridge_open.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/gather.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/item_reveal.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/level_up.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/outing.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/pickup_god.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/pickup_veg.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/pickup_wet.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/recipe_paper.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/result_dusk.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/result_safe.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/rummage.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/ui_click.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/ui_close.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/ui_deny.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/ui_open.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/upgrade.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/walk.mp3"
+      },
+      {
         "type": "file",
         "value": "subpkg_images/dest_heyan.jpg"
       },

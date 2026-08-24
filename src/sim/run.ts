@@ -8,8 +8,8 @@ import {
   type StallId,
 } from './items';
 import type { MarketId } from './destinations';
-import { PACK_RATE, STALL_FEE } from './packing';
-import { FAVOR_PACK_RATE, FREEBIE_STALLS, MARKET_PLAN, paystallPileBonus, stallPileRange, type CardKind } from './marketEvents';
+import { PACK_RATE } from './packing';
+import { FAVOR_PACK_RATE, FREEBIE_STALLS, MARKET_PLAN, paystallPileBonus, rummageEntryFee, stallPileRange, type CardKind } from './marketEvents';
 import { isRummageNode, mapRummageNodes, nodeEncounter } from './encounters';
 import { buildMarketMap, mapStallNodes, type MapNode, type MarketMap } from './marketMap';
 import { bagItemName } from './talkScripts';
@@ -222,13 +222,18 @@ export function hasGodPick(state: RunState): boolean {
   return Object.values(state.piles).some((list) => list.some((it) => it.defId === GOD_PICK.id));
 }
 
-/** 摊位费：第一摊白翻，人情也白翻，之后按摊型收。收费摊按卡上的标价。 */
+/** 摊位费：第一摊白翻，人情也白翻。之后按菜场+摊型收，货多/好货多的才贵。 */
 export function nodeFee(state: RunState, node: MapNode): number {
   if (!isRummageNode(node)) return 0;
   if (state.paid.includes(node.id)) return 0;
   if (state.freePass) return 0;
-  if (node.kind === 'paystall') return node.fee;
-  return state.paid.length === 0 ? 0 : STALL_FEE[node.stall ?? 'egg'];
+  if (state.paid.length === 0) return 0;
+  const enc = nodeEncounter(node);
+  return rummageEntryFee(state.marketId, {
+    kind: node.kind,
+    stall: (enc.type === 'rummage' && enc.stall) || node.stall,
+    specialty: enc.type === 'rummage' ? enc.specialty : undefined,
+  });
 }
 
 /** 天色不够、钱不够、厨艺不够都拦在这。看得见进不去，别把卡藏起来。 */

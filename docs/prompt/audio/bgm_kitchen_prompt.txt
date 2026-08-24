@@ -1,0 +1,12 @@
+Suno Advanced：不要整段贴进 Lyrics。
+Lyrics 里只要结构标签，不要英文句子，否则会唱出来。
+
+===== 贴进 Styles（风格）=====
+cozy kitchen folk, nylon acoustic guitar, warm upright piano, soft woodblock, light shaker, intimate dry mix, evening indoor, slice-of-life, 88 bpm, C major, instrumental, no vocals, no humming, no choir, no orchestra, no erhu, no guzheng
+
+===== 贴进 Lyrics（歌词）整箱只贴下面这几行 =====
+[Instrumental]
+[Intro]
+[Loop]
+[Loop]
+[Outro]

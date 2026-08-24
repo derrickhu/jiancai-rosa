@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js';
+import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { KitchenManager } from '@/managers/KitchenManager';
@@ -22,6 +23,7 @@ export class RecipeBookPanel extends PIXI.Container {
   }
 
   open(): void {
+    if (!this._isOpen) AudioManager.play('ui_open');
     this._isOpen = true;
     this.visible = true;
     this._scroller.reset();
@@ -30,7 +32,8 @@ export class RecipeBookPanel extends PIXI.Container {
     OverlayManager.bringToFront();
   }
 
-  close(): void {
+  close(silent = false): void {
+    if (this._isOpen && !silent) AudioManager.play('ui_close');
     this._isOpen = false;
     this.visible = false;
     this._scroller.disable();

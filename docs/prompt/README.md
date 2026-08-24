@@ -3,6 +3,7 @@
 1. 先读 [美术风格圣经](../美术风格圣经.md)。
 2. 风格段原样粘贴 [`_style_block.txt`](./_style_block.txt)。
 3. 原图输出到仓库外 `../game_assets/jiancai-rosa/assets/raw/`。对比选稿后：场景图压成 JPG 进 `minigame/images/`，食材/熟菜走切图+抠图+裁切再进游戏。
+4. 音频提示词在 [`audio/`](./audio/README.md)。音效先生成到仓库外 `../game_assets/jiancai-rosa/audio/final/`，确认后再拷进 `minigame/subpkg_audio/`。
 
 | 文件 | 用途 | 比例 |
 |---|---|---|
@@ -65,3 +66,9 @@
 | `ui_cook_btn_prompt.txt` | 烹饪页专用大按钮（砖红布面，空心叠字） | 16:9 |
 | `ui_recipe_paper_prompt.txt` | 解锁新菜弹窗油纸（木夹、空白纸心叠字） | 3:4 |
 | `ui_basket_panel_prompt.txt` | 出门篮木箱壳：上托盘暂存、下箱井叠格子 | 9:16 |
+| `ui_result_panel_prompt.txt` | 挑完回家轻纸奖状：细金边、大空场突出战利品 | 9:16 |
+| `ui_result_btn_prompt.txt` | 领奖页细胶囊按钮（空心叠字） | 16:9 |
+| `ui_result_card_prompt.txt` | 领奖格油纸方卡（空心叠菜图） | 1:1 |
+| `ui_result_burst_prompt.txt` | 领奖页金色柔光放射（垫在战利品后） | 1:1 |
+| `ui_result_title_messy_prompt.txt` | 胜利标题「天黑收摊了」 | 16:9 |
+| `ui_result_title_safe_prompt.txt` | 胜利标题「挑完回家」 | 16:9 |

@@ -12,6 +12,7 @@ import { DestinationScene } from '@/scenes/DestinationScene';
 import { KitchenScene } from '@/scenes/KitchenScene';
 import { LoadingScene } from '@/scenes/LoadingScene';
 import { MarketScene } from '@/scenes/MarketScene';
+import { AudioManager } from '@/core/AudioManager';
 import { CdnAssetService } from '@/core/CdnAssetService';
 import { preloadTextures } from '@/utils/assets';
 import { kitchenBootPaths } from '@/utils/bootAssets';
@@ -39,6 +40,7 @@ async function main(): Promise<void> {
   }
 
   Game.init(canvas);
+  AudioManager.init();
 
   const loading = new LoadingScene();
   SceneManager.register(loading);
@@ -71,12 +73,15 @@ async function main(): Promise<void> {
   await CdnAssetService.fetchManifest();
   const paths = kitchenBootPaths(SaveManager.data);
   const loaded = preloadTextures(paths, (done, total) => {
-    loading.setProgress(done / Math.max(1, total));
+    loading.setProgress(done / Math.max(1, total) * 0.85);
+  });
+  const audioReady = AudioManager.preloadSfx().then(() => {
+    loading.setProgress(1);
   });
   const timeout = new Promise<void>((resolve) => {
     globalThis.setTimeout(resolve, BOOT_MAX_MS);
   });
-  void Promise.race([loaded, timeout]).then(() => {
+  void Promise.race([Promise.all([loaded, audioReady]), timeout]).then(() => {
     const wait = Math.max(0, BOOT_HOLD_MS - (Date.now() - started));
     globalThis.setTimeout(enterKitchen, wait);
   });

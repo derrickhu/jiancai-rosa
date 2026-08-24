@@ -30,7 +30,8 @@ import {
   stallRummageArt,
 } from '@/sim';
 import { layoutRouteMap, type RouteCell, type RouteMapView } from '@/gameobjects/market/MapView';
-import { FONT, HUD_ICON, drawRarityFrame, fillRect, makeHudButton, makeLabel, makePaperChip, makeSlicedButton, makeStatPill } from '@/utils/ui';
+import { AudioManager } from '@/core/AudioManager';
+import { FONT, HUD_ICON, drawRarityFrame, fillRect, makeHudButton, makeLabel, makeMuteButton, makePaperChip, makeSlicedButton, makeStatPill } from '@/utils/ui';
 import { Platform } from '@/core/PlatformService';
 import { TweenManager, Ease } from '@/core/TweenManager';
 import { applyFit, fitCover, fitSpriteInBox, fitWidthBottom, gameTexture, isTextureFailed, isTextureReady, itemLookTexture, itemTexture, whenTextureReady } from '@/utils/assets';
@@ -91,6 +92,7 @@ export class MarketScene implements Scene {
     this._walking = false;
     this._body.alpha = 1;
     this._shownEvent = RunManager.run?.lastEvent?.nodeId ?? '';
+    AudioManager.playMarketBgm(RunManager.run?.marketId ?? 'xiangko');
     this._sync(true);
     ensureRecipeUnlockPanel().present();
   }
@@ -103,8 +105,8 @@ export class MarketScene implements Scene {
     this._body.alpha = 1;
     this._clearReveal();
     this._clearGodPick();
-    this._basket.close();
-    this._event.close();
+    this._basket.close(true);
+    this._event.close(true);
   }
 
   relayout(): void {
@@ -230,6 +232,9 @@ export class MarketScene implements Scene {
     leave.position.set(w - 146, y);
     leave.on('pointertap', () => RunManager.extract(true));
     this._hud.addChild(leave);
+    const mute = makeMuteButton(40);
+    mute.position.set(w - 56, y + 50);
+    this._hud.addChild(mute);
   }
 
   /** 卡片路线：脚下一排能点，前方两排只看。走左边就够不着最右边。 */
@@ -345,6 +350,7 @@ export class MarketScene implements Scene {
     const run = RunManager.run!;
     const view = this._mapView!;
     this._walking = true;
+    AudioManager.play('walk');
     const dur = 0.34;
 
     TweenManager.to({ target: view.links, props: { alpha: 0 }, duration: dur * 0.6 });
@@ -409,7 +415,9 @@ export class MarketScene implements Scene {
     if (!run || run.ended || !ev || ev.nodeId === this._shownEvent) return;
     this._shownEvent = ev.nodeId;
     if (ev.gain) this._popFreebie(ev);
-    else if (ev.kind === 'recipe' && KitchenManager.peekRecipeUnlock()) ensureRecipeUnlockPanel().present();
+    else if (ev.kind === 'recipe' && KitchenManager.peekRecipeUnlock()) {
+      ensureRecipeUnlockPanel().present(true);
+    }
     else if (ev.choices?.length) {
       this._event.open(ev, (index) => {
         if (!RunManager.chooseTalk(index)) return false;
@@ -458,6 +466,7 @@ export class MarketScene implements Scene {
     wrap.scale.set(0.2);
     wrap.alpha = 0;
     this._revealLayer.addChild(wrap);
+    AudioManager.playGain();
 
     const land = this._basketBtn
       ? {
@@ -474,6 +483,7 @@ export class MarketScene implements Scene {
       ease: Ease.easeOutBack,
       onComplete: () => {
         if (!gain.taken) {
+          AudioManager.play('ui_deny');
           Platform.showToast('篮子满了，拖开点位子再捡');
           const lootUid = RunManager.pendingLoot[0]?.uid;
           if (lootUid) this._basket.open(lootUid);
@@ -582,13 +592,17 @@ export class MarketScene implements Scene {
       }
       wrap.on('pointertap', () => {
         if (play.picksLeft <= 0) {
+          AudioManager.play('ui_deny');
           Platform.showToast('手上拿够了');
           return;
         }
         const result = RunManager.pickGather(spot.uid);
         const ev = RunManager.run?.lastEvent;
         if (ev?.gain) this._popFreebie(ev);
-        if (result === 'need_space') this._basket.open();
+        if (result === 'need_space') {
+          AudioManager.play('ui_deny');
+          this._basket.open();
+        }
       });
       this._body.addChild(wrap);
     });
@@ -722,6 +736,7 @@ export class MarketScene implements Scene {
     }
     const pick = crate[Math.floor(Math.random() * crate.length)];
     if (this._flying.has(pick.uid)) return;
+    AudioManager.play('rummage');
     this._flying.set(pick.uid, { playing: false, wrap: null, token: null });
     this._pileKick += 1;
     RunManager.drawFromCrate(pick.uid);
@@ -750,6 +765,7 @@ export class MarketScene implements Scene {
       return;
     }
     if (flight.wrap) return;
+    AudioManager.playGain();
 
     const glow = new PIXI.Graphics();
     glow.beginFill(0xF4EFE6, 0.28);
@@ -943,8 +959,16 @@ export class MarketScene implements Scene {
       return;
     }
     const result = RunManager.take(uid);
-    if (result === 'rotten') Platform.showToast('坏了，捡不了');
-    if (result === 'need_space') this._basket.open(uid);
+    if (result === 'rotten') {
+      AudioManager.play('ui_deny');
+      Platform.showToast('坏了，捡不了');
+    } else if (result === 'need_space') {
+      AudioManager.play('ui_deny');
+      this._basket.open(uid);
+    } else if (result === 'placed' && item) {
+      if (item.quality === 'god' || item.defId === GOD_PICK.id) AudioManager.playGain();
+      else AudioManager.play('basket_place');
+    }
   }
 
   private _playGodPick(uid: string): void {
@@ -959,6 +983,7 @@ export class MarketScene implements Scene {
 
     this._clearGodPick();
     this._godPlaying = true;
+    AudioManager.playGain();
     const w = Game.designWidth;
     const h = Game.logicHeight;
     const cx = w / 2;

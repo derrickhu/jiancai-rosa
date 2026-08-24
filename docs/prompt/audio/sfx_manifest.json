@@ -1,0 +1,190 @@
+{
+  "defaults": {
+    "bitrate": "96k",
+    "prompt_influence": 0.45
+  },
+  "sfx": [
+    {
+      "name": "ui_click",
+      "text": "short clean dry fingertip tap on thick paper, ordinary UI button, mid tone, 0.16 seconds, no bass boom, no wet thud, no sharp plastic tick, no metallic ping, no voice, no music, no reverb",
+      "duration": 0.16,
+      "prompt_influence": 0.55,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/ui_click.mp3",
+      "notes": "默认按钮：干净纸面轻点"
+    },
+    {
+      "name": "ui_open",
+      "text": "paper page rustle then a thin wooden panel tap, two sounds in sequence, dry, no reverb, no music, no voice",
+      "duration": 0.4,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/ui_open.mp3",
+      "notes": "面板打开"
+    },
+    {
+      "name": "ui_close",
+      "text": "short dry paper fold and wooden lid close, soft tap, quick decay, no reverb, no music, no voice",
+      "duration": 0.28,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/ui_close.mp3",
+      "notes": "面板关闭"
+    },
+    {
+      "name": "ui_deny",
+      "text": "short dull dry wooden tick, slightly lower pitch, muted plastic knock, no reverb, no music, no voice",
+      "duration": 0.25,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/ui_deny.mp3",
+      "notes": "钱不够、锁定、篮满"
+    },
+    {
+      "name": "coin_gain",
+      "text": "two small brass coins lightly touching, short bright clink, dry, no cascade, no casino, no reverb, no music, no voice",
+      "duration": 0.4,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/coin_gain.mp3",
+      "notes": "卖菜入账"
+    },
+    {
+      "name": "coin_spend",
+      "text": "one small brass coin placed on wood, short falling clink, dry, no reverb, no music, no voice",
+      "duration": 0.35,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/coin_spend.mp3",
+      "notes": "摊位费、买车、升级"
+    },
+    {
+      "name": "fridge_open",
+      "text": "home refrigerator door opening: plastic handle click then rubber door seal peeling with a short suction whoosh, close dry kitchen, 0.8 seconds, no fridge compressor hum, no voice, no music, no reverb hall",
+      "duration": 0.8,
+      "prompt_influence": 0.6,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/fridge_open.mp3",
+      "notes": "打开冰箱门"
+    },
+    {
+      "name": "cook_sizzle",
+      "text": "hot wok oil frying vegetables, continuous crackling sizzle and wooden spatula scraping iron pan, close dry kitchen, 1.3 seconds, no voice, no music, no bowl clink, no reverb hall",
+      "duration": 1.3,
+      "prompt_influence": 0.55,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/cook_sizzle.mp3",
+      "notes": "点烹饪：煎炸"
+    },
+    {
+      "name": "cook_done",
+      "text": "a ceramic bowl set on wood then a second ceramic bowl stacked and a light iron pot tap, three distinct kitchen pot and bowl hits in a row, close dry kitchen, no sizzle, no voice, no music, no reverb",
+      "duration": 0.9,
+      "prompt_influence": 0.65,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/cook_done.mp3",
+      "notes": "打开烹饪台菜谱：锅碗"
+    },
+    {
+      "name": "level_up",
+      "text": "short rising dry chime of three small bells on wood, warm harmonic, no orchestra, no reverb hall, no voice, no lyrics",
+      "duration": 1.5,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/level_up.mp3",
+      "notes": "厨艺升级"
+    },
+    {
+      "name": "upgrade",
+      "text": "two light wooden taps then a short bright metal tick, brisk furniture upgrade, dry close, 0.4 seconds, no heavy thud, no bass boom, no slam, no voice, no music, no reverb",
+      "duration": 0.4,
+      "prompt_influence": 0.6,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/upgrade.mp3",
+      "notes": "家具房屋升级：轻快"
+    },
+    {
+      "name": "recipe_paper",
+      "text": "DO NOT elevenlabs --force: caizhu 消除1.mp3",
+      "duration": 4.0,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/recipe_paper.mp3",
+      "notes": "获取菜谱：菜猪消除1"
+    },
+    {
+      "name": "outing",
+      "text": "light old wooden door hinge creak, a short dry squeak as a thin wood door opens, no latch slam, no heavy thud, no bass, no voice, no music, no reverb hall",
+      "duration": 0.55,
+      "prompt_influence": 0.65,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/outing.mp3",
+      "notes": "厨房成功出门：开木门"
+    },
+    {
+      "name": "walk",
+      "text": "two short dry footsteps on packed dirt and a cloth rustle, sharp attack, no reverb, no music, no voice",
+      "duration": 0.32,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/walk.mp3",
+      "notes": "路线往前走"
+    },
+    {
+      "name": "rummage",
+      "text": "leafy vegetable pile rustle and plastic bag crinkle, short, dry, no voice, no music, no reverb",
+      "duration": 0.28,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/rummage.mp3",
+      "notes": "点遮挡堆"
+    },
+    {
+      "name": "item_reveal",
+      "text": "DO NOT elevenlabs --force: huahua deco_obtain.mp3",
+      "duration": 4.0,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/item_reveal.mp3",
+      "notes": "任意物品出现：花花 deco_obtain"
+    },
+    {
+      "name": "pickup_veg",
+      "text": "leafy greens dropped into a wicker basket, short rustle, dry, no reverb, no music, no voice",
+      "duration": 0.3,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/pickup_veg.mp3",
+      "notes": "干货入篮"
+    },
+    {
+      "name": "pickup_wet",
+      "text": "wet fish or meat slap into a foam box, short watery thud, dry tail, no splash loop, no reverb, no music, no voice",
+      "duration": 0.3,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/pickup_wet.mp3",
+      "notes": "湿货入篮"
+    },
+    {
+      "name": "pickup_god",
+      "text": "low watery whoosh followed by a rising bright chime and soft shimmer that lasts a full second, dry, no orchestra, no voice, no lyrics",
+      "duration": 1.6,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/pickup_god.mp3",
+      "notes": "神捡黄鱼"
+    },
+    {
+      "name": "basket_place",
+      "text": "vegetable dropped into a wooden crate, short dry wood thud and leafy rustle, 0.35 seconds, no chime, no bell, no music, no voice, no reverb",
+      "duration": 0.35,
+      "prompt_influence": 0.6,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/basket_place.mp3",
+      "notes": "收入箱子 / 菜篮放稳，不要惊喜感"
+    },
+    {
+      "name": "basket_discard",
+      "text": "soft cloth drop of a vegetable onto the ground, dull dry thud, no reverb, no music, no voice",
+      "duration": 0.28,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/basket_discard.mp3",
+      "notes": "丢掉"
+    },
+    {
+      "name": "gather",
+      "text": "small mushroom plucked from earth, short soil and stem snap, dry, no reverb, no music, no voice",
+      "duration": 0.28,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/gather.mp3",
+      "notes": "采集点"
+    },
+    {
+      "name": "event_pop",
+      "text": "short wooden plaque tap and paper card slide, dry, no voice, no music, no reverb",
+      "duration": 0.4,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/event_pop.mp3",
+      "notes": "事件对话弹出"
+    },
+    {
+      "name": "result_safe",
+      "text": "DO NOT elevenlabs --force: caizhu 通关.mp3",
+      "duration": 4.1,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/result_safe.mp3",
+      "notes": "挑完回家：菜猪通关短句"
+    },
+    {
+      "name": "result_dusk",
+      "text": "DO NOT elevenlabs --force: caizhu 通关.mp3",
+      "duration": 4.1,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/result_dusk.mp3",
+      "notes": "天黑收摊：与 result_safe 同一首菜猪通关短句"
+    }
+  ]
+}

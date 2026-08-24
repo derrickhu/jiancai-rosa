@@ -178,6 +178,46 @@ export function willDampen(state: BasketState, def: ItemDef, x: number, y: numbe
   return cells.some((c) => c.x < state.wetCols && !(state.insulatedBottom && c.y === state.rows - 1));
 }
 
+function isWetCell(state: BasketState, x: number, y: number): boolean {
+  if (x < state.wetCols) return true;
+  return !!(state.insulatedBottom && y === state.rows - 1);
+}
+
+/** 干货先扫干区，湿货只认湿格。near 用来旋转后就近挪一格。 */
+function sortedOrigins(
+  state: BasketState,
+  def: ItemDef,
+  rot: 0 | 1,
+  near?: { x: number; y: number },
+): Array<{ x: number; y: number }> {
+  const { w, h } = footprint(def, rot);
+  const out: Array<{ x: number; y: number; score: number; dist: number }> = [];
+  for (let y = 0; y <= state.rows - h; y++) {
+    for (let x = 0; x <= state.cols - w; x++) {
+      const cells = occupiedCells({ defId: def.id, x, y, rot });
+      const wet = cells.filter((c) => isWetCell(state, c.x, c.y)).length;
+      let score = wet;
+      if (def.zone === 'wet') score = wet === cells.length ? 0 : 99;
+      const dist = near ? Math.abs(x - near.x) + Math.abs(y - near.y) : 0;
+      out.push({ x, y, score, dist });
+    }
+  }
+  out.sort((a, b) => a.score - b.score || a.dist - b.dist || a.y - b.y || a.x - b.x);
+  return out;
+}
+
+function sealItem(
+  state: BasketState,
+  item: Omit<BasketItem, 'x' | 'y' | 'rot' | 'pinned' | 'dampened'> & Pick<BasketItem, 'x' | 'y' | 'rot'>,
+): BasketItem {
+  const def = getItem(item.defId);
+  return {
+    ...item,
+    pinned: false,
+    dampened: willDampen(state, def, item.x, item.y, item.rot),
+  };
+}
+
 export function tryAutoPlace(
   state: BasketState,
   item: Omit<BasketItem, 'x' | 'y' | 'rot' | 'pinned' | 'dampened'>,
@@ -185,20 +225,9 @@ export function tryAutoPlace(
   const def = getItem(item.defId);
   const rots: Array<0 | 1> = def.w === def.h ? [0] : [0, 1];
   for (const rot of rots) {
-    const { w, h } = footprint(def, rot);
-    for (let y = 0; y <= state.rows - h; y++) {
-      for (let x = 0; x <= state.cols - w; x++) {
-        const draft = { uid: item.uid, defId: item.defId, x, y, rot };
-        if (canPlace(state, draft).ok) {
-          return {
-            ...item,
-            x,
-            y,
-            rot,
-            pinned: false,
-            dampened: willDampen(state, def, x, y, rot),
-          };
-        }
+    for (const { x, y } of sortedOrigins(state, def, rot)) {
+      if (canPlace(state, { uid: item.uid, defId: item.defId, x, y, rot }).ok) {
+        return sealItem(state, { ...item, x, y, rot });
       }
     }
   }
@@ -232,30 +261,92 @@ function overlappingOthers(
   return [...hit.values()];
 }
 
-/** 空位就放下；压到刚好一件且对方能回到原位，就互换。 */
+export type DropPreview = 'empty' | 'swap' | 'blocked';
+
+/** 影子用：空位绿、一件黄、多件或违规红。 */
+export function previewDrop(
+  state: BasketState,
+  draft: Pick<BasketItem, 'uid' | 'defId' | 'x' | 'y' | 'rot'>,
+): DropPreview {
+  const others = overlappingOthers(state, draft);
+  if (others.length > 1) return 'blocked';
+  const ignore = new Set([draft.uid, ...others.map((it) => it.uid)]);
+  const cleared: BasketState = {
+    ...state,
+    items: state.items.filter((it) => !ignore.has(it.uid)),
+  };
+  if (!canPlace(cleared, draft).ok) return 'blocked';
+  return others.length === 1 ? 'swap' : 'empty';
+}
+
+export type DropResult =
+  | { ok: true; state: BasketState; evicted: BasketItem | null }
+  | { ok: false; reason: string };
+
+/**
+ * 空位放下；压到刚好一件则交换。
+ * 篮内互拖：对方能坐进旧格就对换，否则自动找空位，再不行上托盘。
+ * 托盘拖进来：被压到的那件上托盘。
+ */
+export function tryDrop(state: BasketState, incoming: BasketItem): DropResult {
+  const others = overlappingOthers(state, incoming);
+  if (others.length > 1) return { ok: false, reason: '压到太多件，换不开' };
+  const old = state.items.find((it) => it.uid === incoming.uid) ?? null;
+  const evict = others[0] ?? null;
+  const ignore = new Set([incoming.uid, evict?.uid].filter((id): id is string => !!id));
+  const cleared: BasketState = {
+    ...state,
+    items: state.items.filter((it) => !ignore.has(it.uid)),
+  };
+  const landed = place(cleared, incoming);
+  if (!landed.ok) return landed;
+  if (!evict) return { ok: true, state: landed.state, evicted: null };
+
+  if (old) {
+    const swapped = place(landed.state, { ...evict, x: old.x, y: old.y });
+    if (swapped.ok) return { ok: true, state: swapped.state, evicted: null };
+    const nudged = tryAutoPlace(landed.state, evict);
+    if (nudged) {
+      const put = place(landed.state, nudged);
+      if (put.ok) return { ok: true, state: put.state, evicted: null };
+    }
+  }
+  return { ok: true, state: landed.state, evicted: evict };
+}
+
 export function tryRelocate(
   state: BasketState,
   uid: string,
   x: number,
   y: number,
   rot: 0 | 1,
-): { ok: true; state: BasketState } | { ok: false; reason: string } {
+): DropResult {
   const item = state.items.find((it) => it.uid === uid);
   if (!item) return { ok: false, reason: '篮里没有' };
-  const draft = { ...item, x, y, rot };
-  const others = overlappingOthers(state, draft);
-  if (others.length === 0) return place(state, draft);
-  if (others.length > 1) return { ok: false, reason: '这里已经有东西' };
-  const other = others[0];
-  const cleared: BasketState = {
-    ...state,
-    items: state.items.filter((it) => it.uid !== uid && it.uid !== other.uid),
-  };
-  const a = place(cleared, draft);
-  if (!a.ok) return a;
-  const back = place(a.state, { ...other, x: item.x, y: item.y });
-  if (!back.ok) return { ok: false, reason: '换不过来，先把挡路的拖出去' };
-  return back;
+  return tryDrop(state, { ...item, x, y, rot });
+}
+
+/** 先原地转，转不开就近挪，再不行上托盘，不报空间不够。 */
+export function tryRotateItem(state: BasketState, uid: string): DropResult {
+  const item = state.items.find((it) => it.uid === uid);
+  if (!item) return { ok: false, reason: '篮里没有' };
+  const def = getItem(item.defId);
+  if (def.w === def.h) return { ok: true, state, evicted: null };
+  const rot: 0 | 1 = item.rot === 0 ? 1 : 0;
+  const without = removeItem(state, uid);
+  const same = { ...item, rot };
+  if (canPlace(without, same).ok) {
+    const put = place(without, same);
+    return put.ok ? { ok: true, state: put.state, evicted: null } : put;
+  }
+  for (const { x, y } of sortedOrigins(without, def, rot, { x: item.x, y: item.y })) {
+    const draft = { ...item, x, y, rot };
+    if (canPlace(without, draft).ok) {
+      const put = place(without, draft);
+      return put.ok ? { ok: true, state: put.state, evicted: null } : put;
+    }
+  }
+  return { ok: true, state: without, evicted: { ...item, rot } };
 }
 
 export function removeItem(state: BasketState, uid: string): BasketState {

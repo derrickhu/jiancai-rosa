@@ -46,7 +46,8 @@ import {
   type FurnLayout,
   type KitchenSave,
 } from '@/sim';
-import { HUD_ICON, fillRect, makeButton, makeCookSkillPill, makeLabel, makeStatPill } from '@/utils/ui';
+import { AudioManager } from '@/core/AudioManager';
+import { HUD_ICON, bindUiClick, fillRect, makeButton, makeCookSkillPill, makeLabel, makeMuteButton, makeStatPill } from '@/utils/ui';
 import { applyFit, fitSpriteInBox, fitWidthBottom, gameTexture, isTextureFailed, isTextureReady, mapNorm, whenTextureReady } from '@/utils/assets';
 import { OutingCurtain } from '@/gameobjects/ui/OutingCurtain';
 import { destinationBootPaths } from '@/utils/outingAssets';
@@ -149,6 +150,7 @@ export class KitchenScene implements Scene {
       this.container.on('globalpointermove', this._onMove);
     }
     this.relayout();
+    AudioManager.playBgm('kitchen');
     ensureRecipeUnlockPanel().present();
   }
 
@@ -164,11 +166,11 @@ export class KitchenScene implements Scene {
     try { Platform.api?.offTouchEnd?.(this._onUp); } catch (_) {}
     try { Platform.api?.offTouchCancel?.(this._onUp); } catch (_) {}
     this._endDrag();
-    this._fridge.close();
-    this._cook.close();
-    this._recipeBook.close();
-    this._dex.close();
-    this._upgrade.close();
+    this._fridge.close(true);
+    this._cook.close(true);
+    this._recipeBook.close(true);
+    this._dex.close(true);
+    this._upgrade.close(true);
     this._upgradePick = null;
     this._xpPop = null;
     globalThis.clearTimeout?.(this._xpPopTimer);
@@ -395,12 +397,10 @@ export class KitchenScene implements Scene {
 
   private _furnPath(id: FurnId, level: number): string {
     for (let lv = level; lv >= 0; lv--) {
-      for (const root of ['subpkg_kitchen', 'subpkg_images']) {
-        const path = `${root}/kitchen_${id}_${lv}.png`;
-        const tex = gameTexture(path);
-        if (isTextureReady(tex)) return path;
-        if (!isTextureFailed(path)) return path;
-      }
+      const path = `subpkg_kitchen/kitchen_${id}_${lv}.png`;
+      const tex = gameTexture(path);
+      if (isTextureReady(tex)) return path;
+      if (!isTextureFailed(path)) return path;
     }
     return `subpkg_kitchen/kitchen_${id}_0.png`;
   }
@@ -467,6 +467,11 @@ export class KitchenScene implements Scene {
     }
 
     this._drawDexHud(top, redraw);
+    const mute = makeMuteButton(48);
+    mute.position.set(16, top + 330);
+    const stopMute = (e: PIXI.FederatedPointerEvent) => e.stopPropagation();
+    mute.on('pointerdown', stopMute);
+    this._ui.addChild(mute);
     if (!KitchenManager.canGoMarket()) {
       const ad = makeButton('看广告 +1 体力', 220, 48, 0x4A6B7A);
       ad.position.set(16, top + 72);
@@ -747,6 +752,7 @@ export class KitchenScene implements Scene {
     root.eventMode = 'static';
     root.cursor = 'pointer';
     root.hitArea = new PIXI.Circle(size / 2, size / 2, size / 2);
+    bindUiClick(root);
     root.on('pointerdown', (e) => e.stopPropagation());
     return root;
   }
@@ -1004,10 +1010,12 @@ export class KitchenScene implements Scene {
 
   private goMarket(): void {
     if (!KitchenManager.canGoMarket()) {
+      AudioManager.play('ui_deny');
       Platform.showToast('体力不足，看个广告也能出门');
       return;
     }
     if (OutingCurtain.busy) return;
+    AudioManager.play('outing');
     OutingCurtain.play({
       paths: destinationBootPaths(),
       then: () => SceneManager.switchTo('destinations'),

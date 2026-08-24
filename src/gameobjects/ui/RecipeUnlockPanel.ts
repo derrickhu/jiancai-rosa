@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js';
+import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { EventBus } from '@/core/EventBus';
 import { OverlayManager } from '@/core/OverlayManager';
@@ -26,8 +27,9 @@ export class RecipeUnlockPanel extends PIXI.Container {
     EventBus.on(EV.recipeUnlocked, () => this.present());
   }
 
-  present(): void {
+  present(forceSound = false): void {
     if (!KitchenManager.peekRecipeUnlock()) return;
+    if (forceSound || !this._isOpen) AudioManager.play('recipe_paper');
     this._isOpen = true;
     this.visible = true;
     this.relayout();
@@ -157,8 +159,12 @@ export class RecipeUnlockPanel extends PIXI.Container {
 
   private _advance(): void {
     KitchenManager.shiftRecipeUnlock();
-    if (KitchenManager.peekRecipeUnlock()) this.relayout();
-    else this.close();
+    if (KitchenManager.peekRecipeUnlock()) {
+      AudioManager.play('recipe_paper');
+      this.relayout();
+      return;
+    }
+    this.close();
   }
 }
 

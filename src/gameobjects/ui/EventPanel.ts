@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js';
+import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { eventVoice, type RunEventLog } from '@/sim';
@@ -26,6 +27,7 @@ export class EventPanel extends PIXI.Container {
 
   open(log: RunEventLog, onChoice?: (index: number) => boolean | void): void {
     if (log.gain && !log.choices?.length) return;
+    AudioManager.play('event_pop');
     this._log = log;
     this._onChoice = onChoice ?? null;
     this._isOpen = true;
@@ -34,7 +36,8 @@ export class EventPanel extends PIXI.Container {
     OverlayManager.bringToFront();
   }
 
-  close(): void {
+  close(silent = false): void {
+    if (this._isOpen && !silent) AudioManager.play('ui_close');
     this._isOpen = false;
     this.visible = false;
     this._log = null;

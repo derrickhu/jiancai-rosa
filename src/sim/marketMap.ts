@@ -27,7 +27,7 @@ export interface MapNode {
   kind: CardKind;
   /** 摊位卡与收费摊才有 */
   stall?: StallId;
-  /** 收费摊的固定进场费；普通摊按 STALL_FEE 现算，这里是 0 */
+  /** 收费摊写死的进场费；普通摊按 rummageEntryFee 现算 */
   fee: number;
   /** 厨艺门槛，0 为不限 */
   cookNeed: number;
@@ -86,7 +86,7 @@ const CARD_NAME: Record<CardKind, string> = {
 
 const CARD_HINT: Record<CardKind, string> = {
   stall: '进去翻剩货',
-  paystall: '要价高，剩得多',
+  paystall: '贵一点，剩得多、坏得少',
   freebie: '白捡一件进篮',
   fork: '走哪边，后面的牌会不一样',
   deadend: '白走一步',
@@ -205,7 +205,7 @@ export function buildMarketMap(marketId: MarketId, seed: number, opts?: { allowR
         cursor += 1;
         used.push(stall);
         node.stall = stall;
-        if (kind === 'paystall') node.fee = paystallFee(stall);
+        if (kind === 'paystall') node.fee = paystallFee(marketId, stall);
       }
       nodes[id] = node;
       ids.push(id);

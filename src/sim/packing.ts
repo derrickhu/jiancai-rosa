@@ -3,13 +3,7 @@ import type { StallId } from './items';
 /** 装箱满了，这摊桌上没挑走的被老板装车。 */
 export const PACK_FULL = 100;
 
-export const STALL_FEE: Record<StallId, number> = {
-  leaf: 2,
-  root: 3,
-  egg: 3,
-  fish: 5,
-  meat: 6,
-};
+/** 进场费按菜场+摊型算，见 marketEvents.stallEntryFee。 */
 
 /** 每秒装箱进度。水产摊收得快。 */
 export const PACK_RATE: Record<StallId, number> = {

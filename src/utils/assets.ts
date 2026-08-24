@@ -6,6 +6,8 @@ import { Platform } from '@/core/PlatformService';
 const cache = new Map<string, PIXI.Texture>();
 const waiters = new Map<string, Array<() => void>>();
 const failed = new Set<string>();
+const imageRetries = new Map<string, number>();
+const IMAGE_RETRY = 2;
 
 function emptyTexture(): PIXI.Texture {
   const pixels = new Uint8Array([0, 0, 0, 0]);
@@ -44,9 +46,25 @@ export function gameTexture(path: string): PIXI.Texture {
   cache.set(path, tex);
 
   const img = Platform.createImage();
+  let httpsTried = false;
+  const https = CdnAssetService.isCdnPath(path) ? CdnAssetService.publicUrl(path) : '';
+  const finishFail = (err: unknown): void => {
+    console.warn('[assets] 图片加载失败', path, err);
+    failed.add(path);
+    flush(path);
+  };
+  const assignSrc = (src: string): void => {
+    try {
+      img.src = src;
+    } catch (e) {
+      finishFail(e);
+    }
+  };
   img.onload = () => {
     try {
       adopt(tex, img);
+      imageRetries.delete(path);
+      failed.delete(path);
       console.log('[assets] loaded', path, img.width, img.height);
     } catch (e) {
       console.warn('[assets] bind 失败', path, e);
@@ -54,15 +72,29 @@ export function gameTexture(path: string): PIXI.Texture {
     flush(path);
   };
   img.onerror = (err: unknown) => {
-    console.warn('[assets] 图片加载失败', path, err);
-    failed.add(path);
-    flush(path);
+    if (!httpsTried && https && img.src !== https) {
+      httpsTried = true;
+      assignSrc(https);
+      return;
+    }
+    const n = imageRetries.get(path) ?? 0;
+    if (n < IMAGE_RETRY && CdnAssetService.isCdnPath(path)) {
+      imageRetries.set(path, n + 1);
+      CdnAssetService.invalidateCache(path);
+      globalThis.setTimeout(() => {
+        void CdnAssetService.resolveOrDownload(path).then(assignSrc).catch(finishFail);
+      }, 600 * (n + 1));
+      return;
+    }
+    finishFail(err);
   };
-  void CdnAssetService.resolveOrDownload(path).then((resolved) => {
-    img.src = resolved;
-  }).catch((err) => {
+  void CdnAssetService.resolveOrDownload(path).then(assignSrc).catch((err) => {
+    if (https) {
+      assignSrc(https);
+      return;
+    }
     console.warn('[assets] CDN 解析失败，回落本地路径', path, err);
-    img.src = path;
+    assignSrc(path);
   });
   return tex;
 }

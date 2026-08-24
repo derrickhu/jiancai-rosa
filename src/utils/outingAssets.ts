@@ -5,6 +5,14 @@ import { HUD_ICON, UI_BTN } from '@/utils/ui';
 /** 出门过场整图。厨房启动时预载，点门不用再等一堆菜图。 */
 export const OUTING_CURTAIN = 'subpkg_images/outing_curtain.jpg';
 
+/** 挑完回家领奖壳，进菜场时预载，收摊不用再等贴图。 */
+export const RESULT_UI = [
+  'subpkg_kitchen/ui_result_panel.png',
+  'subpkg_kitchen/ui_result_burst.png',
+  'subpkg_kitchen/ui_result_title_safe.png',
+  'subpkg_kitchen/ui_result_title_messy.png',
+] as const;
+
 /** 选点页开门后立刻要用的图。 */
 export function destinationBootPaths(): string[] {
   return [
@@ -30,6 +38,7 @@ export function marketBootPaths(marketId: MarketId, run?: RunState): string[] {
     art.cardAtlas,
     art.meatCard,
     CARD_FRAME,
+    ...RESULT_UI,
   ];
   if (run) {
     Object.values(run.map.scenes).forEach((scene) => {

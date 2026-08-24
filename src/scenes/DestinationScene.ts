@@ -18,7 +18,8 @@ import {
   type MarketDef,
   type VehicleId,
 } from '@/sim';
-import { HUD_ICON, fillRect, makeCookSkillPill, makeLabel, makeSlicedButton, makeStatPill } from '@/utils/ui';
+import { AudioManager } from '@/core/AudioManager';
+import { HUD_ICON, bindUiClick, fillRect, makeCookSkillPill, makeLabel, makeMuteButton, makeSlicedButton, makeStatPill } from '@/utils/ui';
 import { VerticalScroller } from '@/utils/scroll';
 import { applyGray, applyFit, fitCover, fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from '@/utils/assets';
 import { OutingCurtain } from '@/gameobjects/ui/OutingCurtain';
@@ -65,6 +66,7 @@ export class DestinationScene implements Scene {
   onEnter(): void {
     this._browse = KitchenManager.save.vehicle;
     this._scroller.enable();
+    AudioManager.playBgm('outing');
     this.relayout();
   }
 
@@ -131,6 +133,9 @@ export class DestinationScene implements Scene {
     });
     icePill.position.set(454, pillsY);
     this._ui.addChild(icePill);
+    const mute = makeMuteButton(44);
+    mute.position.set(w - 64, pillsY);
+    this._ui.addChild(mute);
 
     const listTop = pillsY + 52;
     const homeY = h - HOME_H - HOME_BOTTOM;
@@ -305,6 +310,7 @@ export class DestinationScene implements Scene {
       root.hitArea = new PIXI.Rectangle(x, y, width, height);
       root.on('pointertap', () => {
         if (this._scroller.moved) return;
+        AudioManager.play('ui_deny');
         Platform.showToast(
           routed
             ? `${market.name} · 厨艺 ${market.unlockLevel} 解锁`
@@ -487,6 +493,7 @@ export class DestinationScene implements Scene {
     root.eventMode = 'static';
     root.cursor = 'pointer';
     root.hitArea = new PIXI.Circle(0, 0, 28);
+    bindUiClick(root);
     root.on('pointertap', (e) => {
       e.stopPropagation();
       this._switchVehicle(dir);
@@ -497,18 +504,22 @@ export class DestinationScene implements Scene {
   private _depart(market: MarketDef): void {
     if (!ownsRouteToMarket(KitchenManager.save, market.id)) {
       const ride = vehicleForMarket(market.id);
+      AudioManager.play('ui_deny');
       Platform.showToast(`买了${ride.name}才能去${market.name}`);
       return;
     }
     if (!isMarketUnlocked(market.id, KitchenManager.save.level)) {
+      AudioManager.play('ui_deny');
       Platform.showToast(`${market.name} · 厨艺 ${market.unlockLevel} 解锁`);
       return;
     }
     if (!KitchenManager.canGoMarket()) {
+      AudioManager.play('ui_deny');
       Platform.showToast('体力不足，看个广告也能出门');
       return;
     }
     if (!KitchenManager.fridgeAcceptsOuting()) {
+      AudioManager.play('ui_deny');
       Platform.showToast('冰箱满了，先卖掉或做菜再出门');
       return;
     }

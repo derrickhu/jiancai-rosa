@@ -1,3 +1,4 @@
+import { AudioManager } from '@/core/AudioManager';
 import { EventBus } from '@/core/EventBus';
 import { Platform } from '@/core/PlatformService';
 import { EV } from '@/config/events';
@@ -140,11 +141,13 @@ class KitchenManagerClass {
   buyVehicle(id: VehicleId): boolean {
     const { save, error } = purchaseVehicle(this.save, id);
     if (error) {
+      AudioManager.play('ui_deny');
       Platform.showToast(error);
       return false;
     }
     SaveManager.replace(save);
     this.emit();
+    AudioManager.play('recipe_paper');
     Platform.showToast(`${vehicleById(id).name} 买下了`, 'success');
     return true;
   }
@@ -159,36 +162,49 @@ class KitchenManagerClass {
   trySpend(amount: number): boolean {
     if (amount <= 0) return true;
     if (this.save.money < amount) {
+      AudioManager.play('ui_deny');
       Platform.showToast(`差 ${amount - this.save.money} 金币，先回家卖点菜`);
       return false;
     }
     SaveManager.replace({ ...this.save, money: this.save.money - amount });
     this.emit();
+    AudioManager.play('coin_spend');
     return true;
   }
 
   sell(uids: string[]): void {
     if (!uids.length) {
+      AudioManager.play('ui_deny');
       Platform.showToast('先点选冰箱里的食材');
       return;
     }
     const { save, gained } = sellItems(this.save, uids);
     SaveManager.replace(save);
     this.emit();
-    if (gained > 0) Platform.showToast(`卖出 ${gained} 金币`);
-    else Platform.showToast('这些卖不掉');
+    if (gained > 0) {
+      AudioManager.play('coin_gain');
+      Platform.showToast(`卖出 ${gained} 金币`);
+    } else {
+      AudioManager.play('ui_deny');
+      Platform.showToast('这些卖不掉');
+    }
   }
 
   cook(recipeId: RecipeId): void {
     const fromLevel = this.save.level;
     const { save, error, xp, levels } = cookRecipe(this.save, recipeId);
     if (error) {
+      AudioManager.play('ui_deny');
       Platform.showToast(error);
       return;
     }
+    AudioManager.play('cook_sizzle');
     if ((xp ?? 0) > 0) this._cookFx = { xp: xp ?? 0, levels: levels ?? 0 };
     SaveManager.replace(save);
     this.emit();
+    if ((levels ?? 0) > 0) {
+      setTimeout(() => AudioManager.play('level_up'), 1000);
+    }
     const name = RECIPES.find((r) => r.id === recipeId)?.name ?? '菜';
     const learned = recipesGainedByCook(fromLevel, save.level);
     this.enqueueRecipeUnlocks(learned);
@@ -200,14 +216,19 @@ class KitchenManagerClass {
   findRecipe(id: RecipeId): void {
     if (this.save.recipesFound.includes(id)) return;
     SaveManager.replace({ ...this.save, recipesFound: [...this.save.recipesFound, id] });
-    this.enqueueRecipeUnlocks([id]);
+    this.enqueueRecipeUnlocks([id], 0, false);
     this.emit();
   }
 
-  enqueueRecipeUnlocks(ids: RecipeId[]): void {
+  enqueueRecipeUnlocks(ids: RecipeId[], delayMs = 0, notify = true): void {
     const add = ids.filter((id) => recipeById(id) && !this._unlockQueue.includes(id));
     if (!add.length) return;
     this._unlockQueue.push(...add);
+    if (!notify) return;
+    if (delayMs > 0) {
+      setTimeout(() => EventBus.emit(EV.recipeUnlocked), delayMs);
+      return;
+    }
     EventBus.emit(EV.recipeUnlocked);
   }
 
@@ -255,11 +276,13 @@ class KitchenManagerClass {
     const fromTable = furnLevel(this.save, 'table');
     const { save, error } = buyFurnUpgrade(this.save, id);
     if (error) {
+      AudioManager.play('ui_deny');
       Platform.showToast(error);
       return;
     }
     SaveManager.replace(save);
     this.emit();
+    AudioManager.play('upgrade');
     const lv = furnLevel(save, id);
     if (id === 'fridge') Platform.showToast(`冰箱 ${lv + 1} 级 · 容量 ${fridgeOwnCap(lv)}`, 'success');
     else if (id === 'foam') {
@@ -270,7 +293,7 @@ class KitchenManagerClass {
     }
     else if (id === 'table') {
       const learned = recipesGainedByTable(fromTable, lv);
-      this.enqueueRecipeUnlocks(learned);
+      this.enqueueRecipeUnlocks(learned, 1000);
       Platform.showToast(`烹饪台 ${lv + 1} 级`, 'success');
     }
     else Platform.showToast(`升到 ${lv + 1} 级`, 'success');
@@ -279,11 +302,13 @@ class KitchenManagerClass {
   upgradeHouse(): void {
     const { save, error } = buyHouseUpgrade(this.save);
     if (error) {
+      AudioManager.play('ui_deny');
       Platform.showToast(error);
       return;
     }
     SaveManager.replace(save);
     this.emit();
+    AudioManager.play('upgrade');
     Platform.showToast(`装修成${houseLabel(houseLevel(save))}`, 'success');
   }
 

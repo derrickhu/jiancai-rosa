@@ -61,6 +61,13 @@ class PlatformServiceClass {
     return { src: '', onload: null, onerror: null };
   }
 
+  createInnerAudioContext(): any {
+    try {
+      if (this._api?.createInnerAudioContext) return this._api.createInnerAudioContext();
+    } catch (_) {}
+    return null;
+  }
+
   storageKey(key: string): string {
     return scopeStorageKey(key, this.name);
   }
