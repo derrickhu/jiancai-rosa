@@ -212,29 +212,54 @@ export class SpecialMarketScene implements Scene {
   }
 
   private _buildSpice(w: number, cy: number): void {
+    const JAR = 'subpkg_images/special_spice_jar.png';
+    const LID = 'subpkg_images/special_spice_jar_lid.png';
+    whenTextureReady(JAR, () => {
+      if (this.container.parent && this._def?.flavor === 'spice') this._paint();
+    });
+    whenTextureReady(LID, () => {
+      if (this.container.parent && this._def?.flavor === 'spice') this._paint();
+    });
+    const jarTex = gameTexture(JAR);
+    const lidTex = gameTexture(LID);
     const jars = 5;
     const gap = 118;
     const start = w / 2 - ((jars - 1) * gap) / 2;
     for (let i = 0; i < jars; i++) {
       const jar = new PIXI.Container();
-      const body = new PIXI.Graphics();
-      body.beginFill(0x6A3A28);
-      body.drawRoundedRect(-28, -8, 56, 72, 12);
-      body.endFill();
-      body.beginFill(0xC46A3A);
-      body.drawRoundedRect(-24, 8, 48, 44, 8);
-      body.endFill();
-      const lid = new PIXI.Graphics();
-      lid.beginFill(0xE8C47A);
-      lid.drawRoundedRect(-32, -22, 64, 22, 8);
-      lid.endFill();
-      lid.beginFill(0x8B5A2B);
-      lid.drawRoundedRect(-8, -30, 16, 12, 4);
-      lid.endFill();
-      lid.name = 'lid';
+      if (isTextureReady(jarTex)) {
+        const body = new PIXI.Sprite(jarTex);
+        fitSpriteInBox(body, 78, 88);
+        body.anchor.set(0.5, 1);
+        body.position.set(0, 36);
+        body.eventMode = 'none';
+        jar.addChild(body);
+      } else {
+        const body = new PIXI.Graphics();
+        body.beginFill(0x8B5A2B);
+        body.drawRoundedRect(-28, -8, 56, 72, 18);
+        body.endFill();
+        jar.addChild(body);
+      }
       const steam = new PIXI.Graphics();
       steam.name = 'steam';
-      jar.addChild(body, steam, lid);
+      jar.addChild(steam);
+      if (isTextureReady(lidTex)) {
+        const lid = new PIXI.Sprite(lidTex);
+        fitSpriteInBox(lid, 84, 42);
+        lid.anchor.set(0.5, 1);
+        lid.position.set(0, -28);
+        lid.eventMode = 'none';
+        lid.name = 'lid';
+        jar.addChild(lid);
+      } else {
+        const lid = new PIXI.Graphics();
+        lid.beginFill(0xE8C47A);
+        lid.drawRoundedRect(-32, -22, 64, 22, 8);
+        lid.endFill();
+        lid.name = 'lid';
+        jar.addChild(lid);
+      }
       jar.position.set(start + i * gap, cy);
       this._play.addChild(jar);
       this._actors[`jar${i}`] = jar;

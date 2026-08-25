@@ -73,7 +73,7 @@ export class LoadingScene implements Scene {
       title.anchor.set(0.5, 0.5);
       const titleW = Math.min(700, w * 0.94);
       title.scale.set(titleW / Math.max(1, titleTex.width));
-      title.position.set(w / 2, Math.max(168, Game.safeTop + 96));
+      title.position.set(w / 2, Math.max(268, Game.safeTop + 196));
       this._root.addChild(title);
     }
 

@@ -4,7 +4,7 @@ import type { Rarity } from './rarity';
 
 export type RecipeId =
   // 普通（绿）：开局 + 烹饪台一级两本
-  | 'stirfry' | 'tomato_egg' | 'scallion_tofu' | 'smashed_cucumber'
+  | 'stirfry' | 'tomato_egg' | 'scallion_tofu' | 'perilla_cucumber'
   | 'vinegar_potato' | 'braised_eggplant' | 'pan_smallfish' | 'stir_beans' | 'blistered_pepper'
   | 'lettuce_salad' | 'harvard_veg_soup' | 'spinach_egg_soup' | 'celery_dried_tofu'
   | 'three_fresh' | 'melon_kelp' | 'candied_taro' | 'ants_tree' | 'chive_shrimp'
@@ -40,6 +40,8 @@ export interface RecipeDef {
   firstXp: number;
   /** 可重复的材料清单：出现两次就是要两份。 */
   needs: string[];
+  /** 吃一口的效果。不填按体力 +1。出门 buff 以后往这里加。 */
+  eat?: { stamina?: number };
   match: (items: RecipeFood[]) => boolean;
   cook: (items: RecipeFood[]) => number;
 }
@@ -80,6 +82,7 @@ export function ingredientSetKey(needs: readonly string[]): string {
 export const RECIPE_ID_ALIASES: Record<string, RecipeId> = {
   tomato_egg_soup: 'spinach_egg_soup',
   egg_tofu_soup: 'spinach_egg_soup',
+  smashed_cucumber: 'perilla_cucumber',
 };
 
 export function migrateRecipeId(id: string): RecipeId | null {
@@ -142,7 +145,7 @@ export const RECIPES: RecipeDef[] = [
   dish('stirfry', '炒菜苔', '家常', 'common', '细秆进锅，花还在。只吃菜苔，别的绿叶子一棵不动。', ['caitai', 'caitai']),
   dish('tomato_egg', '番茄炒蛋', '家常', 'common', '中式厨房的起手式。红黄一碰，连外卖都要让路。', ['tomato', 'egg', 'egg']),
   dish('scallion_tofu', '小葱拌豆腐', '凉菜', 'common', '不用开火，一清二白，端上桌全靠那把葱花。', ['scallion', 'tofu']),
-  dish('smashed_cucumber', '拍黄瓜', '凉菜', 'common', '不用开火。拍一下，蒜和香菜负责像一盘菜。', ['cucumber', 'garlic', 'cilantro']),
+  dish('perilla_cucumber', '紫苏黄瓜', '凉菜', 'common', '不用开火。紫苏一拍，朝天椒负责叫醒。', ['perilla', 'cucumber', 'bird_chili']),
   dish('vinegar_potato', '醋溜土豆丝', '家常', 'common', '切丝是玩家脑内完成的，锅里只见两块变一盘。', ['potato', 'potato', 'ginger']),
   dish('braised_eggplant', '红烧茄子', '家常', 'common', '吸油的紫家伙，蒜把它按进酱色。两根才够一盘。', ['eggplant', 'eggplant', 'garlic']),
   dish('stir_beans', '素炒豆角', '家常', 'common', '一把绿筷子过热锅，比干煸省事。', ['greenbean', 'garlic']),
@@ -172,12 +175,12 @@ export const RECIPES: RecipeDef[] = [
   dish('tomato_fish', '番茄小鱼', '水产', 'rare', '酸甜兜住小鱼，比清蒸省事。', ['smallfish', 'smallfish', 'tomato', 'tomato']),
   dish('pan_hairtail', '干煎带鱼', '水产', 'rare', '银腰带下锅，姜蒜是边角料。', ['hairtail', 'ginger', 'garlic']),
   dish('crucian_tofu', '鲫鱼豆腐汤', '汤', 'rare', '土鲫认汤，不认红烧。', ['crucian', 'tofu', 'ginger']),
-  dish('pepper_pork', '青椒炒肉', '荤', 'rare', '肉摊开门第一道，肉得切够两片。', ['pork', 'pork', 'pepper', 'pepper']),
+  dish('pepper_pork', '青椒炒肉', '荤', 'rare', '肉摊开门第一道，姜负责去腥。', ['pork', 'pork', 'pepper', 'pepper', 'ginger']),
   dish('potato_chicken', '土豆烧鸡腿', '荤', 'rare', '一只带骨的，两块泥里的，炖到软。', ['chicken_leg', 'potato', 'potato']),
   dish('bamboo_pork', '春笋炒肉', '荤', 'rare', '笋比肉贵的那一个月，才配这么炒。', ['bamboo_shoot', 'bamboo_shoot', 'pork']),
   dish('yam_chestnut', '板栗山药煲', '家常', 'rare', '两样都粉，一锅炖到互相分不清。', ['yam', 'yam', 'chestnut', 'chestnut', 'chestnut']),
   dish('dried_tofu_pork', '香干回锅肉', '荤', 'rare', '肉先煸出油，香干再进去抢。', ['pork', 'pork', 'dried_tofu', 'dried_tofu', 'pepper']),
-  dish('chestnut_duck', '板栗烧鸭', '荤', 'rare', '鸭油裹住栗子，甜咸各占一半。', ['duck_leg', 'chestnut', 'chestnut', 'chestnut', 'ginger']),
+  dish('chestnut_duck', '板栗烧鸭', '荤', 'rare', '鸭油裹住栗子，八角负责出香。', ['duck_leg', 'chestnut', 'chestnut', 'chestnut', 'ginger', 'star_anise']),
 
   // ── 稀有（紫）：非得攒紫货不可，一盘顶一天 ──────────────────
   dish('garlic_shrimp', '蒜蓉虾', '水产', 'epic', '蒜末噼啪一响，三只虾就同意被你卖掉。', ['shrimp', 'shrimp', 'shrimp', 'garlic', 'garlic']),
@@ -185,13 +188,13 @@ export const RECIPES: RecipeDef[] = [
   dish('steam_yellowfish', '清蒸黄鱼', '水产', 'epic', '金灿灿一条，姜片比酱料诚实。', ['yellowfish', 'ginger', 'ginger', 'scallion', 'scallion']),
   dish('braised_eel', '红烧河鳗', '水产', 'epic', '整条不切段，酱色收到发亮才算数。', ['river_eel', 'garlic', 'garlic', 'garlic', 'ginger', 'scallion']),
   dish('wild_fish_soup', '野生黄鱼汤', '汤', 'epic', '奶白一锅，喝的人不说话，只顾着喝。', ['wild_yellowfish', 'tofu', 'ginger', 'scallion']),
-  dish('radish_ribs', '萝卜炖排骨', '荤', 'epic', '白萝卜吸骨头，厨房会香一夜。', ['ribs', 'radish', 'radish', 'ginger']),
+  dish('radish_ribs', '萝卜炖排骨', '荤', 'epic', '白萝卜吸骨头，厨房会香一夜。', ['ribs', 'radish', 'radish', 'ginger', 'star_anise']),
   dish('cabbage_belly', '白菜烧五花', '荤', 'epic', '层层白菜包住肥瘦，是冬天的晚饭。', ['pork_belly', 'cabbage', 'ginger', 'garlic']),
-  dish('braised_beef', '红烧牛腩', '荤', 'epic', '炖到筷子能戳穿，萝卜比肉先被抢光。', ['beef_brisket', 'radish', 'radish', 'ginger', 'garlic', 'garlic']),
+  dish('braised_beef', '红烧牛腩', '荤', 'epic', '炖到筷子能戳穿，萝卜比肉先被抢光。', ['beef_brisket', 'radish', 'radish', 'ginger', 'garlic', 'garlic', 'star_anise']),
   dish('ham_melon_soup', '火腿冬瓜汤', '汤', 'epic', '一片老火腿就把整锅水变成了汤。', ['ham', 'melon', 'ginger']),
   dish('matsutake_chicken', '松茸炖鸡', '汤', 'epic', '揭盖那一下，整间屋子都知道你今天买了什么。', ['matsutake', 'chicken_leg', 'ginger']),
   dish('yandu_xian', '腌笃鲜', '汤', 'epic', '咸的鲜的一起笃，笋在里面最耐心。', ['ham', 'pork_belly', 'bamboo_shoot', 'bamboo_shoot', 'tofu']),
-  dish('maoxuewang', '毛血旺', '荤', 'epic', '一锅红，鸭血要嫩，豆芽负责占座。', ['duck_blood', 'duck_blood', 'sprout', 'pork', 'garlic']),
+  dish('maoxuewang', '毛血旺', '荤', 'epic', '一锅红，朝天椒和花椒负责叫醒。', ['duck_blood', 'duck_blood', 'sprout', 'pork', 'garlic', 'bird_chili', 'peppercorn']),
 ];
 
 /** 两道菜去重后的食材种类不能撞车，份数不同也算重复。 */
@@ -225,7 +228,7 @@ export const START_RECIPES: RecipeId[] = ['stirfry', 'tomato_egg', 'scallion_tof
  * 前两档只用巷口货；后面跟着河沿 / 山坞 / 江边 / 老城开场。
  */
 export const TABLE_UNLOCKS: RecipeId[][] = [
-  ['smashed_cucumber', 'vinegar_potato'],
+  ['perilla_cucumber', 'vinegar_potato'],
   ['braised_eggplant', 'pan_smallfish'],
   ['blistered_pepper', 'lettuce_salad'],
   ['stir_beans', 'harvard_veg_soup'],
@@ -271,6 +274,22 @@ export function isRecipeId(id: string): id is RecipeId {
 
 export function recipeById(id: RecipeId): RecipeDef | undefined {
   return RECIPES.find((r) => r.id === id);
+}
+
+export function recipeEatStamina(recipe: RecipeDef): number {
+  const n = recipe.eat?.stamina;
+  return typeof n === 'number' && n > 0 ? Math.floor(n) : 1;
+}
+
+export function recipeSellPrice(id: RecipeId): number {
+  const recipe = recipeById(id);
+  if (!recipe) return 0;
+  return recipe.cook(recipe.needs.map((defId) => ({
+    defId,
+    quality: 'common' as const,
+    inspected: true,
+    freshness: 1,
+  })));
 }
 
 export function recipeRarity(id: RecipeId): Rarity {

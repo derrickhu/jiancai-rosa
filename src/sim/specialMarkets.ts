@@ -44,28 +44,32 @@ export const SPECIAL_TIMING = {
 export const SPECIAL_MARKETS: SpecialMarketDef[] = [
   {
     id: 'spice_night',
-    name: '调料夜摊',
-    hint: '盖子一跳，热气顶满再揭。',
+    name: '香料夜摊',
+    hint: '哪一窝热气顶上来再揭。',
     vehicle: 'walk',
     dailyLimit: SPECIAL_DAILY_LIMIT,
     rounds: SPECIAL_ROUNDS,
     thumb: 'subpkg_images/dest_spice_night.jpg',
     bg: 'subpkg_images/special_spice_bg.jpg',
     flavor: 'spice',
-    cue: '热气顶满再点',
+    cue: '热气顶满再揭',
     bgmMarket: 'xiangko',
     targetPool: [
-      { id: 'scallion', weight: 2 },
-      { id: 'garlic', weight: 2 },
-      { id: 'ginger', weight: 2 },
       { id: 'perilla', weight: 3 },
       { id: 'bird_chili', weight: 3 },
       { id: 'peppercorn', weight: 3 },
+      { id: 'star_anise', weight: 2 },
+      { id: 'dried_chili', weight: 2 },
+      { id: 'scallion', weight: 2 },
+      { id: 'garlic', weight: 2 },
+      { id: 'ginger', weight: 2 },
+      { id: 'cilantro', weight: 2 },
     ],
     consolationPool: [
-      { id: 'scallion', weight: 1 },
-      { id: 'garlic', weight: 1 },
-      { id: 'ginger', weight: 1 },
+      { id: 'scallion', weight: 2 },
+      { id: 'garlic', weight: 2 },
+      { id: 'ginger', weight: 2 },
+      { id: 'cilantro', weight: 1 },
     ],
   },
   {
@@ -162,8 +166,8 @@ export function specialResultLine(
 ): string {
   const name = drop ? getItem(drop.defId).name : '';
   if (def.flavor === 'spice') {
-    if (grade === 'early') return '点早了，空坛';
-    if (grade === 'late') return `热气散了，摸到${name}`;
+    if (grade === 'early') return '点早了，还没香';
+    if (grade === 'late') return `香散了，摸到${name}`;
     return `揭开了·${name}`;
   }
   if (def.flavor === 'fish') {

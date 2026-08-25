@@ -70,6 +70,28 @@ export function makeDexName(
   });
 }
 
+/** 压在图标角上的数量：奶油描边，不那么单薄。 */
+export function makeCornerMark(text: string, size = 18, color = 0x3A2416): PIXI.Text {
+  return makeLabel(text, size, color, {
+    fontFamily: 'PingFang SC, Hiragino Sans GB, sans-serif',
+    fontWeight: '700',
+    stroke: 0xFFF6E8,
+    strokeThickness: Math.max(5, Math.round(size * 0.32)),
+    lineJoin: 'round',
+    dropShadow: true,
+    dropShadowColor: '#2A2018',
+    dropShadowAlpha: 0.22,
+    dropShadowDistance: 1.2,
+    dropShadowAngle: Math.PI / 2,
+    dropShadowBlur: 0,
+  });
+}
+
+/** 格子叠份：奶油描边数量，压在图标右下角。 */
+export function makeQtyMark(qty: number, size = 18): PIXI.Text {
+  return makeCornerMark(`×${qty}`, size);
+}
+
 /** 描边白字，图鉴分类那种有厚度的标题。 */
 export function makeStrokeLabel(
   text: string,

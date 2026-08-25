@@ -32,10 +32,14 @@ export function destinationBootPaths(): string[] {
 
 export function specialBootPaths(id: SpecialMarketId): string[] {
   const def = getSpecialMarket(id);
+  const extra = def.flavor === 'spice'
+    ? ['subpkg_images/special_spice_jar.png', 'subpkg_images/special_spice_jar_lid.png']
+    : [];
   return [...new Set([
     def.bg,
     def.thumb,
     ...RESULT_UI,
+    ...extra,
     ...specialBootItems(def).map((itemId) => `subpkg_images/${itemId}.png`),
   ])];
 }

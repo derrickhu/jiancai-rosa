@@ -1,0 +1,30 @@
+# 新菜重画（必须带盘/碗）
+
+风格段（每条前面原样拼上 docs/prompt/dish_new_shared.txt）：
+
+1. dish_lettuce_salad 生菜沙拉
+   Pale celadon round plate with dark-brown rim. Torn bright-green lettuce, red tomato wedges, cucumber coins, light sesame sheen. Food in the center, celadon rim fully visible.
+
+2. dish_harvard_veg_soup 哈佛蔬菜汤
+   Round cream porcelain soup bowl with dark-brown rim, like the existing spinach-egg soup icon. Potato cubes, carrot coins, corn kernels, tomato chunks in a light orange home-style broth. Bowl rim fully visible.
+
+3. dish_candied_taro 拔丝芋头
+   Small round cream dessert plate with dark-brown rim. Golden fried taro chunks, glossy caramel, thin white sugar threads. Food piled in the center, plate rim fully visible.
+
+4. dish_ants_tree 蚂蚁上树
+   Shallow brown rustic ceramic plate, dark rim. Glossy glass noodles with minced pork "ants", scallion specks. Plate rim fully visible.
+
+5. dish_chive_shrimp 韭菜炒河虾
+   Pale blue-white porcelain plate with a thin dark-blue inner ring and dark-brown outer outline. Small orange river shrimp with cut green chives. Plate rim fully visible.
+
+6. dish_oyster_egg 生蚝煎蛋
+   Oval cream plate with dark-brown rim. Golden fried egg folded around plump oysters, scallion bits. Plate rim fully visible.
+
+7. dish_stir_liver 小炒猪肝
+   Round cream plate with a thin green inner ring and dark-brown outer outline. Sliced brown pork liver, green pepper strips, garlic, glossy wok sauce. Plate rim fully visible.
+
+8. dish_tremella_lily_soup 银耳百合莲子汤
+   Round cream porcelain soup bowl with dark-brown rim. White tremella clouds, lily petals, lotus seeds, red goji in pale sweet broth. Bowl rim fully visible.
+
+9. dish_maoxuewang 毛血旺
+   Deep reddish-brown clay bowl (砂锅) with a thick dark rim. Spicy red chili oil, dark duck-blood cubes, tripe, bean sprouts, scallion. Bowl rim fully visible, food not overflowing.

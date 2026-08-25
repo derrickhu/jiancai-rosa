@@ -15,7 +15,7 @@ import {
   unlockedRecipes,
   type RecipeId,
 } from '@/sim';
-import { FONT, bindUiClick, drawRarityFrame, fillRect, makeLabel } from '@/utils/ui';
+import { FONT, bindUiClick, drawRarityFrame, fillRect, makeCornerMark, makeLabel } from '@/utils/ui';
 import { VerticalScroller } from '@/utils/scroll';
 import {
   dishTexture,
@@ -25,6 +25,12 @@ import {
   itemTexture,
   whenTextureReady,
 } from '@/utils/assets';
+import {
+  inspectFromItem,
+  inspectFromRecipe,
+  makeItemInspectCard,
+  type ItemInspectView,
+} from './ItemInspectCard';
 
 const BG = 'subpkg_kitchen/ui_cook_panel.png';
 const INK = 0x2A2018;
@@ -39,15 +45,16 @@ const BTN = {
   terracotta: 'subpkg_kitchen/ui_fridge_btn_terracotta.png',
 } as const;
 
-/** 相对砧板纸面（左有木铲，内容整体右移）。 */
+/** 相对砧板纸面（左有木铲，列表再往左贴一点）。 */
 const PAGE = { x: 0.22, y: 0.10, w: 0.64, h: 0.72 };
-const INSET = { x: 0.22, y: 0.20, w: 0.64, h: 0.58 };
+const INSET = { x: 0.145, y: 0.20, w: 0.715, h: 0.58 };
 const LEFT_W = 0.36;
 
 export class CookPanel extends PIXI.Container {
   _isOpen = false;
   private _root = new PIXI.Container();
   private _pick: RecipeId = 'stirfry';
+  private _inspect: ItemInspectView | null = null;
   private _btnSlices = new Map<string, { left: PIXI.Texture; mid: PIXI.Texture; right: PIXI.Texture }>();
   private _scroller: VerticalScroller;
 
@@ -65,6 +72,7 @@ export class CookPanel extends PIXI.Container {
     if (!this._isOpen) AudioManager.play('cook_done');
     this._isOpen = true;
     this.visible = true;
+    this._inspect = null;
     const known = unlockedRecipes(recipeUnlockView(KitchenManager.save));
     if (!known.some((r) => r.id === this._pick)) this._pick = known[0]?.id ?? 'stirfry';
     this._scroller.reset();
@@ -104,6 +112,22 @@ export class CookPanel extends PIXI.Container {
     shell.addChild(this._title(box.w * (PAGE.x + PAGE.w * 0.5), box.h * (PAGE.y + 0.045)));
     shell.addChild(this._sideList(box.x, box.y, box.w, box.h));
     shell.addChild(this._stage(box.w, box.h));
+
+    if (this._inspect) {
+      this._root.addChild(makeItemInspectCard({
+        view: this._inspect,
+        qty: 1,
+        actions: false,
+        onQty: () => {},
+        onClose: () => {
+          this._inspect = null;
+          this.relayout();
+        },
+        onReady: () => {
+          if (this._isOpen) this.relayout();
+        },
+      }));
+    }
   }
 
   private _boardBox(screenW: number, screenH: number): { x: number; y: number; w: number; h: number } {
@@ -240,70 +264,82 @@ export class CookPanel extends PIXI.Container {
 
     const pad = bw * 0.02;
     const dx = bw * (INSET.x + INSET.w * LEFT_W) + pad;
-    const dy = bh * INSET.y;
+    const dy = bh * INSET.y + 4;
     const dw = bw * INSET.w * (1 - LEFT_W) - pad;
-    const dh = bh * INSET.h * 0.36;
+    const dishSize = Math.min(Math.round(dw * 0.72), Math.round(bh * INSET.h * 0.24));
+    const dishX = dx + (dw - dishSize) / 2;
     const dishPath = `subpkg_images/dish_${recipe.id}.png`;
     whenTextureReady(dishPath, () => {
       if (this._isOpen) this.relayout();
     });
     const frame = new PIXI.Graphics();
-    drawRarityFrame(frame, dx + 2, dy + 2, dw - 4, dh - 4, recipe.rarity, { radius: 14 });
+    drawRarityFrame(frame, dishX + 2, dy + 2, dishSize - 4, dishSize - 4, recipe.rarity, { radius: 14 });
     frame.eventMode = 'none';
     root.addChild(frame);
 
     const dish = new PIXI.Sprite(dishTexture(recipe.id));
-    fitSpriteInBox(dish, dw * 0.86, dh * 0.86);
+    fitSpriteInBox(dish, dishSize * 0.78, dishSize * 0.78);
     dish.anchor.set(0.5);
-    dish.position.set(dx + dw / 2, dy + dh / 2);
+    dish.position.set(dishX + dishSize / 2, dy + dishSize / 2);
     dish.eventMode = 'none';
-    root.addChild(dish);
+    const dishHit = new PIXI.Container();
+    dishHit.eventMode = 'static';
+    dishHit.cursor = 'pointer';
+    dishHit.hitArea = new PIXI.Rectangle(dishX, dy, dishSize, dishSize);
+    dishHit.on('pointertap', (e) => {
+      e.stopPropagation();
+      this._inspect = inspectFromRecipe(recipe.id);
+      this.relayout();
+    });
+    root.addChild(dish, dishHit);
 
-    const name = makeLabel(recipe.name, 24, INK, { fontWeight: '700' });
+    const cx = dx + dw / 2;
+    const nameY = dy + dishSize + 22;
+    const name = makeLabel(recipe.name, 28, INK, { fontWeight: '700' });
     name.anchor.set(0.5);
-    name.position.set(dx + dw / 2, dy + dh + 10);
+    name.position.set(cx, nameY);
     root.addChild(name);
     const xp = recipeXp(KitchenManager.save, recipe.id);
     const xpLabel = makeLabel(
       `${rarityLabel(recipe.rarity)}  ·  +${xp} 经验`,
-      16,
+      18,
       RARITY_STYLE[recipe.rarity].ink,
       { fontWeight: '700' },
     );
     xpLabel.anchor.set(0.5);
-    xpLabel.position.set(dx + dw / 2, dy + dh + 34);
+    xpLabel.position.set(cx, nameY + 30);
     root.addChild(xpLabel);
 
     const tx = dx;
-    const ty = dy + dh + 48;
     const tw = dw;
-    const th = bh * (INSET.y + INSET.h) - ty;
     const blurb = new PIXI.Text(recipe.blurb, {
       fontFamily: FONT,
-      fontSize: 16,
+      fontSize: 20,
       fill: MUTED,
+      fontWeight: '500',
       wordWrap: true,
       breakWords: true,
-      wordWrapWidth: Math.max(80, tw - 20),
-      lineHeight: 24,
+      wordWrapWidth: Math.max(80, tw - 12),
+      lineHeight: 30,
     });
-    blurb.position.set(tx + 8, ty + 6);
+    blurb.position.set(tx + 6, nameY + 52);
     blurb.eventMode = 'none';
     root.addChild(blurb);
 
-    const slot = Math.min(78, (tw - 20) / Math.max(2, needs.length));
-    const gap = 10;
+    const slot = Math.min(84, (tw - 16) / Math.max(2, needs.length));
+    const gap = 14;
     const rowW = needs.length * slot + (needs.length - 1) * gap;
     let sx = tx + (tw - rowW) / 2;
-    const slotY = ty + 10 + blurb.height + 8;
+    const slotY = nameY + 52 + blurb.height + 16;
     needs.forEach((need) => {
       root.addChild(this._needSlot(sx, slotY, slot, need.label, need.iconId, need.have, need.need));
       sx += slot + gap;
     });
 
     const btnH = 62;
+    const stageBottom = bh * (INSET.y + INSET.h);
     const btn = this._cookAction(tw - 8, btnH, ready);
-    btn.position.set(tx + 4, ty + th - btnH - 4);
+    btn.position.set(tx + 4, stageBottom - btnH - 4);
     root.addChild(btn);
     return root;
   }
@@ -387,22 +423,30 @@ export class CookPanel extends PIXI.Container {
       if (this._isOpen) this.relayout();
     });
     const icon = new PIXI.Sprite(itemTexture(iconId));
-    fitSpriteInBox(icon, size - 20, size - 26);
+    fitSpriteInBox(icon, size - 16, size - 16);
     icon.anchor.set(0.5);
-    icon.position.set(x + size / 2, y + size / 2 - 6);
+    icon.position.set(x + size / 2, y + size / 2);
     icon.eventMode = 'none';
     if (!ok) icon.alpha = 0.45;
     root.addChild(icon);
 
-    const count = makeLabel(`${have}/${need}`, 15, ok ? OK : TERRACOTTA, { fontWeight: '700' });
-    count.anchor.set(0.5, 1);
-    count.position.set(x + size / 2, y + size - 3);
+    const count = makeCornerMark(`${have}/${need}`, 16, ok ? OK : TERRACOTTA);
+    count.anchor.set(1, 1);
+    count.position.set(x + size - 4, y + size - 2);
     root.addChild(count);
 
-    const name = makeLabel(label, 14, INK, { fontWeight: '600' });
+    const name = makeLabel(label, 16, INK, { fontWeight: '600' });
     name.anchor.set(0.5, 0);
-    name.position.set(x + size / 2, y + size + 4);
+    name.position.set(x + size / 2, y + size + 8);
     root.addChild(name);
+    root.eventMode = 'static';
+    root.cursor = 'pointer';
+    root.hitArea = new PIXI.Rectangle(x, y, size, size + 28);
+    root.on('pointertap', (e) => {
+      e.stopPropagation();
+      this._inspect = inspectFromItem(iconId);
+      this.relayout();
+    });
     return root;
   }
 

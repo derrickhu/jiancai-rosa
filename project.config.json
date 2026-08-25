@@ -439,6 +439,10 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/dish_perilla_cucumber.png"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/dish_potato_chicken.png"
       },
       {
@@ -752,6 +756,14 @@
       {
         "type": "file",
         "value": "subpkg_images/special_spice_bg.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/special_spice_jar.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/special_spice_jar_lid.png"
       },
       {
         "type": "file",

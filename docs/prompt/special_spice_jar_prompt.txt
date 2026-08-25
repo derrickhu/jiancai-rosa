@@ -1,0 +1,5 @@
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading, same style as existing item icons. Isolated on solid pure white. NO TEXT.
+
+1. special_spice_jar — a short squat brown clay jar / 陶罐, no lid, rounded body, cream-tan mouth ring, readable at 64px, centered, generous margin.
+
+2. special_spice_jar_lid — a matching tan wooden lid with a small round knob, slightly wider than the jar mouth, isolated, centered, generous margin.

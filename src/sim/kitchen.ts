@@ -9,6 +9,7 @@ import {
   migrateRecipeId,
   pickRecipeFoods,
   recipeById,
+  recipeEatStamina,
   recipeUnlockView,
   type RecipeId,
 } from './recipes';
@@ -31,6 +32,8 @@ export {
   remainingMarketRecipes,
   isRecipeId,
   recipeById,
+  recipeEatStamina,
+  recipeSellPrice,
   START_RECIPES,
   TABLE_UNLOCKS,
   COOK_UNLOCK_AT,
@@ -477,6 +480,61 @@ export function ingestExtract(save: KitchenSave, items: ExtractedItem[], now = D
     ...next,
     fridge: incoming.reduce((fridge, it) => putIntoFridge(fridge, it), next.fridge),
     dailyGodPickDate: keep.some((it) => it.defId === 'wild_yellowfish') ? todayKey(now) : save.dailyGodPickDate,
+  };
+}
+
+export function eatDish(
+  save: KitchenSave,
+  uid: string,
+  qty = 1,
+  now = Date.now(),
+): { save: KitchenSave; error?: string; stamina?: number; name?: string } {
+  const item = save.fridge.find((it) => it.uid === uid);
+  if (!item) return { save, error: '冰箱里没有这道菜' };
+  if (fridgeKind(item) !== 'dish') return { save, error: '生食不能这么吃' };
+  if (!isRecipeId(item.defId)) return { save, error: '未知菜谱' };
+  const recipe = recipeById(item.defId);
+  if (!recipe) return { save, error: '未知菜谱' };
+  const next = regenStamina(save, now);
+  if (next.stamina >= STAMINA_MAX) return { save: next, error: '体力满了，先出门或卖掉' };
+  const gainEach = recipeEatStamina(recipe);
+  const room = STAMINA_MAX - next.stamina;
+  const want = Math.min(fridgeItemQty(item), Math.max(1, Math.floor(qty)));
+  const portions = Math.min(want, Math.max(0, Math.floor(room / Math.max(1, gainEach))));
+  if (portions <= 0) return { save: next, error: '体力满了，先出门或卖掉' };
+  const fridge = consumeFridgeQty(next.fridge, new Map([[uid, portions]]));
+  const gained = portions * gainEach;
+  const stamina = Math.min(STAMINA_MAX, next.stamina + gained);
+  return {
+    save: {
+      ...next,
+      fridge,
+      stamina,
+      staminaAt: stamina >= STAMINA_MAX ? now : next.staminaAt,
+    },
+    stamina: gained,
+    name: recipe.name,
+  };
+}
+
+export function sellFridgeQty(
+  save: KitchenSave,
+  uid: string,
+  qty: number,
+): { save: KitchenSave; gained: number; error?: string } {
+  const item = save.fridge.find((it) => it.uid === uid);
+  if (!item) return { save, gained: 0, error: '冰箱里没有这件' };
+  const unit = fridgeItemUnitPrice(item);
+  if (unit <= 0) return { save, gained: 0, error: '这些卖不掉' };
+  const n = Math.min(fridgeItemQty(item), Math.max(1, Math.floor(qty)));
+  const gained = unit * n;
+  return {
+    save: {
+      ...save,
+      fridge: consumeFridgeQty(save.fridge, new Map([[uid, n]])),
+      money: save.money + gained,
+    },
+    gained,
   };
 }
 

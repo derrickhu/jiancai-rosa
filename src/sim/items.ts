@@ -129,6 +129,8 @@ const SPECS: ItemSpec[] = [
   { id: 'tremella', name: '银耳', w: 1, h: 1, zone: 'dry', rarity: 'rare', stalls: ['egg'], color: 0xF2E6D0, blurb: '干花一样的白耳朵，泡一夜才肯张开。', blurbRotten: '发黄发酸，泡开也救不了。' },
   { id: 'goji', name: '枸杞', w: 1, h: 1, zone: 'dry', rarity: 'common', stalls: ['egg'], color: 0xC45A3A, blurb: '一把红点子，丢进汤里就像有人懂养生。', blurbRotten: '干瘪发黑，甜味变成潮味。' },
   { id: 'peppercorn', name: '花椒', w: 1, h: 1, zone: 'dry', rarity: 'rare', stalls: ['egg'], color: 0x8A4A28, blurb: '一把麻点子，夜摊揭开才肯给你。', blurbRotten: '油败发黑，麻味先走了。' },
+  { id: 'star_anise', name: '八角', w: 1, h: 1, zone: 'dry', rarity: 'rare', hard: true, stalls: ['egg'], color: 0x6A3A18, blurb: '一颗星，红烧锅里最肯出味道。', blurbRotten: '边儿发霉，香气变成潮木头。' },
+  { id: 'dried_chili', name: '干辣椒', w: 1, h: 1, zone: 'dry', rarity: 'rare', hard: true, stalls: ['egg'], color: 0xA33A28, blurb: '一撮皱红皮，比鲜椒更会在锅里说话。', blurbRotten: '潮了发黑，辣也泄成灰。' },
 
   // ── 水产摊 ──────────────────────────────────────────────
   { id: 'smallfish', name: '小鱼', w: 1, h: 2, zone: 'wet', rarity: 'common', stalls: ['fish'], color: 0x6B8E9F, blurb: '银闪闪一小条，可能是漏网之鱼，也可能是漏网之神。', blurbRotten: '眼睛先翻白，味道随后赶到。' },

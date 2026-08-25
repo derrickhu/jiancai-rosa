@@ -1,3 +1,5 @@
-Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading, gentle highlights, warm kitchen lighting. Same style as existing tomato-egg and garlic-shrimp plate icons in this game. NO photorealism, NO 3D render, NO photography, NO pixel art, NO neon. NO TEXT, no labels, no numbers, no captions, no watermark.
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading, gentle highlights, warm kitchen lighting. Same style as existing tomato-egg and clam-soup icons in this game. NO photorealism, NO 3D render, NO photography, NO pixel art, NO neon. NO TEXT, no labels, no numbers, no captions, no watermark.
 
-Finished Chinese home-cooked dish, appetizing, clearly readable at 64px. Top-down on a small round cream ceramic plate (soup may use a round cream bowl). Isolated on solid white background. Plate fully visible, centered, generous margin.
+RULE: every finished dish MUST sit on tableware. The plate/bowl is part of the icon, never floating food. Food fills the center only; a clear rim band must stay visible all the way around. Rim uses a medium-thick dark-brown outline so it survives background removal. Isolated on solid pure white background, centered, generous margin, readable at 64px.
+
+Tableware may differ by dish (cream plate, celadon, pale-blue rim, clay bowl, porcelain soup bowl) but MUST be fully visible.

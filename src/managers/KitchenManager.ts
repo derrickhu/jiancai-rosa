@@ -13,6 +13,8 @@ import {
   buyFurnUpgrade,
   buyHouseUpgrade,
   cookRecipe,
+  eatDish,
+  sellFridgeQty,
   COOK_LEVEL_MAX,
   clampCookLevel,
   fridgeAcceptsOuting,
@@ -173,6 +175,34 @@ class KitchenManagerClass {
     SaveManager.replace({ ...this.save, money: this.save.money - amount });
     this.emit();
     AudioManager.play('coin_spend');
+    return true;
+  }
+
+  eat(uid: string, qty = 1): boolean {
+    const { save, error, stamina, name } = eatDish(this.save, uid, qty);
+    if (error) {
+      AudioManager.play('ui_deny');
+      Platform.showToast(error);
+      return false;
+    }
+    SaveManager.replace(save);
+    this.emit();
+    AudioManager.play('cook_done');
+    Platform.showToast(`吃了${name}，体力 +${stamina ?? 1}`, 'success');
+    return true;
+  }
+
+  sellQty(uid: string, qty: number): boolean {
+    const { save, gained, error } = sellFridgeQty(this.save, uid, qty);
+    if (error || gained <= 0) {
+      AudioManager.play('ui_deny');
+      Platform.showToast(error ?? '这些卖不掉');
+      return false;
+    }
+    SaveManager.replace(save);
+    this.emit();
+    AudioManager.play('coin_gain');
+    Platform.showToast(`卖出 ${gained} 金币`);
     return true;
   }
 
