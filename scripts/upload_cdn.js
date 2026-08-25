@@ -247,6 +247,7 @@ function syncPackIgnore(remotePaths) {
     { type: 'glob', value: 'subpkg_images/stall_pile_*.png' },
     { type: 'glob', value: 'subpkg_images/outing_curtain.jpg' },
     { type: 'glob', value: 'subpkg_images/dest_*.jpg' },
+    { type: 'glob', value: 'subpkg_images/special_*.jpg' },
     { type: 'glob', value: 'subpkg_images/dish_*.png' },
     { type: 'glob', value: 'subpkg_images/npc_*.png' },
     { type: 'glob', value: 'subpkg_audio/*' },

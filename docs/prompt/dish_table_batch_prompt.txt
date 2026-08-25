@@ -1,0 +1,20 @@
+# 烹饪台扩菜新增菜品
+
+风格段（每条前面原样拼上，与 dish_new_shared.txt 一致）：
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading, gentle highlights, warm kitchen lighting. Same style as existing tomato-egg and garlic-shrimp plate icons in this game. NO photorealism, NO 3D render, NO photography, NO pixel art, NO neon. NO TEXT, no labels, no numbers, no captions, no watermark.
+Finished Chinese home-cooked dish, appetizing, clearly readable at 64px. Top-down on a small round cream ceramic plate (soup uses a round cream bowl). Isolated on solid white background. Plate fully visible, centered, generous margin.
+
+| id | 菜名 | 主体描述 |
+|---|---|---|
+| pan_smallfish | 香煎小鱼 | Two small pan-fried silver fish on a cream plate, golden-brown crisp skin, a few garlic chips, light oil sheen. |
+| lettuce_salad | 生菜沙拉 | Torn bright-green lettuce leaves with red tomato wedges and cucumber slices, a light sesame-oil sheen, no Western dressing bottle. |
+| harvard_veg_soup | 哈佛蔬菜汤 | Cream bowl of orange-gold mixed vegetable soup with potato cubes, carrot coins, yellow corn kernels and tomato pieces, homemade and humble. |
+| candied_taro | 拔丝芋头 | Golden-brown fried taro chunks on a cream plate, shiny sugar glaze that looks like it could pull into threads, warm amber. |
+| ants_tree | 蚂蚁上树 | Stir-fried glass noodles tangled with browned minced pork, chili-bean red-brown sauce, a few scallion bits, glossy. |
+| chive_shrimp | 韭菜炒河虾 | Stir-fry of bright green chive segments with small grey-pink river shrimp, light oil sheen, wok-hot. |
+| oyster_egg | 生蚝煎蛋 | Golden folded fried egg wrapping two plump oyster meats, browned edges, scallion bits, on a cream plate. |
+| stir_liver | 小炒猪肝 | Stir-fry of sliced brown pork liver with green pepper strips, glossy light-brown sauce, high-heat look. |
+| tremella_lily_soup | 银耳百合莲子汤 | Clear pale soup in a cream bowl with white tremella blossoms, lily petal pieces, lotus seeds and a few red goji berries. |
+| maoxuewang | 毛血旺 | Deep red spicy Sichuan broth in a cream bowl, dark duck-blood cubes, bean sprouts, pork slices, chili oil sheen on top. |
+
+后处理：rembg → `scripts/fit-dish-art.py` 512x512。

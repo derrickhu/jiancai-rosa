@@ -45,7 +45,7 @@ const DISH_GROUP_ICON: Record<string, string> = {
   荤: 'dex_cat_savory',
 };
 
-const PANTRY = new Set(['garlic', 'ginger', 'egg', 'tofu', 'dried_tofu']);
+const PANTRY = new Set(['garlic', 'ginger', 'egg', 'tofu', 'dried_tofu', 'vermicelli', 'lotus_seed', 'tremella', 'goji', 'peppercorn']);
 /** 干果归「水果」这一页，别让板栗混进叶菜堆里。 */
 const FRUIT = new Set(['chestnut']);
 const DISH_GROUP_ORDER = ['家常', '凉菜', '汤', '水产', '荤'];

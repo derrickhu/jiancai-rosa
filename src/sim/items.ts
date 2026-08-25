@@ -82,9 +82,11 @@ const SPECS: ItemSpec[] = [
   { id: 'bokchoy', name: '小白菜', w: 1, h: 2, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['leaf'], color: 0x6BA368, blurb: '摊上最常见的绿叶子，帮你证明今晚真的开过火。', blurbRotten: '叶子摊成湿报纸，连虫都懒得来。' },
   { id: 'caitai', name: '菜苔', w: 1, h: 2, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['leaf'], color: 0x7CB342, blurb: '细秆顶着小黄花，一炒就是晚饭。别跟油菜整棵搞混。', blurbRotten: '花谢了，秆也软成了一撮绳。' },
   { id: 'cilantro', name: '香菜', w: 1, h: 1, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['leaf'], color: 0x3D7A3A, blurb: '有人闻见就逃，有人觉得没它不算一盘菜。', blurbRotten: '香气先走了，只剩一撮黑头发。' },
+  { id: 'perilla', name: '紫苏', w: 1, h: 1, zone: 'dry', rarity: 'rare', vegetable: true, stalls: ['leaf'], color: 0x5A3A6A, blurb: '紫叶子带着清香，夜摊上才肯露脸。', blurbRotten: '紫褪成褐，香气也不肯留。' },
+  { id: 'bird_chili', name: '朝天椒', w: 1, h: 1, zone: 'dry', rarity: 'rare', vegetable: true, stalls: ['leaf'], color: 0xC43A28, blurb: '朝天一簇小红椒，看着就知道嘴要遭殃。', blurbRotten: '蔫成一撮红线，辣也泄了。' },
   { id: 'scallion', name: '小葱', w: 1, h: 2, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['leaf'], color: 0x6FB04A, blurb: '一把细葱，切末往上一撒，整盘菜就像有人管。', blurbRotten: '葱白发滑，香味比谁都先走。' },
   { id: 'spinach', name: '菠菜', w: 1, h: 2, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['leaf'], color: 0x3D7A3A, blurb: '红根还在，才像刚从筐里拔的。', blurbRotten: '叶子黑了，红根也救不回来。' },
-  { id: 'chive', name: '韭菜', w: 1, h: 2, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['leaf'], color: 0x4A8A3A, blurb: '香味先到，炒蛋的固定搭档。', blurbRotten: '软成一撮青丝，香气先走了。' },
+  { id: 'chive', name: '韭菜', w: 1, h: 2, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['leaf'], color: 0x4A8A3A, blurb: '香味先到，河虾最肯跟它见面。', blurbRotten: '软成一撮青丝，香气先走了。' },
   { id: 'celery', name: '芹菜', w: 1, h: 3, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['leaf'], color: 0x7BB05A, blurb: '叶子也能吃，别只留下秆。', blurbRotten: '秆还硬，叶子已经认输。' },
   { id: 'water_spinach', name: '空心菜', w: 1, h: 3, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['leaf'], color: 0x5A9A48, blurb: '空心管，灶上烫一下就软。', blurbRotten: '管子瘪了，只剩一缕湿绳。' },
   { id: 'lettuce', name: '生菜', w: 2, h: 2, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['leaf'], color: 0x8FCB6B, blurb: '一整个脆生生的脑袋，凉拌比炒更懂它。', blurbRotten: '边儿发红了，像熬夜熬过头。' },
@@ -108,6 +110,8 @@ const SPECS: ItemSpec[] = [
   { id: 'bamboo_shoot', name: '春笋', w: 1, h: 3, zone: 'dry', rarity: 'rare', vegetable: true, stalls: ['root'], color: 0xE8DCC0, blurb: '带壳一支，剥到最后只剩一小截，脆得值这个价。', blurbRotten: '根部发苦，剥开全是老丝。' },
   { id: 'yam', name: '山药', w: 1, h: 3, zone: 'dry', rarity: 'rare', vegetable: true, stalls: ['root'], color: 0xE4D8C4, blurb: '削皮时手会痒，炖到粉糯你就原谅它了。', blurbRotten: '断面发褐，黏液变成了浆。' },
   { id: 'chestnut', name: '板栗', w: 1, h: 1, zone: 'dry', rarity: 'rare', hard: true, stalls: ['root'], color: 0x8B5A2B, blurb: '带壳的小硬球，炖肉时它最肯出甜。', blurbRotten: '壳里长毛了，仁也蔫成一团。' },
+  { id: 'taro', name: '芋头', w: 2, h: 2, zone: 'dry', rarity: 'rare', vegetable: true, bulky: true, stalls: ['root'], color: 0xC4B090, blurb: '泥衣还在的紫褐疙瘩，拔丝之前得先认它。', blurbRotten: '切开发红，粉变成了浆。' },
+  { id: 'lily', name: '百合', w: 1, h: 2, zone: 'dry', rarity: 'rare', vegetable: true, stalls: ['root'], color: 0xF4EFE6, blurb: '一层一层的白瓣，看起来像还没开的灯。', blurbRotten: '瓣边发褐，甜味先走了。' },
 
   // ── 蛋豆摊 ──────────────────────────────────────────────
   { id: 'tomato', name: '番茄', w: 1, h: 1, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['egg'], color: 0xD64545, blurb: '红得心虚，一切就流汁，天生来配鸡蛋。', blurbRotten: '皮皱成老太太，汁还在装年轻。' },
@@ -120,6 +124,11 @@ const SPECS: ItemSpec[] = [
   { id: 'mushroom', name: '香菇', w: 1, h: 1, zone: 'dry', rarity: 'rare', vegetable: true, stalls: ['egg'], color: 0x6B4A32, blurb: '干香菇泡发太麻烦，收摊只捡鲜的。', blurbRotten: '伞沿发黏，香气变成潮味。' },
   { id: 'wood_ear', name: '木耳', w: 1, h: 1, zone: 'dry', rarity: 'rare', vegetable: true, stalls: ['egg'], color: 0x3A2A22, blurb: '泡开才见分量，一小撮能撑起一整盘。', blurbRotten: '泡过头了，软塌塌的没有脆。' },
   { id: 'matsutake', name: '松茸', w: 1, h: 2, zone: 'dry', rarity: 'epic', vegetable: true, stalls: ['egg'], color: 0xC4A882, blurb: '山坞一年只出这几天，香气隔着筐往外跑。', blurbRotten: '香气散尽，只剩一段木头味。' },
+  { id: 'vermicelli', name: '粉丝', w: 1, h: 2, zone: 'dry', rarity: 'common', stalls: ['egg'], color: 0xE8E0D0, blurb: '一把干白线，泡开才肯软，专给肉末当梯子。', blurbRotten: '受潮结块，掰开全是灰。' },
+  { id: 'lotus_seed', name: '莲子', w: 1, h: 1, zone: 'dry', rarity: 'rare', hard: true, stalls: ['egg'], color: 0xE8D8B0, blurb: '一捧浅褐小仁，芯还在，熬汤才肯甜。', blurbRotten: '生虫了，仁里先空。' },
+  { id: 'tremella', name: '银耳', w: 1, h: 1, zone: 'dry', rarity: 'rare', stalls: ['egg'], color: 0xF2E6D0, blurb: '干花一样的白耳朵，泡一夜才肯张开。', blurbRotten: '发黄发酸，泡开也救不了。' },
+  { id: 'goji', name: '枸杞', w: 1, h: 1, zone: 'dry', rarity: 'common', stalls: ['egg'], color: 0xC45A3A, blurb: '一把红点子，丢进汤里就像有人懂养生。', blurbRotten: '干瘪发黑，甜味变成潮味。' },
+  { id: 'peppercorn', name: '花椒', w: 1, h: 1, zone: 'dry', rarity: 'rare', stalls: ['egg'], color: 0x8A4A28, blurb: '一把麻点子，夜摊揭开才肯给你。', blurbRotten: '油败发黑，麻味先走了。' },
 
   // ── 水产摊 ──────────────────────────────────────────────
   { id: 'smallfish', name: '小鱼', w: 1, h: 2, zone: 'wet', rarity: 'common', stalls: ['fish'], color: 0x6B8E9F, blurb: '银闪闪一小条，可能是漏网之鱼，也可能是漏网之神。', blurbRotten: '眼睛先翻白，味道随后赶到。' },
@@ -131,6 +140,8 @@ const SPECS: ItemSpec[] = [
   { id: 'yellowfish', name: '黄鱼', w: 2, h: 1, zone: 'wet', rarity: 'epic', stalls: ['fish'], color: 0xE0A100, blurb: '金灿灿一条，黄鱼摊上的面子工程。', blurbRotten: '金色褪成旧窗帘，刺还在坚持存在。' },
   { id: 'crab', name: '螃蟹', w: 2, h: 2, zone: 'wet', rarity: 'epic', live: true, stalls: ['fish'], color: 0xC0392B, blurb: '还在挥钳子，活的才算数，别让它在篮里散步。', blurbRotten: '钳子掉了，脾气也没了。' },
   { id: 'river_eel', name: '河鳗', w: 1, h: 4, zone: 'wet', rarity: 'epic', stalls: ['fish'], color: 0x4A5A50, blurb: '滑得抓不住，肉厚，江边人一般自己留着吃。', blurbRotten: '身上黏液发白，腥气顶人。' },
+  { id: 'river_shrimp', name: '河虾', w: 1, h: 2, zone: 'wet', rarity: 'rare', stalls: ['fish'], color: 0xD4785A, blurb: '青灰色一小把，比海虾老实，韭菜一响就熟。', blurbRotten: '头先黑，须子先断。' },
+  { id: 'oyster', name: '生蚝', w: 2, h: 1, zone: 'wet', rarity: 'epic', live: true, stalls: ['fish'], color: 0x8A9A8A, blurb: '石头一样的壳，撬开才见人。活的才配下蛋。', blurbRotten: '壳还闭着，里面已经没人在家。' },
 
   // ── 肉摊 ────────────────────────────────────────────────
   { id: 'pork', name: '猪肉片', w: 2, h: 1, zone: 'dry', rarity: 'rare', stalls: ['meat'], color: 0xE07A7A, blurb: '薄片，青椒一响就是晚饭。', blurbRotten: '边儿发绿，别再假装能炒。' },
@@ -140,6 +151,8 @@ const SPECS: ItemSpec[] = [
   { id: 'ribs', name: '排骨', w: 2, h: 2, zone: 'dry', rarity: 'epic', stalls: ['meat'], color: 0xA86A5A, blurb: '短肋几根，萝卜汤的骨头。', blurbRotten: '肉离了骨，味道先走。' },
   { id: 'ham', name: '火腿', w: 2, h: 1, zone: 'dry', rarity: 'epic', stalls: ['meat'], color: 0xB5504A, blurb: '梁上挂了一年的咸货，切一片就能吊一锅汤。', blurbRotten: '油边发哈，咸味也压不住了。' },
   { id: 'beef_brisket', name: '牛腩', w: 2, h: 2, zone: 'dry', rarity: 'epic', stalls: ['meat'], color: 0x9A4A3A, blurb: '带筋一块，得炖足两个钟头才肯松口。', blurbRotten: '筋发黏，红色褪成了灰。' },
+  { id: 'pork_liver', name: '猪肝', w: 2, h: 1, zone: 'dry', rarity: 'rare', stalls: ['meat'], color: 0x8A3030, blurb: '一整叶深褐的肝，火要大，锅要快。', blurbRotten: '表面发绿，腥得先翻脸。' },
+  { id: 'duck_blood', name: '鸭血', w: 1, h: 1, zone: 'dry', rarity: 'epic', stalls: ['meat'], color: 0x6A2028, blurb: '一方深褐的嫩块，毛血旺没有它就不肯开场。', blurbRotten: '边儿发灰，嫩变成了散。' },
 ];
 
 export const ITEMS: ItemDef[] = SPECS.map(priced);
@@ -212,9 +225,9 @@ const MARKET_POOLS: Record<MarketId, Partial<Record<StallId, StallPool>>> = {
       ['potato', 'radish', 'cucumber', 'eggplant', 'pepper', 'onion', 'carrot', 'corn', 'greenbean'],
       ['lotus'],
     ),
-    egg: pool(['tomato', 'garlic', 'ginger', 'egg', 'tofu', 'dried_tofu', 'sprout'], ['mushroom']),
-    fish: pool(['smallfish', 'kelp'], ['clam', 'crucian'], ['shrimp']),
-    meat: pool([], ['pork', 'chicken_leg'], ['pork_belly']),
+    egg: pool(['tomato', 'garlic', 'ginger', 'egg', 'tofu', 'dried_tofu', 'sprout', 'vermicelli'], ['mushroom']),
+    fish: pool(['smallfish', 'kelp'], ['clam', 'crucian', 'river_shrimp'], ['shrimp']),
+    meat: pool([], ['pork', 'chicken_leg', 'pork_liver'], ['pork_belly']),
   },
   shanwu: {
     leaf: pool(
@@ -223,28 +236,28 @@ const MARKET_POOLS: Record<MarketId, Partial<Record<StallId, StallPool>>> = {
     ),
     root: pool(
       ['potato', 'radish', 'carrot', 'corn', 'greenbean', 'pumpkin'],
-      ['bamboo_shoot', 'yam', 'chestnut', 'lotus'],
+      ['bamboo_shoot', 'yam', 'chestnut', 'lotus', 'taro', 'lily'],
     ),
-    egg: pool(['egg', 'tofu', 'dried_tofu', 'garlic', 'ginger', 'sprout'], ['mushroom', 'wood_ear'], ['matsutake']),
-    meat: pool([], ['chicken_leg', 'duck_leg', 'pork'], ['ribs']),
+    egg: pool(['egg', 'tofu', 'dried_tofu', 'garlic', 'ginger', 'sprout', 'vermicelli'], ['mushroom', 'wood_ear'], ['matsutake']),
+    meat: pool([], ['chicken_leg', 'duck_leg', 'pork', 'pork_liver'], ['ribs']),
   },
   jiangbian: {
     leaf: pool(['bokchoy', 'caitai', 'cilantro', 'scallion', 'cabbage']),
     root: pool(['radish', 'potato', 'onion', 'melon']),
-    egg: pool(['tomato', 'garlic', 'ginger', 'egg', 'tofu'], ['mushroom']),
+    egg: pool(['tomato', 'garlic', 'ginger', 'egg', 'tofu', 'vermicelli'], ['mushroom']),
     fish: pool(
       ['smallfish', 'kelp'],
-      ['clam', 'crucian', 'hairtail'],
-      ['shrimp', 'crab', 'yellowfish', 'river_eel'],
+      ['clam', 'crucian', 'hairtail', 'river_shrimp'],
+      ['shrimp', 'crab', 'yellowfish', 'river_eel', 'oyster'],
     ),
-    meat: pool([], ['pork', 'chicken_leg'], ['pork_belly', 'ribs']),
+    meat: pool([], ['pork', 'chicken_leg', 'pork_liver'], ['pork_belly', 'ribs']),
   },
   laocheng: {
     leaf: pool(['cabbage', 'scallion', 'cilantro', 'lettuce', 'rapeseed'], ['broccoli']),
-    root: pool(['radish', 'potato', 'melon', 'pumpkin'], ['lotus', 'bamboo_shoot', 'yam', 'chestnut']),
-    egg: pool(['egg', 'tofu', 'garlic', 'ginger', 'dried_tofu'], ['mushroom', 'wood_ear'], ['matsutake']),
-    fish: pool(['kelp'], ['clam', 'crucian', 'hairtail'], ['shrimp', 'crab', 'yellowfish', 'river_eel']),
-    meat: pool([], ['pork', 'chicken_leg', 'duck_leg'], ['pork_belly', 'ribs', 'beef_brisket', 'ham']),
+    root: pool(['radish', 'potato', 'melon', 'pumpkin'], ['lotus', 'bamboo_shoot', 'yam', 'chestnut', 'taro', 'lily']),
+    egg: pool(['egg', 'tofu', 'garlic', 'ginger', 'dried_tofu', 'vermicelli', 'goji'], ['mushroom', 'wood_ear', 'lotus_seed', 'tremella'], ['matsutake']),
+    fish: pool(['kelp'], ['clam', 'crucian', 'hairtail', 'river_shrimp'], ['shrimp', 'crab', 'yellowfish', 'river_eel', 'oyster']),
+    meat: pool([], ['pork', 'chicken_leg', 'duck_leg', 'pork_liver'], ['pork_belly', 'ribs', 'beef_brisket', 'ham', 'duck_blood']),
   },
 };
 

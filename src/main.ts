@@ -12,6 +12,7 @@ import { DestinationScene } from '@/scenes/DestinationScene';
 import { KitchenScene } from '@/scenes/KitchenScene';
 import { LoadingScene } from '@/scenes/LoadingScene';
 import { MarketScene } from '@/scenes/MarketScene';
+import { SpecialMarketScene } from '@/scenes/SpecialMarketScene';
 import { AudioManager } from '@/core/AudioManager';
 import { CdnAssetService } from '@/core/CdnAssetService';
 import { preloadTextures } from '@/utils/assets';
@@ -67,6 +68,7 @@ async function main(): Promise<void> {
     SceneManager.register(new KitchenScene());
     SceneManager.register(new DestinationScene());
     SceneManager.register(new MarketScene());
+    SceneManager.register(new SpecialMarketScene());
     SceneManager.switchTo('kitchen');
   };
 

@@ -45,6 +45,7 @@ export const CDN_CONFIG: CdnConfig = {
     'subpkg_images/stall_pile_',
     'subpkg_images/outing_curtain',
     'subpkg_images/dest_',
+    'subpkg_images/special_',
     'subpkg_images/dish_',
     'subpkg_images/npc_',
     'subpkg_audio/',

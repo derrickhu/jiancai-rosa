@@ -72,3 +72,10 @@
 | `ui_result_burst_prompt.txt` | 领奖页金色柔光放射（垫在战利品后） | 1:1 |
 | `ui_result_title_messy_prompt.txt` | 胜利标题「天黑收摊了」 | 16:9 |
 | `ui_result_title_safe_prompt.txt` | 胜利标题「挑完回家」 | 16:9 |
+| `dest_spice_night_thumb_prompt.txt` | 调料夜摊选点缩略图 | 16:9 |
+| `dest_riverside_fish_thumb_prompt.txt` | 江边垂钓选点缩略图 | 16:9 |
+| `dest_oldtown_dry_thumb_prompt.txt` | 老城干货店选点缩略图 | 16:9 |
+| `special_spice_bg_prompt.txt` | 调料夜摊场内底 | 9:16 |
+| `special_fish_bg_prompt.txt` | 江边垂钓场内底 | 9:16 |
+| `special_dry_bg_prompt.txt` | 老城干货店场内底 | 9:16 |
+| `items_special_spice_prompt.txt` | 紫苏 / 朝天椒 / 花椒 | 4:3 |

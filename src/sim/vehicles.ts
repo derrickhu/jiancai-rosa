@@ -99,6 +99,14 @@ export function vehicleForMarket(marketId: MarketId): VehicleDef {
   return VEHICLES.find((v) => v.id !== 'truck' && v.markets.includes(marketId)) ?? VEHICLES[0];
 }
 
+/** 走路夜摊、自行车垂钓、电动车干货。小货车先空着。 */
+export function specialMarketForVehicle(id: VehicleId): 'spice_night' | 'riverside_fish' | 'oldtown_dry' | null {
+  if (id === 'walk') return 'spice_night';
+  if (id === 'bike') return 'riverside_fish';
+  if (id === 'ebike') return 'oldtown_dry';
+  return null;
+}
+
 export function migrateVehicles(raw: {
   vehicle?: unknown;
   vehicles?: unknown;

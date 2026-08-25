@@ -33,9 +33,13 @@ import {
   spendStamina,
   buyVehicle as purchaseVehicle,
   todayKey,
+  canVisitSpecial as saveCanVisitSpecial,
+  markSpecialVisit as saveMarkSpecialVisit,
+  specialVisitCount as saveSpecialVisitCount,
   type KitchenSave,
   type RecipeId,
 } from '@/sim/kitchen';
+import { getSpecialMarket, type SpecialMarketId } from '@/sim/specialMarkets';
 import { foamWetCols, outingDryCells } from '@/sim/basket';
 import { furnLabel, houseLabel, type FurnId } from '@/sim/kitchenLayout';
 import type { CardKind } from '@/sim/marketEvents';
@@ -329,6 +333,19 @@ class KitchenManagerClass {
 
   markGodPickToday(): void {
     SaveManager.replace({ ...this.save, dailyGodPickDate: todayKey() });
+  }
+
+  specialVisitCount(id: SpecialMarketId): number {
+    return saveSpecialVisitCount(this.save, id);
+  }
+
+  canVisitSpecial(id: SpecialMarketId): boolean {
+    return saveCanVisitSpecial(this.save, id, getSpecialMarket(id).dailyLimit);
+  }
+
+  markSpecialVisit(id: SpecialMarketId): void {
+    SaveManager.replace(saveMarkSpecialVisit(this.save, id));
+    this.emit();
   }
 
   staminaLabel(): string {

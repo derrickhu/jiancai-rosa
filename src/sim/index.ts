@@ -17,3 +17,4 @@ export * from './kitchenLayout';
 export * from './dex';
 export * from './destinations';
 export * from './vehicles';
+export * from './specialMarkets';

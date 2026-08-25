@@ -12,10 +12,13 @@ import {
   neighborVehicle,
   ownsRouteToMarket,
   ownsVehicle,
+  specialMarketForVehicle,
   vehicleById,
   vehicleOffer,
   vehicleForMarket,
+  getSpecialMarket,
   type MarketDef,
+  type SpecialMarketDef,
   type VehicleId,
 } from '@/sim';
 import { AudioManager } from '@/core/AudioManager';
@@ -23,7 +26,8 @@ import { HUD_ICON, bindUiClick, fillRect, makeCookSkillPill, makeLabel, makeMute
 import { VerticalScroller } from '@/utils/scroll';
 import { applyGray, applyFit, fitCover, fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from '@/utils/assets';
 import { OutingCurtain } from '@/gameobjects/ui/OutingCurtain';
-import { marketBootPaths } from '@/utils/outingAssets';
+import { marketBootPaths, specialBootPaths } from '@/utils/outingAssets';
+import { SpecialMarketScene } from '@/scenes/SpecialMarketScene';
 
 const DEST_BG = 'subpkg_images/dest_street_bg.jpg';
 /** 卡高 200 + 间距 14。菜场超过四个就得滚，别把「回家」挤下屏。 */
@@ -143,12 +147,20 @@ export class DestinationScene implements Scene {
     const listH = Math.max(180, dockY - 10 - listTop);
     const offer = vehicleOffer(KitchenManager.save, this._browse);
     const spots = offer === 'locked' ? [] : marketsForVehicle(this._browse);
-    const contentH = Math.max(spots.length, 1) * CARD_STEP;
+    const specialId = ownsVehicle(KitchenManager.save, this._browse)
+      ? specialMarketForVehicle(this._browse)
+      : null;
+    const special = specialId ? getSpecialMarket(specialId) : null;
+    const cards = spots.length + (special ? 1 : 0);
+    const contentH = Math.max(cards, 1) * CARD_STEP;
     const list = new PIXI.Container();
     spots.forEach((market, i) => {
       list.addChild(this._card(market, 24, i * CARD_STEP, w - 48));
     });
-    if (!spots.length) {
+    if (special) {
+      list.addChild(this._specialCard(special, 24, spots.length * CARD_STEP, w - 48));
+    }
+    if (!cards) {
       const empty = makeLabel(
         offer === 'locked' ? '先买上一辆才能开这辆' : '更远的菜场还在路上',
         22,
@@ -318,6 +330,94 @@ export class DestinationScene implements Scene {
         );
       });
     }
+    return root;
+  }
+
+  private _specialCard(market: SpecialMarketDef, x: number, y: number, width: number): PIXI.Container {
+    const root = new PIXI.Container();
+    const used = KitchenManager.specialVisitCount(market.id);
+    const left = used < market.dailyLimit;
+    const height = 200;
+    const frame = new PIXI.Graphics();
+    fillRect(frame, x, y, width, height, 0x5A4636, 18);
+    root.addChild(frame);
+    const paper = new PIXI.Graphics();
+    paper.lineStyle(3, 0x8B5A2B, 1);
+    paper.beginFill(left ? 0xFFF6EA : 0xEDE3D2);
+    paper.drawRoundedRect(x + 6, y + 6, width - 12, height - 12, 14);
+    paper.endFill();
+    root.addChild(paper);
+
+    const thumbW = 200;
+    const thumbH = 168;
+    const thumbX = x + 16;
+    const thumbY = y + 16;
+    const thumbBg = new PIXI.Graphics();
+    fillRect(thumbBg, thumbX, thumbY, thumbW, thumbH, 0x2A221C, 12);
+    root.addChild(thumbBg);
+
+    if (market.thumb) {
+      const tex = gameTexture(market.thumb);
+      whenTextureReady(market.thumb, () => {
+        if (this.container.parent) this.relayout();
+      });
+      if (isTextureReady(tex)) {
+        const sprite = new PIXI.Sprite(tex);
+        const fit = fitCover(tex.width, tex.height, thumbW, thumbH);
+        applyFit(sprite, fit);
+        sprite.position.set(thumbX + fit.x, thumbY + fit.y);
+        if (!left) sprite.alpha = 0.42;
+        const mask = new PIXI.Graphics();
+        fillRect(mask, thumbX, thumbY, thumbW, thumbH, 0xffffff, 12);
+        sprite.mask = mask;
+        root.addChild(mask);
+        root.addChild(sprite);
+      }
+    }
+
+    const name = makeLabel(market.name, 28, 0x2A2018, { fontWeight: '700' });
+    name.position.set(x + 236, y + 20);
+    root.addChild(name);
+
+    const hint = makeLabel(market.hint, 20, 0x5A4636, {
+      wordWrap: true,
+      wordWrapWidth: width - 260,
+    });
+    hint.position.set(x + 236, y + 62);
+    root.addChild(hint);
+
+    const go = makeSlicedButton({
+      label: '看广告进',
+      width: 168,
+      height: 48,
+      skin: left ? 'terracotta' : 'wood',
+      onReady: () => {
+        if (this.container.parent) this.relayout();
+      },
+    });
+    go.position.set(x + 236, y + 136);
+    go.on('pointertap', () => {
+      if (this._scroller.moved) return;
+      this._enterSpecial(market);
+    });
+    root.addChild(go);
+    root.addChild(this._dailyChip(x + 416, y + 136, used, market.dailyLimit));
+    return root;
+  }
+
+  private _dailyChip(x: number, y: number, used: number, limit: number): PIXI.Container {
+    const root = new PIXI.Container();
+    const chip = new PIXI.Graphics();
+    chip.lineStyle(2, 0x8B5A2B, 1);
+    chip.beginFill(0xFFF6EA);
+    chip.drawRoundedRect(0, 0, 118, 48, 24);
+    chip.endFill();
+    root.addChild(chip);
+    const n = makeLabel(`今日 ${used}/${limit}`, 20, used >= limit ? 0xC46A3A : 0x3A3228, { fontWeight: '700' });
+    n.anchor.set(0.5);
+    n.position.set(59, 24);
+    root.addChild(n);
+    root.position.set(x, y);
     return root;
   }
 
@@ -528,6 +628,38 @@ export class DestinationScene implements Scene {
     OutingCurtain.play({
       paths: marketBootPaths(market.id, RunManager.run ?? undefined),
       then: () => SceneManager.switchTo('market'),
+    });
+  }
+
+  private _enterSpecial(market: SpecialMarketDef): void {
+    if (!ownsVehicle(KitchenManager.save, market.vehicle)) {
+      const ride = vehicleById(market.vehicle);
+      AudioManager.play('ui_deny');
+      Platform.showToast(`买了${ride.name}才能去${market.name}`);
+      return;
+    }
+    if (!KitchenManager.canVisitSpecial(market.id)) {
+      AudioManager.play('ui_deny');
+      Platform.showToast('明天再来');
+      return;
+    }
+    if (!KitchenManager.fridgeAcceptsOuting()) {
+      AudioManager.play('ui_deny');
+      Platform.showToast('冰箱满了，先卖掉或做菜再出门');
+      return;
+    }
+    if (OutingCurtain.busy) return;
+    Platform.showRewardedVideo(() => {
+      if (!KitchenManager.canVisitSpecial(market.id)) {
+        Platform.showToast('明天再来');
+        return;
+      }
+      KitchenManager.markSpecialVisit(market.id);
+      SpecialMarketScene.queue(market.id);
+      OutingCurtain.play({
+        paths: specialBootPaths(market.id),
+        then: () => SceneManager.switchTo('specialMarket'),
+      });
     });
   }
 }

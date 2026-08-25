@@ -3,6 +3,7 @@ import { VEHICLES, migrateVehicles, ownsVehicle, vehicleById, vehicleIndex, vehi
 import { nextUid, type ExtractedItem } from './run';
 import {
   RECIPES,
+  TABLE_UNLOCKS,
   isRecipeId,
   isRecipeUnlocked,
   migrateRecipeId,
@@ -169,6 +170,43 @@ export interface KitchenSave {
   vehicle: VehicleId;
   /** 已买下的交通工具。走路不写也算有。 */
   vehicles: VehicleId[];
+  /** 特殊市场每日次数。日切跟神捡同一套 todayKey。 */
+  specialVisits: Record<string, { date: string; count: number }>;
+}
+
+function migrateSpecialVisits(raw: unknown): Record<string, { date: string; count: number }> {
+  if (!raw || typeof raw !== 'object') return {};
+  const out: Record<string, { date: string; count: number }> = {};
+  for (const [id, val] of Object.entries(raw as Record<string, unknown>)) {
+    if (!val || typeof val !== 'object') continue;
+    const rec = val as { date?: unknown; count?: unknown };
+    if (typeof rec.date !== 'string' || !rec.date) continue;
+    const count = typeof rec.count === 'number' && Number.isFinite(rec.count)
+      ? Math.max(0, Math.floor(rec.count))
+      : 0;
+    out[id] = { date: rec.date, count };
+  }
+  return out;
+}
+
+export function specialVisitCount(save: KitchenSave, id: string, now = Date.now()): number {
+  const rec = save.specialVisits[id];
+  if (!rec || rec.date !== todayKey(now)) return 0;
+  return rec.count;
+}
+
+export function canVisitSpecial(save: KitchenSave, id: string, limit: number, now = Date.now()): boolean {
+  return specialVisitCount(save, id, now) < limit;
+}
+
+export function markSpecialVisit(save: KitchenSave, id: string, now = Date.now()): KitchenSave {
+  const date = todayKey(now);
+  const rec = save.specialVisits[id];
+  const count = rec && rec.date === date ? rec.count + 1 : 1;
+  return {
+    ...save,
+    specialVisits: { ...save.specialVisits, [id]: { date, count } },
+  };
 }
 
 export function todayKey(now = Date.now()): string {
@@ -198,6 +236,7 @@ export function defaultSave(now = Date.now()): KitchenSave {
     seenCards: [],
     vehicle: 'walk',
     vehicles: ['walk'],
+    specialVisits: {},
   };
 }
 
@@ -219,6 +258,7 @@ export function normalizeSave(raw: Partial<KitchenSave> | null, now = Date.now()
     recipesFound: migrateRecipeIds((raw as KitchenSave).recipesFound),
     seenCards: Array.isArray(raw.seenCards) ? raw.seenCards : [],
     ...migrateVehicles(raw),
+    specialVisits: migrateSpecialVisits((raw as KitchenSave).specialVisits),
   };
   next.basketLevel = next.furnLevels.basket;
   next.fridgeExtra = next.furnLevels.fridge > 0 || next.furnLevels.foam > 0;
@@ -245,6 +285,7 @@ function migrateFridgeItems(raw: unknown): FridgeItem[] {
     const defId = dish && typeof row.defId === 'string'
       ? (migrateRecipeId(row.defId) ?? row.defId)
       : row.defId;
+    if (dish && !isRecipeId(String(defId))) return null;
     let quality = row.quality;
     if (!dish && quality !== 'rotten' && quality !== 'god') quality = 'common';
     return {
@@ -256,7 +297,7 @@ function migrateFridgeItems(raw: unknown): FridgeItem[] {
       qty: fridgeItemQty(row),
     };
   });
-  return compactFridge(mapped.filter((it) => it.kind === 'dish' || it.quality !== 'rotten'));
+  return compactFridge(mapped.filter((it): it is FridgeItem => !!it && (it.kind === 'dish' || it.quality !== 'rotten')));
 }
 
 function migrateHouseLevel(raw: Partial<KitchenSave>): number {
@@ -519,10 +560,8 @@ export const COOK_XP_TO_NEXT = [0, 60, 110, 180, 250, 340, 450, 580, 720, 900, 1
 const COOK_XP_MAXED = COOK_XP_TO_NEXT[COOK_LEVEL_MAX - 1];
 
 /** 烹饪台从当前内部等级再升一级时新解锁几本。 */
-export const TABLE_UNLOCK_NEXT = [3, 3, 3, 3, 3, 3, 3, 3, 3];
-
 export function tableUnlockNext(fromLevel: number): number {
-  return TABLE_UNLOCK_NEXT[clampFurnLevel(fromLevel)] ?? 3;
+  return TABLE_UNLOCKS[clampFurnLevel(fromLevel)]?.length ?? 1;
 }
 
 /** 升到下一级家具所需厨艺。下标是当前内部等级 0–8。 */

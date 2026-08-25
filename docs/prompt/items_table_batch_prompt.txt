@@ -1,0 +1,19 @@
+# 烹饪台扩菜新增食材（10 种）· 干净态
+
+风格段（每条前面原样拼上）：
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading, gentle warm highlights. Whole unprocessed market ingredient only, never sliced, never cross-section, no plating, no garnish, no cutting board, no knife, no hands. Same style as the existing bokchoy / tomato / egg / crab icons in this game. Readable silhouette at 64px. NO photorealism, NO photo, NO pixel art. NO TEXT, no labels, no numbers, no captions, no watermark. Isolated on solid pure white background, one item, centered, filling the canvas.
+
+| id | 名称 | 占格 | 比例 | 主体描述 |
+|---|---|---|---|---|
+| vermicelli | 粉丝 | 1×2 | 3:4 | A tied upright bundle of dry white Chinese mung-bean vermicelli noodles, stiff thin threads bound once with a thin straw string, cream-ivory color. |
+| goji | 枸杞 | 1×1 | 1:1 | A small handful of dried bright-red goji berries clustered together, wrinkled oval berries, a few still showing tiny pale stems. |
+| taro | 芋头 | 2×2 | 1:1 | One whole unpeeled taro corm, roundish lumpy, dusty brown-purple hairy skin with dry soil, no cut face. |
+| lily | 百合 | 1×2 | 3:4 | A whole fresh white lily bulb standing upright, layered pale cream petals like a closed lantern, faint pink blush at the base. |
+| lotus_seed | 莲子 | 1×1 | 1:1 | A small pile of dried lotus seeds, plump oval beige-tan kernels with a brown seam, a few still showing the dark germ tip. |
+| tremella | 银耳 | 1×1 | 1:1 | One dried white tremella / snow fungus, ruffled papery cream blossom shape, thin crinkled folds. |
+| river_shrimp | 河虾 | 1×2 | 3:4 | A small bunch of three raw freshwater river shrimp stacked vertically, grey-green translucent shells, long whiskers, dark heads, no plate. |
+| oyster | 生蚝 | 2×1 | 4:3 | One whole closed live oyster lying horizontally, rough layered grey-green rock-like shell, wet sheen, tightly shut. |
+| pork_liver | 猪肝 | 2×1 | 4:3 | One whole raw pork liver lobe lying horizontally, smooth deep reddish-brown, glossy wet surface, no blood puddle, no cutting. |
+| duck_blood | 鸭血 | 1×1 | 1:1 | One small square block of set duck blood curd, dark mahogany-brown, smooth jelly face, clean edges, no bowl. |
+
+抠图：rembg `birefnet-general`，再 `scripts/fit-item-art.py` 长边 320。

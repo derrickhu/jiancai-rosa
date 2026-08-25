@@ -1,4 +1,4 @@
-import { MARKETS, MARKET_ART, VEHICLES, sceneBg, type MarketId, type RunState } from '@/sim';
+import { MARKETS, MARKET_ART, SPECIAL_MARKETS, VEHICLES, getSpecialMarket, specialBootItems, sceneBg, type MarketId, type RunState, type SpecialMarketId } from '@/sim';
 import { CARD_FRAME } from '@/gameobjects/market/MapView';
 import { HUD_ICON, UI_BTN } from '@/utils/ui';
 
@@ -25,8 +25,19 @@ export function destinationBootPaths(): string[] {
     UI_BTN.cream,
     UI_BTN.wood,
     ...MARKETS.map((m) => m.thumb),
+    ...SPECIAL_MARKETS.map((m) => m.thumb),
     ...VEHICLES.map((v) => v.art),
   ];
+}
+
+export function specialBootPaths(id: SpecialMarketId): string[] {
+  const def = getSpecialMarket(id);
+  return [...new Set([
+    def.bg,
+    def.thumb,
+    ...RESULT_UI,
+    ...specialBootItems(def).map((itemId) => `subpkg_images/${itemId}.png`),
+  ])];
 }
 
 /** 进某个菜场路线页立刻要用的图。只算场景，不算厨房里已经有的顶栏。 */

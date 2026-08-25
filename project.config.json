@@ -75,6 +75,10 @@
       },
       {
         "type": "glob",
+        "value": "subpkg_images/special_*.jpg"
+      },
+      {
+        "type": "glob",
         "value": "subpkg_images/dish_*.png"
       },
       {
@@ -231,11 +235,27 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/dest_oldtown_dry.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dest_riverside_fish.jpg"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/dest_shanwu.jpg"
       },
       {
         "type": "file",
+        "value": "subpkg_images/dest_spice_night.jpg"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/dest_street_bg.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_ants_tree.png"
       },
       {
         "type": "file",
@@ -275,6 +295,10 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/dish_candied_taro.png"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/dish_carrot_mushroom.png"
       },
       {
@@ -288,6 +312,10 @@
       {
         "type": "file",
         "value": "subpkg_images/dish_chive_egg.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_chive_shrimp.png"
       },
       {
         "type": "file",
@@ -347,6 +375,10 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/dish_harvard_veg_soup.png"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/dish_home_tofu.png"
       },
       {
@@ -356,6 +388,10 @@
       {
         "type": "file",
         "value": "subpkg_images/dish_lotus_pepper.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_maoxuewang.png"
       },
       {
         "type": "file",
@@ -380,6 +416,10 @@
       {
         "type": "file",
         "value": "subpkg_images/dish_onion_potato.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_oyster_egg.png"
       },
       {
         "type": "file",
@@ -447,6 +487,10 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/dish_stir_liver.png"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/dish_stirfry.png"
       },
       {
@@ -464,6 +508,10 @@
       {
         "type": "file",
         "value": "subpkg_images/dish_tomato_tofu.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_tremella_lily_soup.png"
       },
       {
         "type": "file",
@@ -692,6 +740,18 @@
       {
         "type": "file",
         "value": "subpkg_images/outing_curtain.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/special_dry_bg.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/special_fish_bg.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/special_spice_bg.jpg"
       },
       {
         "type": "file",
