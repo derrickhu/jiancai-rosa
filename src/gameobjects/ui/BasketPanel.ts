@@ -12,9 +12,12 @@ import {
   occupiedCells,
   displayName,
   previewDrop,
+  basketCellKind,
   type BasketItem,
   type DropPreview,
+  type Quality,
 } from '@/sim';
+import { inspectFromFood, makeItemInspectCard } from './ItemInspectCard';
 import { drawRarityFrame, fillRect, makeLabel, makeSlicedButton } from '@/utils/ui';
 import { fitSpriteInBox, gameTexture, isTextureReady, itemTexture, whenTextureReady } from '@/utils/assets';
 
@@ -38,6 +41,7 @@ export class BasketPanel extends PIXI.Container {
   _isOpen = false;
   placingUid: string | null = null;
   selectedUid: string | null = null;
+  private _inspectUid: string | null = null;
   private _rot: 0 | 1 = 0;
   private _root = new PIXI.Container();
   private _ghost = new PIXI.Graphics();
@@ -82,6 +86,7 @@ export class BasketPanel extends PIXI.Container {
     if (!this._isOpen) AudioManager.play('ui_open');
     this.placingUid = placingUid ?? null;
     this.selectedUid = placingUid ?? null;
+    this._inspectUid = null;
     this._rot = 0;
     this._drag = null;
     this._isOpen = true;
@@ -108,6 +113,7 @@ export class BasketPanel extends PIXI.Container {
     this._isOpen = false;
     this.visible = false;
     this.placingUid = null;
+    this._inspectUid = null;
     this._drag = null;
     this._float.removeChildren();
     this._ghost.clear();
@@ -213,6 +219,36 @@ export class BasketPanel extends PIXI.Container {
     close.position.set(bx + (btnW + gap) * 2, btnY);
     close.on('pointertap', () => this.close());
     shell.addChild(close);
+
+    const inspecting = this._inspectUid ? this._foodByUid(this._inspectUid) : null;
+    if (inspecting) {
+      const view = inspectFromFood({
+        defId: inspecting.defId,
+        quality: inspecting.quality,
+        inspected: inspecting.inspected,
+      });
+      if (view) {
+        this._root.addChild(makeItemInspectCard({
+          view,
+          qty: 1,
+          actions: false,
+          onQty: () => {},
+          onClose: () => {
+            this._inspectUid = null;
+            this.relayout();
+          },
+          onReady: () => {
+            if (this._isOpen && !this._drag) this.relayout();
+          },
+        }));
+      }
+    }
+  }
+
+  private _foodByUid(uid: string): { defId: string; quality: Quality; inspected: boolean } | null {
+    const staged = RunManager.stagingItems().find((it) => it.uid === uid);
+    if (staged) return staged;
+    return RunManager.basket.items.find((it) => it.uid === uid) ?? null;
   }
 
   private _shellBox(screenW: number, screenH: number): { x: number; y: number; w: number; h: number } {
@@ -251,7 +287,7 @@ export class BasketPanel extends PIXI.Container {
   }
 
   private _drawStage(shell: PIXI.Container, stage: { x: number; y: number; w: number; h: number }, items: OutingLoot[]): void {
-    const label = makeLabel(items.length ? '刚拿到 · 拖进空格，压到一件会换上来' : '篮里的菜可以拖着换格、点旋转', 16, WALNUT, {
+    const label = makeLabel(items.length ? '刚拿到 · 点开看说明，拖进空格会换上来' : '点开看说明 · 拖着换格 · 点旋转', 16, WALNUT, {
       fontWeight: '600',
     });
     label.position.set(stage.x + 6, stage.y - 2);
@@ -289,20 +325,22 @@ export class BasketPanel extends PIXI.Container {
     const gridY = cav.y + (cav.h - gridH) / 2;
     this._grid = { x: box.x + gridX, y: box.y + gridY, cell, cols: basket.cols, rows: basket.rows };
 
-    const wetTip = makeLabel(`湿 ${basket.wetCols}列`, 15, 0x2A4A5A, { fontWeight: '700' });
+    const wetTip = makeLabel(`湿 ${basket.wetCols}×${basket.wetRows}`, 15, 0x2A4A5A, { fontWeight: '700' });
     wetTip.position.set(gridX + 2, gridY - 20);
     shell.addChild(wetTip);
-    const dryTip = makeLabel(`干 ${basket.cols - basket.wetCols}列`, 15, WALNUT, { fontWeight: '700' });
+    const dryTip = makeLabel(`干 ${basket.cols - basket.wetCols}×${basket.dryRows}`, 15, WALNUT, { fontWeight: '700' });
     dryTip.anchor.set(1, 0);
     dryTip.position.set(gridX + gridW - 2, gridY - 20);
     shell.addChild(dryTip);
 
     for (let y = 0; y < basket.rows; y++) {
       for (let x = 0; x < basket.cols; x++) {
-        const wet = x < basket.wetCols || (basket.insulatedBottom && y === basket.rows - 1);
+        const kind = basketCellKind(basket, x, y);
         const g = new PIXI.Graphics();
-        g.lineStyle(1, INK, 0.18);
-        g.beginFill(wet ? WET : DRY, wet ? 0.34 : 0.28);
+        g.lineStyle(1, INK, kind === 'none' ? 0.08 : 0.18);
+        if (kind === 'wet') g.beginFill(WET, 0.34);
+        else if (kind === 'dry') g.beginFill(DRY, 0.28);
+        else g.beginFill(0xD8D0C4, 0.12);
         g.drawRoundedRect(gridX + x * cell, gridY + y * cell, cell - 3, cell - 3, 7);
         g.endFill();
         g.eventMode = 'none';
@@ -455,6 +493,7 @@ export class BasketPanel extends PIXI.Container {
     this._float.removeChildren();
     this._ghost.clear();
     if (!drag.moved) {
+      this._inspectUid = drag.uid;
       this.relayout();
       return;
     }

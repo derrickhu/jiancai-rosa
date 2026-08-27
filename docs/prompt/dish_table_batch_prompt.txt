@@ -6,7 +6,7 @@ Finished Chinese home-cooked dish, appetizing, clearly readable at 64px. Top-dow
 
 | id | 菜名 | 主体描述 |
 |---|---|---|
-| pan_smallfish | 香煎小鱼 | Two small pan-fried silver fish on a cream plate, golden-brown crisp skin, a few garlic chips, light oil sheen. |
+| mixed_fish_pot | 杂鱼锅 | Cream bowl of mixed-fish stew: two small silver whole fish and one dull-brown crucian, ginger slices, light milky broth. |
 | lettuce_salad | 生菜沙拉 | Torn bright-green lettuce leaves with red tomato wedges and cucumber slices, a light sesame-oil sheen, no Western dressing bottle. |
 | harvard_veg_soup | 哈佛蔬菜汤 | Cream bowl of orange-gold mixed vegetable soup with potato cubes, carrot coins, yellow corn kernels and tomato pieces, homemade and humble. |
 | candied_taro | 拔丝芋头 | Golden-brown fried taro chunks on a cream plate, shiny sugar glaze that looks like it could pull into threads, warm amber. |

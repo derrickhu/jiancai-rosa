@@ -27,7 +27,7 @@ export const MARKETS: MarketDef[] = [
     id: 'heyan',
     name: '河沿早市',
     hint: '摊位更多，肉摊也开门了。',
-    unlockLevel: 4,
+    unlockLevel: 3,
     staminaCost: 1,
     thumb: 'subpkg_images/dest_heyan.jpg',
   },

@@ -1,0 +1,6 @@
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading, gentle highlights, warm kitchen lighting. Same style as existing tomato-egg and clam-soup icons in this game. NO photorealism, NO 3D render, NO photography, NO pixel art, NO neon. NO TEXT, no labels, no numbers, no captions, no watermark.
+
+RULE: every finished dish MUST sit on tableware. The plate/bowl is part of the icon, never floating food. Food fills the center only; a clear rim band must stay visible all the way around. Rim uses a medium-thick dark-brown outline so it survives background removal. Isolated on solid pure white background, centered, generous margin, readable at 64px.
+
+dish_mixed_fish_pot 杂鱼锅:
+Round cream porcelain soup bowl with a dark-brown rim, fully visible. Home-style mixed-fish stew: two small silver whole fish and one slightly larger dull-brown crucian carp, ginger slices, light milky broth, a few scallion specks. Food piled in the center, bowl rim showing all the way around. Not a fried fish plate, not tomato sauce, not spicy red oil.

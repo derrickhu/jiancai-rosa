@@ -13,7 +13,7 @@ export interface ItemDef {
   w: number;
   h: number;
   zone: Zone;
-  /** 普通绿 / 高级蓝 / 稀有紫。它同时决定单价、掉率和格子边框。 */
+  /** 普通白 / 良品绿 / 上品蓝。它同时决定单价、掉率和格子边框。 */
   rarity: Rarity;
   live?: boolean;
   fragile?: boolean;
@@ -89,7 +89,7 @@ const SPECS: ItemSpec[] = [
   { id: 'chive', name: '韭菜', w: 1, h: 2, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['leaf'], color: 0x4A8A3A, blurb: '香味先到，河虾最肯跟它见面。', blurbRotten: '软成一撮青丝，香气先走了。' },
   { id: 'celery', name: '芹菜', w: 1, h: 3, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['leaf'], color: 0x7BB05A, blurb: '叶子也能吃，别只留下秆。', blurbRotten: '秆还硬，叶子已经认输。' },
   { id: 'water_spinach', name: '空心菜', w: 1, h: 3, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['leaf'], color: 0x5A9A48, blurb: '空心管，灶上烫一下就软。', blurbRotten: '管子瘪了，只剩一缕湿绳。' },
-  { id: 'lettuce', name: '生菜', w: 2, h: 2, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['leaf'], color: 0x8FCB6B, blurb: '一整个脆生生的脑袋，凉拌比炒更懂它。', blurbRotten: '边儿发红了，像熬夜熬过头。' },
+  { id: 'lettuce', name: '生菜', w: 2, h: 2, zone: 'dry', rarity: 'rare', vegetable: true, stalls: ['leaf'], color: 0x8FCB6B, blurb: '一整个脆生生的脑袋，凉拌比炒更懂它。', blurbRotten: '边儿发红了，像熬夜熬过头。' },
   { id: 'rapeseed', name: '油菜', w: 2, h: 2, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['leaf'], color: 0x6BA368, blurb: '油亮小棵，比白菜省位。', blurbRotten: '帮子发黏，油亮变成油腻。' },
   { id: 'cabbage', name: '白菜', w: 2, h: 3, zone: 'dry', rarity: 'common', vegetable: true, bulky: true, stalls: ['leaf'], color: 0xC8E6A0, blurb: '层层叠叠能包一冬，也最擅长在菜篮里占座。', blurbRotten: '外帮黏了，里面还在装完好。' },
   { id: 'broccoli', name: '西兰花', w: 2, h: 2, zone: 'dry', rarity: 'rare', vegetable: true, stalls: ['leaf'], color: 0x3F8A4A, blurb: '菜市场已经认它，不是西餐厅。', blurbRotten: '花球发黄，小粒开始散架。' },
@@ -99,10 +99,10 @@ const SPECS: ItemSpec[] = [
   { id: 'onion', name: '洋葱', w: 1, h: 1, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['root'], color: 0xC9A06A, blurb: '剥开会熏人，炒蛋很听话。', blurbRotten: '外皮发霉，里面还在装硬。' },
   { id: 'carrot', name: '胡萝卜', w: 1, h: 2, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['root'], color: 0xE07A3A, blurb: '橙得诚实，切片就进锅。', blurbRotten: '中间空了，敲一敲是失望。' },
   { id: 'eggplant', name: '茄子', w: 1, h: 2, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['root'], color: 0x6A3D8A, blurb: '紫得发亮的整根货，别问切面，它还没准备好。', blurbRotten: '褐斑爬上来了，光泽先辞职。' },
-  { id: 'pepper', name: '青椒', w: 1, h: 2, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['root'], color: 0x4CAF50, blurb: '灯笼一样挂着，配谁都像家常。', blurbRotten: '皮皱了，里面开始出水。' },
+  { id: 'pepper', name: '青椒', w: 1, h: 1, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['root'], color: 0x4CAF50, blurb: '灯笼一样挂着，配谁都像家常。', blurbRotten: '皮皱了，里面开始出水。' },
   { id: 'corn', name: '玉米', w: 1, h: 2, zone: 'dry', rarity: 'common', vegetable: true, hard: true, stalls: ['root'], color: 0xE8C547, blurb: '一捧金钉子，烤一烤连芯都能聊两句。', blurbRotten: '粒儿瘪了，只剩一根失望的棒子。' },
   { id: 'radish', name: '萝卜', w: 1, h: 3, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['root'], color: 0xF2E6D8, blurb: '皮白心脆，生啃也行，是北方冬天的良心。', blurbRotten: '空心了，敲一敲全是失望。' },
-  { id: 'cucumber', name: '黄瓜', w: 1, h: 3, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['root'], color: 0x4CAF50, blurb: '顶花带刺才算新鲜，咬一口能听到水声。', blurbRotten: '软得像一条后悔的丝瓜。' },
+  { id: 'cucumber', name: '黄瓜', w: 1, h: 2, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['root'], color: 0x4CAF50, blurb: '顶花带刺才算新鲜，咬一口能听到水声。', blurbRotten: '软得像一条后悔的丝瓜。' },
   { id: 'greenbean', name: '豆角', w: 1, h: 3, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['root'], color: 0x5C8A3A, blurb: '一把绿筷子，干煸最出声。', blurbRotten: '软得打卷，咬下去没有脆。' },
   { id: 'pumpkin', name: '南瓜', w: 2, h: 2, zone: 'dry', rarity: 'common', vegetable: true, bulky: true, stalls: ['root'], color: 0xE0A100, blurb: '一块金疙瘩，比冬瓜乖。', blurbRotten: '皮还硬，瓤已经泄气。' },
   { id: 'melon', name: '冬瓜', w: 3, h: 2, zone: 'dry', rarity: 'common', vegetable: true, bulky: true, stalls: ['root'], color: 0x9BBB7A, blurb: '菜市场的沙发垫，又白又沉，下汤化成温柔。', blurbRotten: '霜打过了，抱起来像一袋叹气。' },
@@ -146,7 +146,7 @@ const SPECS: ItemSpec[] = [
   { id: 'oyster', name: '生蚝', w: 2, h: 1, zone: 'wet', rarity: 'epic', live: true, stalls: ['fish'], color: 0x8A9A8A, blurb: '石头一样的壳，撬开才见人。活的才配下蛋。', blurbRotten: '壳还闭着，里面已经没人在家。' },
 
   // ── 肉摊 ────────────────────────────────────────────────
-  { id: 'pork', name: '猪肉片', w: 2, h: 1, zone: 'dry', rarity: 'rare', stalls: ['meat'], color: 0xE07A7A, blurb: '薄片，青椒一响就是晚饭。', blurbRotten: '边儿发绿，别再假装能炒。' },
+  { id: 'pork', name: '猪肉片', w: 1, h: 1, zone: 'dry', rarity: 'common', stalls: ['meat'], color: 0xE07A7A, blurb: '薄片，青椒一响就是晚饭。', blurbRotten: '边儿发绿，别再假装能炒。' },
   { id: 'chicken_leg', name: '鸡腿', w: 2, h: 2, zone: 'dry', rarity: 'rare', stalls: ['meat'], color: 0xC4A06A, blurb: '带骨一只，土豆愿意陪着炖。', blurbRotten: '皮发黏，骨头还在硬撑。' },
   { id: 'duck_leg', name: '鸭腿', w: 2, h: 2, zone: 'dry', rarity: 'rare', stalls: ['meat'], color: 0xB08050, blurb: '带皮一只，下锅之前先把油煸出来。', blurbRotten: '皮色发暗，油味比肉先坏。' },
   { id: 'pork_belly', name: '五花肉', w: 2, h: 1, zone: 'dry', rarity: 'epic', stalls: ['meat'], color: 0xD45A5A, blurb: '一层肥一层瘦，白菜肯跟它过。', blurbRotten: '肥的先油败，瘦的跟着发黏。' },
@@ -214,22 +214,21 @@ function pool(common: string[], rare: string[] = [], epic: string[] = []): Stall
 const MARKET_POOLS: Record<MarketId, Partial<Record<StallId, StallPool>>> = {
   xiangko: {
     leaf: pool(['bokchoy', 'caitai', 'cilantro', 'scallion']),
-    root: pool(['potato', 'cucumber', 'eggplant']),
+    root: pool(['potato', 'eggplant', 'cucumber']),
     egg: pool(['tomato', 'garlic', 'ginger', 'egg', 'tofu'], ['mushroom']),
     fish: pool(['smallfish']),
   },
   heyan: {
     leaf: pool(
-      ['bokchoy', 'caitai', 'cilantro', 'scallion', 'spinach', 'chive', 'cabbage', 'lettuce', 'celery'],
-      ['broccoli'],
+      ['bokchoy', 'caitai', 'cilantro', 'scallion', 'spinach', 'chive', 'cabbage', 'celery'],
+      ['broccoli', 'lettuce'],
     ),
     root: pool(
       ['potato', 'radish', 'cucumber', 'eggplant', 'pepper', 'onion', 'carrot', 'corn', 'greenbean'],
-      ['lotus'],
     ),
-    egg: pool(['tomato', 'garlic', 'ginger', 'egg', 'tofu', 'dried_tofu', 'sprout', 'vermicelli'], ['mushroom']),
+    egg: pool(['tomato', 'garlic', 'ginger', 'egg', 'tofu', 'dried_tofu', 'sprout', 'vermicelli'], ['mushroom', 'wood_ear']),
     fish: pool(['smallfish', 'kelp'], ['clam', 'crucian', 'river_shrimp'], ['shrimp']),
-    meat: pool([], ['pork', 'chicken_leg', 'pork_liver'], ['pork_belly']),
+    meat: pool(['pork'], ['chicken_leg', 'pork_liver'], ['pork_belly']),
   },
   shanwu: {
     leaf: pool(
@@ -241,7 +240,7 @@ const MARKET_POOLS: Record<MarketId, Partial<Record<StallId, StallPool>>> = {
       ['bamboo_shoot', 'yam', 'chestnut', 'lotus', 'taro', 'lily'],
     ),
     egg: pool(['egg', 'tofu', 'dried_tofu', 'garlic', 'ginger', 'sprout', 'vermicelli'], ['mushroom', 'wood_ear'], ['matsutake']),
-    meat: pool([], ['chicken_leg', 'duck_leg', 'pork', 'pork_liver'], ['ribs']),
+    meat: pool(['pork'], ['chicken_leg', 'duck_leg', 'pork_liver'], ['ribs']),
   },
   jiangbian: {
     leaf: pool(['bokchoy', 'caitai', 'cilantro', 'scallion', 'cabbage']),
@@ -252,18 +251,18 @@ const MARKET_POOLS: Record<MarketId, Partial<Record<StallId, StallPool>>> = {
       ['clam', 'crucian', 'hairtail', 'river_shrimp'],
       ['shrimp', 'crab', 'yellowfish', 'river_eel', 'oyster'],
     ),
-    meat: pool([], ['pork', 'chicken_leg', 'pork_liver'], ['pork_belly', 'ribs']),
+    meat: pool(['pork'], ['chicken_leg', 'pork_liver'], ['pork_belly', 'ribs']),
   },
   laocheng: {
-    leaf: pool(['cabbage', 'scallion', 'cilantro', 'lettuce', 'rapeseed'], ['broccoli']),
+    leaf: pool(['cabbage', 'scallion', 'cilantro', 'rapeseed'], ['broccoli', 'lettuce']),
     root: pool(['radish', 'potato', 'melon', 'pumpkin'], ['lotus', 'bamboo_shoot', 'yam', 'chestnut', 'taro', 'lily']),
     egg: pool(['egg', 'tofu', 'garlic', 'ginger', 'dried_tofu', 'vermicelli', 'goji'], ['mushroom', 'wood_ear', 'lotus_seed', 'tremella'], ['matsutake']),
     fish: pool(['kelp'], ['clam', 'crucian', 'hairtail', 'river_shrimp'], ['shrimp', 'crab', 'yellowfish', 'river_eel', 'oyster']),
-    meat: pool([], ['pork', 'chicken_leg', 'duck_leg', 'pork_liver'], ['pork_belly', 'ribs', 'beef_brisket', 'ham', 'duck_blood']),
+    meat: pool(['pork'], ['chicken_leg', 'duck_leg', 'pork_liver'], ['pork_belly', 'ribs', 'beef_brisket', 'ham', 'duck_blood']),
   },
 };
 
-/** 一次抽货里蓝货/紫货的基础概率。厨艺每升一级再各加一点点。 */
+/** 一次抽货里绿货/蓝货的基础概率。厨艺每升一级再各加一点点。 */
 const RARE_CHANCE: Record<MarketId, number> = {
   xiangko: 0.02,
   heyan: 0.13,
@@ -287,15 +286,33 @@ export function stallsForMarket(marketId: MarketId): StallId[] {
   return Object.keys(MARKET_POOLS[marketId]) as StallId[];
 }
 
+/** 巷口里香菜、茄子、黄瓜略少见。茄子比黄瓜常见，土豆仍是根茎摊主货。 */
+const MARKET_ITEM_WEIGHT: Partial<Record<MarketId, Record<string, number>>> = {
+  xiangko: {
+    cilantro: 0.5,
+    eggplant: 0.7,
+    cucumber: 0.25,
+  },
+};
+
 /** 手里已解锁的菜谱要用到的食材，在摊上加权。 */
-function pickBiased(rng: Rng, ids: string[], wanted?: ReadonlySet<string>): string {
-  if (!wanted || ids.length < 2) return rngPick(rng, ids);
-  return rngWeighted(rng, ids.map((id) => [id, wanted.has(id) ? 3 : 1] as const));
+function pickBiased(
+  rng: Rng,
+  ids: string[],
+  wanted?: ReadonlySet<string>,
+  extra?: Record<string, number>,
+): string {
+  if (ids.length < 2) return ids[0] ?? rngPick(rng, ids);
+  if (!wanted && !extra) return rngPick(rng, ids);
+  return rngWeighted(rng, ids.map((id) => {
+    const base = extra?.[id] ?? 1;
+    return [id, wanted?.has(id) ? base * 3 : base] as const;
+  }));
 }
 
 /**
  * 摊上抽一件。先掷稀有度，再在该档里按「菜谱要不要」加权挑一件——
- * 这样摊上的货跟得上手里的菜谱，同时始终留着一条撞见紫货的窄缝。
+ * 这样摊上的货跟得上手里的菜谱，同时始终留着一条撞见蓝货的窄缝。
  */
 export function rollMarketItem(
   marketId: MarketId,
@@ -319,7 +336,7 @@ export function rollMarketItem(
   if (!ids.length) ids = p.rare.length ? p.rare : p.epic;
   if (!ids.length) return rngPick(rng, itemsForStall(stall));
 
-  return getItem(pickBiased(rng, ids, wanted));
+  return getItem(pickBiased(rng, ids, wanted, MARKET_ITEM_WEIGHT[marketId]));
 }
 
 export function shapeLabel(defId: string, rot: 0 | 1 = 0): string {
@@ -354,5 +371,5 @@ export const STALLS: Array<{ id: StallId; name: string; hint: string; count: [nu
   { id: 'root', name: '根茎摊', hint: '冬瓜占格大', count: [5, 7] },
   { id: 'egg', name: '蛋豆摊', hint: '蛋易碎，豆腐怕挤', count: [4, 6] },
   { id: 'fish', name: '水产摊', hint: '好货显眼，湿货占格', count: [4, 6] },
-  { id: 'meat', name: '肉摊', hint: '整摊都是蓝紫货', count: [3, 5] },
+  { id: 'meat', name: '肉摊', hint: '整摊都是好货', count: [3, 5] },
 ];

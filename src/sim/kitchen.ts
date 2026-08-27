@@ -65,7 +65,7 @@ export const UPGRADE_BASKET_II = 200;
 export const UPGRADE_FRIDGE = 60;
 
 export function emptyFurnLevels(): Record<FurnId, number> {
-  return { fridge: 0, cook: 0, table: 0, basket: 0, foam: 0, recipe: 0 };
+  return { fridge: 0, table: 0, basket: 0, foam: 0 };
 }
 
 export function furnLevel(save: KitchenSave, id: FurnId): number {
@@ -117,10 +117,10 @@ export function fridgeQtySum(items: readonly { qty?: number }[]): number {
   return items.reduce((sum, it) => sum + fridgeItemQty(it), 0);
 }
 
-/** 能叠进同一格：同类、同 id、同品质、同鉴定状态。 */
+/** 能叠进同一格：同类同 id。售价已不跟普通/新鲜走，再按品质拆格只会占位置。 */
 export function fridgeStackKey(it: FridgeDraft): string {
   const kind = it.kind === 'dish' ? 'dish' : 'food';
-  return `${kind}|${it.defId}|${it.quality}|${it.inspected ? 1 : 0}`;
+  return `${kind}|${it.defId}`;
 }
 
 export function fridgeItemUnitPrice(it: FridgeItem): number {
@@ -173,7 +173,7 @@ export interface KitchenSave {
   vehicle: VehicleId;
   /** 已买下的交通工具。走路不写也算有。 */
   vehicles: VehicleId[];
-  /** 特殊市场每日次数。日切跟神捡同一套 todayKey。 */
+  /** 特殊市场每日次数。日切跟神捡同一套 todayKey，本地 0 点换日。 */
   specialVisits: Record<string, { date: string; count: number }>;
 }
 
@@ -215,6 +215,13 @@ export function markSpecialVisit(save: KitchenSave, id: string, now = Date.now()
 export function todayKey(now = Date.now()): string {
   const d = new Date(now);
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
+/** 距下一本地 0 点的毫秒。页面开着跨日也能把特殊市场次数清掉。 */
+export function msUntilLocalMidnight(now = Date.now()): number {
+  const d = new Date(now);
+  const next = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+  return Math.max(50, next.getTime() - now);
 }
 
 export function defaultSave(now = Date.now()): KitchenSave {
@@ -437,7 +444,7 @@ function consumeFridgeQty(fridge: FridgeItem[], used: Map<string, number>): Frid
     if (qty <= 0) continue;
     next.push(qty === fridgeItemQty(it) ? it : { ...it, qty });
   }
-  return next;
+  return compactFridge(next);
 }
 
 export function regenStamina(save: KitchenSave, now = Date.now()): KitchenSave {
@@ -454,10 +461,24 @@ export function decayFridge(save: KitchenSave, now = Date.now()): KitchenSave {
   return { ...save, lastSeenAt: now };
 }
 
+/** 第一次见到这味可用食材：写进图鉴并返回 true。坏了的不算见过。 */
+export function discoverFood(
+  save: KitchenSave,
+  defId: string,
+  quality?: Quality,
+): { save: KitchenSave; first: boolean } {
+  if (quality === 'rotten') return { save, first: false };
+  if (!defId || save.dexSeen.includes(defId) || save.dexInspected.includes(defId)) {
+    return { save, first: false };
+  }
+  return { save: { ...save, dexSeen: [...save.dexSeen, defId] }, first: true };
+}
+
 export function noteDex(save: KitchenSave, items: ExtractedItem[]): KitchenSave {
   const dexSeen = new Set(save.dexSeen);
   const dexInspected = new Set(save.dexInspected);
   for (const it of items) {
+    if (it.quality === 'rotten') continue;
     dexSeen.add(it.inspected ? it.defId : (it.defId === 'wild_yellowfish' ? 'smallfish' : it.defId));
     if (it.inspected) dexInspected.add(it.defId);
   }
@@ -470,7 +491,7 @@ export function ingestExtract(save: KitchenSave, items: ExtractedItem[], now = D
     uid: it.uid,
     kind: 'food',
     defId: it.defId,
-    quality: it.quality,
+    quality: it.quality === 'god' ? 'god' : it.quality === 'rotten' ? 'rotten' : 'common',
     inspected: it.inspected,
     freshness: it.freshness,
     qty: 1,
@@ -478,7 +499,7 @@ export function ingestExtract(save: KitchenSave, items: ExtractedItem[], now = D
   const next = noteDex(save, keep);
   return {
     ...next,
-    fridge: incoming.reduce((fridge, it) => putIntoFridge(fridge, it), next.fridge),
+    fridge: compactFridge(incoming.reduce((fridge, it) => putIntoFridge(fridge, it), next.fridge)),
     dailyGodPickDate: keep.some((it) => it.defId === 'wild_yellowfish') ? todayKey(now) : save.dailyGodPickDate,
   };
 }
@@ -595,15 +616,15 @@ export function upgradeCost(id: FurnId, fromLevel: number): number {
   const lv = clampFurnLevel(fromLevel);
   // 食材表改成按占格公式化定价后整体涨了一档，这里同步抬价，
   // 否则一趟菜场就能换一次升级，攒钱又变得没有挑战。
+  // 前两级单独打折，开局先把烹饪台和篮子抬起来。1→2 再让一截，一趟巷口就够抬一件。
   const base: Record<FurnId, number> = {
     fridge: 90,
-    cook: 80,
     table: 65,
     basket: 72,
     foam: 55,
-    recipe: 45,
   };
-  return Math.round(base[id] * Math.pow(1.38, lv));
+  const early = lv === 0 ? 0.45 : lv === 1 ? 0.72 : 1;
+  return Math.round(base[id] * Math.pow(1.38, lv) * early);
 }
 
 export const HOUSE_UPGRADE_COST = [380, 980];
@@ -628,8 +649,6 @@ const FURN_COOK_NEED: Record<FurnId, number[]> = {
   fridge: [1, 1, 3, 4, 5, 6, 7, 9, 11],
   basket: [1, 2, 3, 4, 5, 6, 7, 9, 11],
   foam: [1, 1, 3, 4, 5, 6, 7, 9, 11],
-  cook: [1, 1, 1, 1, 1, 1, 1, 1, 1],
-  recipe: [1, 1, 1, 1, 1, 1, 1, 1, 1],
 };
 
 export function clampCookLevel(level: number): number {

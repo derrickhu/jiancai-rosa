@@ -20,7 +20,7 @@ import {
   type TimingGrade,
 } from '@/sim';
 import { applyFit, fitCover, fitSpriteInBox, gameTexture, isTextureReady, itemLookTexture, whenTextureReady } from '@/utils/assets';
-import { HUD_ICON, fillRect, makeLabel, makeMuteButton, makePaperChip, makeStatPill } from '@/utils/ui';
+import { HUD_ICON, fillRect, makeLabel, makeMuteButton, makeNewFoodTag, makePaperChip, makeStatPill } from '@/utils/ui';
 
 type Phase = 'idle' | 'telegraph' | 'hitWindow' | 'late' | 'resolve' | 'done';
 
@@ -448,15 +448,17 @@ export class SpecialMarketScene implements Scene {
     if (!def || this._phase === 'resolve' || this._phase === 'done') return;
     const drop = resolveSpecialDrop(def, grade, this._rng);
     const line = specialResultLine(def, grade, drop);
+    let firstSeen = false;
     if (drop) {
       this._haul.push(toSpecialExtracted(drop.defId, drop.quality));
+      firstSeen = KitchenManager.discoverFood(drop.defId, drop.quality);
       const wet = getItem(drop.defId).zone === 'wet';
       AudioManager.play(grade === 'hit' ? 'item_reveal' : 'gather');
       AudioManager.play(wet ? 'pickup_wet' : 'pickup_veg');
     } else {
       AudioManager.play('ui_deny');
     }
-    this._flash(line, !!drop);
+    this._flash(line, !!drop, drop ? { defId: drop.defId, firstSeen } : undefined);
     this._drawHud(def);
     this._setPhase('resolve', SPECIAL_TIMING.resolveHold);
   }
@@ -487,8 +489,28 @@ export class SpecialMarketScene implements Scene {
     });
   }
 
-  private _flash(line: string, ok: boolean): void {
-    this._fx.removeChildren();
+  private _flash(line: string, ok: boolean, drop?: { defId: string; firstSeen?: boolean }): void {
+    this._fx.removeChildren().forEach((child) => child.destroy({ children: true }));
+    const wrap = new PIXI.Container();
+    if (drop) {
+      const path = `subpkg_images/${drop.defId}.png`;
+      whenTextureReady(path, () => {
+        if (this.container.parent && this._phase === 'resolve') this._flash(line, ok, drop);
+      });
+      const tex = itemLookTexture(drop.defId, 'clean');
+      if (isTextureReady(tex)) {
+        const sprite = new PIXI.Sprite(tex);
+        sprite.anchor.set(0.5);
+        fitSpriteInBox(sprite, 150, 150);
+        sprite.position.set(0, -96);
+        wrap.addChild(sprite);
+      }
+      if (drop.firstSeen) {
+        const badge = makeNewFoodTag(24);
+        badge.position.set(0, isTextureReady(tex) ? -176 : -52);
+        wrap.addChild(badge);
+      }
+    }
     const chip = new PIXI.Graphics();
     const label = makeLabel(line, 28, ok ? 0x3A3228 : 0xFFF6EA, { fontWeight: '700' });
     const w = Math.max(220, label.width + 48);
@@ -498,9 +520,8 @@ export class SpecialMarketScene implements Scene {
     chip.drawRoundedRect(-w / 2, -h / 2, w, h, 28);
     chip.endFill();
     label.anchor.set(0.5);
-    const wrap = new PIXI.Container();
     wrap.addChild(chip, label);
-    wrap.position.set(Game.designWidth / 2, Game.logicHeight * 0.34);
+    wrap.position.set(Game.designWidth / 2, Game.logicHeight * (drop ? 0.42 : 0.34));
     this._fx.addChild(wrap);
   }
 

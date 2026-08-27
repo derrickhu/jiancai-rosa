@@ -32,6 +32,8 @@ export interface PileItem {
   washed: boolean;
   /** 已从菜筐抽到桌上。 */
   drawn: boolean;
+  /** 这颗是本味食材第一次出现，摊上挂「新食材」。 */
+  firstSeen?: boolean;
 }
 
 /** 走过一张事件卡的战果。场景据此弹对话或拾取窗，不再只发一条 toast。 */
@@ -42,7 +44,7 @@ export interface RunEventLog {
   /** 弹窗正文。事件卡是一句人话，白捡是一句旁白。 */
   text: string;
   /** 白捡到的东西；没捡到东西的卡是 null */
-  gain: { defId: string; quality: Quality; taken: boolean } | null;
+  gain: { defId: string; quality: Quality; taken: boolean; firstSeen?: boolean } | null;
   scriptId?: string;
   speaker?: string;
   portrait?: string | null;
@@ -55,6 +57,7 @@ export interface GatherSpot {
   taken: boolean;
   x: number;
   y: number;
+  firstSeen?: boolean;
 }
 
 export interface GatherPlay {
@@ -138,13 +141,18 @@ export function createRun(opts: {
   seed?: number;
   cookLevel?: number;
   allowRecipe?: boolean;
+  /** 从没捡过油纸时，本局保底放一张。 */
+  forceRecipe?: boolean;
   /** 已解锁菜谱要用的食材。传进来摊上就会多出这些货。 */
   wanted?: ReadonlySet<string>;
 }): RunState {
   const marketId = opts.marketId ?? 'xiangko';
   const seed = opts.seed ?? newSeed();
   const cookLevel = opts.cookLevel ?? 1;
-  const map = buildMarketMap(marketId, seed, { allowRecipe: opts.allowRecipe !== false });
+  const map = buildMarketMap(marketId, seed, {
+    allowRecipe: opts.allowRecipe !== false,
+    forceRecipe: !!opts.forceRecipe,
+  });
   const plan = MARKET_PLAN[marketId];
   // 单独一条 rng：改品质规则不该把地图布局也换掉
   const rng = mulberry32((seed ^ 0x9E3779B9) >>> 0);

@@ -8,14 +8,16 @@ import { KitchenManager } from '@/managers/KitchenManager';
 import { RunManager } from '@/managers/RunManager';
 import { Platform } from '@/core/PlatformService';
 import {
+  RARITY_STYLE,
   fridgeItemName,
   fridgeItemPrice,
   fridgeItemQty,
   fridgeKind,
   fridgeRoom,
+  itemRarity,
   type ExtractedItem,
   type ExtractResult,
-  type Quality,
+  type Rarity,
 } from '@/sim';
 import { HUD_ICON, fillRect, makeLabel, makeSlicedButton } from '@/utils/ui';
 import { VerticalScroller } from '@/utils/scroll';
@@ -39,13 +41,7 @@ const TITLE_FONT = 'Songti SC, STSong, PingFang SC, serif';
 const FLOAT_FONT = 'Kaiti SC, STKaiti, Songti SC, STSong, PingFang SC, serif';
 const INK = 0x2A2018;
 const GOLD = 0xC48A14;
-const FLOAT_COLOR: Record<Quality, number> = {
-  rotten: 0xC9B8A8,
-  common: 0xFFF6E8,
-  fresh: 0x7EE36A,
-  premium: 0x7EC8FF,
-  god: 0xFFD24A,
-};
+const ROTTEN_FLOAT = 0xC9B8A8;
 
 export class ResultPanel extends PIXI.Container {
   _isOpen = false;
@@ -246,20 +242,21 @@ export class ResultPanel extends PIXI.Container {
     return root;
   }
 
-  private _floatRows(items: ExtractedItem[]): { name: string; gold: number; quality: Quality }[] {
-    const map = new Map<string, { name: string; gold: number; quality: Quality }>();
+  private _floatRows(items: ExtractedItem[]): { name: string; count: number; rarity: Rarity; rotten: boolean }[] {
+    const map = new Map<string, { name: string; count: number; rarity: Rarity; rotten: boolean }>();
     for (const it of items) {
-      const key = `${it.defId}|${it.quality}`;
+      const rotten = it.quality === 'rotten';
+      const rarity = itemRarity(it.defId);
+      const key = `${it.defId}|${rarity}|${rotten ? 1 : 0}`;
       const hit = map.get(key);
-      const gold = Math.max(0, it.sell);
-      if (hit) hit.gold += gold;
-      else map.set(key, { name: it.name, gold, quality: it.quality });
+      if (hit) hit.count += 1;
+      else map.set(key, { name: it.name, count: 1, rarity, rotten });
     }
     return [...map.values()];
   }
 
-  private _floatLabel(text: string, quality: Quality): PIXI.Text {
-    const fill = FLOAT_COLOR[quality] ?? FLOAT_COLOR.common;
+  private _floatLabel(text: string, rarity: Rarity, rotten = false): PIXI.Text {
+    const fill = rotten ? ROTTEN_FLOAT : (RARITY_STYLE[rarity]?.float ?? RARITY_STYLE.common.float);
     return makeLabel(text, 36, fill, {
       fontFamily: FLOAT_FONT,
       fontWeight: '700',
@@ -270,7 +267,7 @@ export class ResultPanel extends PIXI.Container {
   }
 
   private _playLootFloats(
-    rows: { name: string; gold: number; quality: Quality }[],
+    rows: { name: string; count: number; rarity: Rarity; rotten: boolean }[],
     x: number,
     y: number,
   ): void {
@@ -279,7 +276,7 @@ export class ResultPanel extends PIXI.Container {
     this._root.addChild(layer);
     const step = 0.56;
     rows.forEach((row, i) => {
-      const lab = this._floatLabel(`${row.name}+${row.gold}`, row.quality);
+      const lab = this._floatLabel(`${row.name}+${row.count}`, row.rarity, row.rotten);
       lab.anchor.set(0.5);
       lab.position.set(x, y);
       lab.alpha = 0;

@@ -19,7 +19,6 @@ import {
   rngInt,
   rngPick,
   rollGatherSpot,
-  shapeLabel,
   pileToBasketDraft,
   place,
   removeItem,
@@ -29,6 +28,7 @@ import {
   rollFreebie,
   settleExtract,
   eventVoice,
+  MARKET_RECIPE_POOL,
   remainingMarketRecipes,
   recipeUnlockView,
   unlockedIngredients,
@@ -91,6 +91,8 @@ class RunManagerClass {
       seed,
       cookLevel: cookLevel(KitchenManager.save),
       allowRecipe: remainingMarketRecipes(marketId, KitchenManager.save.recipesFound).length > 0,
+      forceRecipe: remainingMarketRecipes(marketId, KitchenManager.save.recipesFound).length
+        === MARKET_RECIPE_POOL[marketId].length,
       wanted: this._wanted(),
     });
     if (hasGodPick(this.run)) KitchenManager.markGodPickToday();
@@ -326,7 +328,7 @@ class RunManagerClass {
         kind: 'gather',
         marketId: run.marketId,
         text: taken ? `拿到${displayName(spot.defId, false, quality)}。` : '篮子满了，先腾个位子。',
-        gain: { defId: spot.defId, quality, taken },
+        gain: { defId: spot.defId, quality, taken, firstSeen: spot.firstSeen },
       },
       note: picksLeft > 0 ? `还能再拿 ${picksLeft} 份。` : '手上拿够了，可以回去。',
     };
@@ -397,13 +399,19 @@ class RunManagerClass {
       { x: 0.82, y: 0.46 },
       { x: 0.34, y: 0.64 },
     ];
-    return Array.from({ length: n }, (_, i) => ({
+    const spots: GatherSpot[] = Array.from({ length: n }, (_, i) => ({
       uid: nextUid('g'),
       defId: rollGatherSpot(pool, this._rng),
       taken: false,
       x: layout[i]?.x ?? 0.5,
       y: layout[i]?.y ?? 0.45,
     }));
+    const seen = new Set<string>();
+    return spots.map((spot) => {
+      if (seen.has(spot.defId)) return spot;
+      seen.add(spot.defId);
+      return { ...spot, firstSeen: KitchenManager.discoverFood(spot.defId) };
+    });
   }
 
   private _takeFreebie(state: RunState, node: MapNode): RunState {
@@ -436,7 +444,7 @@ class RunManagerClass {
           kind,
           marketId: state.marketId,
           text: '篮子满了，先腾个位子再捡。',
-          gain: { defId, quality, taken: false },
+          gain: { defId, quality, taken: false, firstSeen: KitchenManager.discoverFood(defId, quality) },
         },
       };
     }
@@ -449,7 +457,7 @@ class RunManagerClass {
         kind,
         marketId: state.marketId,
         text,
-        gain: { defId, quality, taken: true },
+        gain: { defId, quality, taken: true, firstSeen: KitchenManager.discoverFood(defId, quality) },
       },
     };
   }
@@ -498,6 +506,7 @@ class RunManagerClass {
       drawn: true,
       revealed: true,
       inspected: item.defId !== GOD_PICK.id,
+      firstSeen: KitchenManager.discoverFood(visibleDefId(item), item.quality),
     });
     this.emit();
     return this.findPile(item.uid) ?? item;
@@ -685,15 +694,15 @@ class RunManagerClass {
 
   labelFor(item: PileItem): string {
     const defId = item.inspected ? item.defId : visibleDefId(item);
-    const shape = shapeLabel(defId);
-    if (!item.revealed) return `？  ${shape}`;
-    return `${displayName(defId, item.inspected, item.quality)}  ${shape}`;
+    if (!item.revealed) return '？';
+    return displayName(defId, item.inspected, item.quality);
   }
 
   private _revealGodPick(uid: string, quiet = false): void {
     const item = this.findPile(uid);
     if (!item || item.defId !== GOD_PICK.id || item.inspected) return;
     this.patchPile(uid, { inspected: true });
+    KitchenManager.discoverFood(GOD_PICK.id);
     if (!quiet) Platform.showToast('原来是野生大黄鱼', 'success');
   }
 

@@ -1,4 +1,4 @@
-export type FurnId = 'fridge' | 'cook' | 'table' | 'basket' | 'foam' | 'recipe';
+export type FurnId = 'fridge' | 'table' | 'basket' | 'foam';
 
 export const FURN_IDS: FurnId[] = ['fridge', 'table', 'basket', 'foam'];
 export const FURN_MAX_LEVEL = 9;
@@ -28,8 +28,6 @@ export interface FurnLayout {
 
 export const FURN_LABEL: Record<FurnId, string> = {
   fridge: '冰箱',
-  cook: '炒菜区',
-  recipe: '菜谱',
   table: '烹饪台',
   basket: '菜篮',
   foam: '泡沫箱',
@@ -37,9 +35,9 @@ export const FURN_LABEL: Record<FurnId, string> = {
 
 /** 本档房屋能装下的家具最高级（0–9）。 */
 const HOUSE_FURN_CAP: Record<number, Record<FurnId, number>> = {
-  0: { fridge: 3, cook: 2, table: 2, basket: 3, foam: 2, recipe: 2 },
-  1: { fridge: 5, cook: 5, table: 5, basket: 5, foam: 4, recipe: 5 },
-  2: { fridge: 9, cook: 9, table: 9, basket: 9, foam: 9, recipe: 9 },
+  0: { fridge: 3, table: 2, basket: 3, foam: 2 },
+  1: { fridge: 5, table: 5, basket: 5, foam: 4 },
+  2: { fridge: 9, table: 9, basket: 9, foam: 9 },
 };
 
 export function clampFurnLevel(level: number): number {
@@ -113,24 +111,18 @@ type Pose = Omit<FurnLayout, 'id' | 'level' | 'house'>;
 const HOUSE_POSE_MAP: Record<number, Record<FurnId, Pose>> = {
   0: {
     fridge: { nx: 0.481, ny: 0.410, nw: 0.166, nh: 0.272 },
-    cook: { nx: 0.526, ny: 0.462, nw: 0.179, nh: 0.217 },
-    recipe: { nx: 0.536, ny: 0.391, nw: 0.070, nh: 0.058, hang: true },
     basket: { nx: 0.325, ny: 0.348, nw: 0.087, nh: 0.268, hang: true },
     foam: { nx: 0.276, ny: 0.485, nw: 0.091, nh: 0.178 },
     table: { nx: 0.174, ny: 0.640, nw: 0.420, nh: 0.360 },
   },
   1: {
     fridge: { nx: 0.481, ny: 0.410, nw: 0.166, nh: 0.272 },
-    cook: { nx: 0.526, ny: 0.462, nw: 0.179, nh: 0.217 },
-    recipe: { nx: 0.536, ny: 0.391, nw: 0.070, nh: 0.058, hang: true },
     basket: { nx: 0.325, ny: 0.348, nw: 0.087, nh: 0.268, hang: true },
     foam: { nx: 0.276, ny: 0.485, nw: 0.091, nh: 0.178 },
     table: { nx: 0.077, ny: 0.572, nw: 0.583, nh: 0.484 },
   },
   2: {
     fridge: { nx: 0.481, ny: 0.410, nw: 0.166, nh: 0.272 },
-    cook: { nx: 0.526, ny: 0.462, nw: 0.179, nh: 0.217 },
-    recipe: { nx: 0.536, ny: 0.391, nw: 0.070, nh: 0.058, hang: true },
     basket: { nx: 0.325, ny: 0.348, nw: 0.087, nh: 0.268, hang: true },
     foam: { nx: 0.276, ny: 0.485, nw: 0.091, nh: 0.178 },
     table: { nx: 0.077, ny: 0.572, nw: 0.583, nh: 0.484 },
@@ -151,26 +143,6 @@ const BAKED_POSES: FurnLayout[] = [
   { id: 'fridge', house: 0, level: 7, nx: 0.488, ny: 0.292, nw: 0.232, nh: 0.410 },
   { id: 'fridge', house: 0, level: 8, nx: 0.478, ny: 0.270, nw: 0.244, nh: 0.440 },
   { id: 'fridge', house: 0, level: 9, nx: 0.468, ny: 0.248, nw: 0.256, nh: 0.470 },
-  { id: 'cook', house: 0, level: 0, nx: 0.526, ny: 0.462, nw: 0.179, nh: 0.217 },
-  { id: 'cook', house: 0, level: 1, nx: 0.508, ny: 0.458, nw: 0.182, nh: 0.221 },
-  { id: 'cook', house: 0, level: 2, nx: 0.487, ny: 0.378, nw: 0.244, nh: 0.296 },
-  { id: 'cook', house: 0, level: 3, nx: 0.489, ny: 0.431, nw: 0.221, nh: 0.269 },
-  { id: 'cook', house: 0, level: 4, nx: 0.480, ny: 0.408, nw: 0.241, nh: 0.292 },
-  { id: 'cook', house: 0, level: 5, nx: 0.470, ny: 0.384, nw: 0.260, nh: 0.316 },
-  { id: 'cook', house: 0, level: 6, nx: 0.460, ny: 0.360, nw: 0.280, nh: 0.340 },
-  { id: 'cook', house: 0, level: 7, nx: 0.450, ny: 0.336, nw: 0.300, nh: 0.364 },
-  { id: 'cook', house: 0, level: 8, nx: 0.440, ny: 0.312, nw: 0.319, nh: 0.388 },
-  { id: 'cook', house: 0, level: 9, nx: 0.431, ny: 0.289, nw: 0.339, nh: 0.411 },
-  { id: 'recipe', house: 0, level: 0, nx: 0.536, ny: 0.391, nw: 0.070, nh: 0.058, hang: true },
-  { id: 'recipe', house: 0, level: 1, nx: 0.535, ny: 0.391, nw: 0.063, nh: 0.080, hang: true },
-  { id: 'recipe', house: 0, level: 2, nx: 0.527, ny: 0.384, nw: 0.086, nh: 0.072, hang: true },
-  { id: 'recipe', house: 0, level: 3, nx: 0.542, ny: 0.382, nw: 0.060, nh: 0.080, hang: true },
-  { id: 'recipe', house: 0, level: 4, nx: 0.526, ny: 0.374, nw: 0.093, nh: 0.080, hang: true },
-  { id: 'recipe', house: 0, level: 5, nx: 0.744, ny: 0.300, nw: 0.112, nh: 0.093, hang: true },
-  { id: 'recipe', house: 0, level: 6, nx: 0.740, ny: 0.300, nw: 0.120, nh: 0.100, hang: true },
-  { id: 'recipe', house: 0, level: 7, nx: 0.736, ny: 0.300, nw: 0.128, nh: 0.107, hang: true },
-  { id: 'recipe', house: 0, level: 8, nx: 0.732, ny: 0.300, nw: 0.137, nh: 0.114, hang: true },
-  { id: 'recipe', house: 0, level: 9, nx: 0.727, ny: 0.300, nw: 0.145, nh: 0.121, hang: true },
   { id: 'basket', house: 0, level: 0, nx: 0.325, ny: 0.348, nw: 0.087, nh: 0.268, hang: true },
   { id: 'basket', house: 0, level: 1, nx: 0.311, ny: 0.352, nw: 0.101, nh: 0.294, hang: true },
   { id: 'basket', house: 0, level: 2, nx: 0.323, ny: 0.344, nw: 0.096, nh: 0.218, hang: true },

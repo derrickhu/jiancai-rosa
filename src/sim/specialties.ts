@@ -1,7 +1,7 @@
 import { getItem, type ItemDef } from './items';
 import { rngPick, rngWeighted, type Rng } from './rng';
 
-/** 不走五类大摊的专属货池。山坞菌摊只出菌。 */
+/** 不走五类大摊的专属货池。山坞菌摊只出菌，河沿藕摊只出藕。 */
 export interface SpecialtyDef {
   id: string;
   name: string;
@@ -29,9 +29,9 @@ export const SPECIALTIES: Record<string, SpecialtyDef> = {
     name: '藕摊',
     hint: '河沿泥里拔上来的',
     count: [3, 5],
-    common: ['water_spinach'],
-    rare: ['lotus'],
-    epic: ['kelp'],
+    common: ['lotus'],
+    rare: [],
+    epic: [],
   },
   nightcatch: {
     id: 'nightcatch',

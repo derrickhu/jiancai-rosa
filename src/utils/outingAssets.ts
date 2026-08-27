@@ -11,6 +11,7 @@ export const RESULT_UI = [
   'subpkg_kitchen/ui_result_burst.png',
   'subpkg_kitchen/ui_result_title_safe.png',
   'subpkg_kitchen/ui_result_title_messy.png',
+  'subpkg_kitchen/ui_pickup_flare.png',
 ] as const;
 
 /** 选点页开门后立刻要用的图。 */

@@ -499,7 +499,7 @@ export class DexPanel extends PIXI.Container {
       g.beginFill(it.unlocked ? 0xF4EFE6 : 0xE4D8C8);
       g.drawRoundedRect(0, 0, cellW, cellH, 12);
       g.endFill();
-      // 没解锁的也描边：让人看见图鉴里还缺着哪一格紫的
+      // 没解锁的也描边：让人看见图鉴里还缺着哪一格蓝的
       drawRarityFrame(g, 2, 2, cellW - 4, cellH - 4, it.rarity, { radius: 12 });
       card.addChild(g);
       const tex = it.dish ? dishTexture(it.id) : itemTexture(it.id);

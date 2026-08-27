@@ -1,8 +1,8 @@
 import * as PIXI from 'pixi.js';
 import { LANES, cardHint, cardName, isMysteryCard, type CardKind, type StallId } from '@/sim';
 import type { RouteOption } from '@/managers/RunManager';
-import { gameTexture, isTextureReady, whenTextureReady } from '@/utils/assets';
-import { makeLabel } from '@/utils/ui';
+import { fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from '@/utils/assets';
+import { HUD_ICON, makeLabel } from '@/utils/ui';
 
 export const CARD_FRAME = 'subpkg_images/ui_card_frame.png';
 export const CARD_ATLAS = 'subpkg_images/market_cards.jpg';
@@ -52,23 +52,68 @@ function slotTexture(atlas: string, slot: number): PIXI.Texture | null {
   return sub;
 }
 
-/** 收费摊也画自己摊型的图：玩家要先知道是哪种摊，贵不贵看下沿那行。 */
+/** 收费摊也画自己摊型的图：贵不贵看标题栏右侧那组数字+金币。 */
 export function slotForNode(node: { kind: CardKind; stall?: StallId }, revealed: boolean): number {
   if (!revealed && isMysteryCard(node.kind)) return BACK_SLOT;
   if (node.stall) return STALL_SLOT[node.stall];
   return KIND_SLOT[node.kind];
 }
 
-/** 卡面下沿那一行：写清代价和收益，别让玩家猜。 */
+function isRummageOption(opt: RouteOption): boolean {
+  const node = opt.node;
+  return node.kind === 'stall' || node.kind === 'paystall' || node.encounter?.type === 'rummage';
+}
+
+function feeBroke(opt: RouteOption): boolean {
+  return opt.fee > 0 && !!opt.blocked && opt.blocked.includes('金币');
+}
+
+/** 卡面下沿：收费摊的价写在标题栏，这里只留件数或进不去的理由。 */
 function infoLine(opt: RouteOption): string {
-  const { node, revealed, fee, left } = opt;
-  if (!revealed) return cardHint(node, false);
-  const rummage = node.kind === 'stall' || node.kind === 'paystall' || node.encounter?.type === 'rummage';
-  if (rummage) {
-    const price = fee > 0 ? `${fee} 金币` : '免费';
-    return `${price} · 剩 ${left} 件`;
+  if (!opt.revealed) return cardHint(opt.node, false);
+  if (isRummageOption(opt)) {
+    const stock = `剩 ${opt.left} 件`;
+    return opt.fee > 0 ? stock : `免费 · ${stock}`;
   }
-  return cardHint(node, true);
+  return cardHint(opt.node, true);
+}
+
+/** 标题栏价签：细金边小数标，钱不够时数字改红。原点在左中。 */
+function makeFeeMark(fee: number, broke: boolean, size: number, onReady?: () => void): PIXI.Container {
+  const root = new PIXI.Container();
+  root.eventMode = 'none';
+  const num = makeLabel(String(fee), size, broke ? 0xFF5A4A : 0xFFE7A0, {
+    fontWeight: '700',
+    dropShadow: true,
+    dropShadowColor: 0x2A2018,
+    dropShadowDistance: 1,
+    dropShadowBlur: 1,
+    dropShadowAlpha: 0.55,
+  });
+  num.anchor.set(0, 0.5);
+  const iconSize = Math.round(size * 0.9);
+  whenTextureReady(HUD_ICON.coin, () => onReady?.());
+  const coin = new PIXI.Sprite(gameTexture(HUD_ICON.coin));
+  const hasCoin = isTextureReady(coin.texture);
+  if (hasCoin) fitSpriteInBox(coin, iconSize, iconSize);
+  coin.anchor.set(0, 0.5);
+  coin.eventMode = 'none';
+  const gap = Math.max(2, Math.round(size * 0.1));
+  const padX = Math.round(size * 0.28);
+  const padY = Math.round(size * 0.1);
+  const inner = num.width + (hasCoin ? gap + iconSize : 0);
+  const bw = inner + padX * 2;
+  const bh = Math.max(iconSize, num.height) + padY * 2;
+  const bg = new PIXI.Graphics();
+  bg.lineStyle(1.5, broke ? 0xC44A3A : 0xE0A100, 0.95);
+  bg.beginFill(broke ? 0x4A1810 : 0x3A2A14, 0.42);
+  bg.drawRoundedRect(0, -bh / 2, bw, bh, bh / 2);
+  bg.endFill();
+  num.position.set(padX, 0);
+  coin.position.set(padX + num.width + gap, 0);
+  root.addChild(bg, num);
+  if (hasCoin) root.addChild(coin);
+  return root;
 }
 
 /** full 是脚下这排，peek/far 是前方，只看不点，越远越省字。 */
@@ -146,7 +191,8 @@ export function makeRouteCard(opts: {
     root.addChild(edge);
   }
 
-  const titleSize = Math.round(width * (mode === 'far' ? 0.16 : 0.125));
+  const showFee = option.revealed && option.fee > 0;
+  const titleSize = Math.round(width * (mode === 'far' ? 0.15 : showFee ? 0.108 : 0.125));
   const title = makeLabel(cardName(option.node, option.revealed), titleSize, 0xF6EDE0, {
     fontWeight: '700',
     dropShadow: true,
@@ -155,9 +201,26 @@ export function makeRouteCard(opts: {
     dropShadowBlur: 2,
     dropShadowAlpha: 0.6,
   });
-  title.anchor.set(0.5);
-  title.position.set(width / 2, height * 0.115);
-  root.addChild(title);
+  title.anchor.set(0, 0.5);
+  const titleY = height * 0.115;
+  if (showFee) {
+    const mark = makeFeeMark(
+      option.fee,
+      feeBroke(option),
+      Math.round(width * (mode === 'far' ? 0.12 : 0.1)),
+      opts.onReady,
+    );
+    const gap = Math.round(width * 0.035);
+    const rowW = title.width + gap + mark.width;
+    const rowX = Math.round((width - rowW) / 2);
+    title.position.set(rowX, titleY);
+    mark.position.set(rowX + title.width + gap, titleY);
+    root.addChild(title, mark);
+  } else {
+    title.anchor.set(0.5);
+    title.position.set(width / 2, titleY);
+    root.addChild(title);
+  }
 
   if (mode !== 'far') {
     const stripH = Math.round(height * 0.115);
@@ -170,7 +233,7 @@ export function makeRouteCard(opts: {
     root.addChild(strip);
 
     const info = makeLabel(
-      option.blocked ?? infoLine(option),
+      option.blocked && !feeBroke(option) ? option.blocked : infoLine(option),
       Math.round(width * 0.085),
       locked ? 0xFFD8CE : 0xF4EFE6,
       { fontWeight: '600' },

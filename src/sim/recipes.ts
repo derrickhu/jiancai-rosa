@@ -3,18 +3,19 @@ import { getItem, sellPrice, type Quality } from './items';
 import type { Rarity } from './rarity';
 
 export type RecipeId =
-  // 普通（绿）：开局 + 烹饪台一级两本
-  | 'stirfry' | 'tomato_egg' | 'scallion_tofu' | 'perilla_cucumber'
-  | 'vinegar_potato' | 'braised_eggplant' | 'pan_smallfish' | 'stir_beans' | 'blistered_pepper'
+  // 普通（白）：开局 + 烹饪台
+  | 'stirfry' | 'tomato_egg' | 'scallion_tofu' | 'smashed_cucumber'
+  | 'vinegar_potato' | 'garlic_bokchoy' | 'stir_beans' | 'blistered_pepper'
   | 'lettuce_salad' | 'harvard_veg_soup' | 'spinach_egg_soup' | 'celery_dried_tofu'
-  | 'three_fresh' | 'melon_kelp' | 'candied_taro' | 'ants_tree' | 'chive_shrimp'
+  | 'three_fresh' | 'melon_kelp' | 'candied_taro' | 'ants_tree'
   | 'oyster_egg' | 'stir_liver' | 'tremella_lily_soup'
-  // 高级（蓝）：厨艺升级送；剩下的散在中低级市场油纸
-  | 'mushroom_bokchoy' | 'carrot_mushroom' | 'broccoli_garlic' | 'lotus_pepper' | 'yuxiang_eggplant'
-  | 'wood_ear_egg' | 'clam_soup' | 'tomato_fish' | 'pan_hairtail'
-  | 'crucian_tofu' | 'pepper_pork' | 'potato_chicken' | 'bamboo_pork'
+  | 'vinegar_cabbage' | 'pepper_pork'
+  // 良品（绿）：厨艺升级送；剩下的散在中低级市场油纸
+  | 'perilla_cucumber' | 'onion_wood_ear' | 'chive_shrimp' | 'mushroom_bokchoy' | 'carrot_mushroom' | 'broccoli_garlic' | 'lotus_pepper' | 'yuxiang_eggplant'
+  | 'wood_ear_egg' | 'clam_soup' | 'tomato_fish' | 'mixed_fish_pot' | 'pan_hairtail'
+  | 'crucian_tofu' | 'potato_chicken' | 'bamboo_pork'
   | 'yam_chestnut' | 'dried_tofu_pork' | 'chestnut_duck'
-  // 稀有（紫）：只能在中高级市场的油纸上捡
+  // 上品（蓝）：只能在中高级市场的油纸上捡
   | 'garlic_shrimp' | 'ginger_crab' | 'steam_yellowfish' | 'braised_eel' | 'wild_fish_soup'
   | 'radish_ribs' | 'cabbage_belly' | 'braised_beef' | 'ham_melon_soup' | 'matsutake_chicken'
   | 'yandu_xian' | 'maoxuewang';
@@ -82,7 +83,9 @@ export function ingredientSetKey(needs: readonly string[]): string {
 export const RECIPE_ID_ALIASES: Record<string, RecipeId> = {
   tomato_egg_soup: 'spinach_egg_soup',
   egg_tofu_soup: 'spinach_egg_soup',
-  smashed_cucumber: 'perilla_cucumber',
+  braised_eggplant: 'garlic_bokchoy',
+  onion_egg: 'onion_wood_ear',
+  pan_smallfish: 'mixed_fish_pot',
 };
 
 export function migrateRecipeId(id: string): RecipeId | null {
@@ -141,30 +144,33 @@ function dish(
 }
 
 export const RECIPES: RecipeDef[] = [
-  // ── 普通（绿）：两三样常见货，锅一响就成 ──────────────────
+  // ── 普通（白）：两三样常见货，锅一响就成 ──────────────────
   dish('stirfry', '炒菜苔', '家常', 'common', '细秆进锅，花还在。只吃菜苔，别的绿叶子一棵不动。', ['caitai', 'caitai']),
   dish('tomato_egg', '番茄炒蛋', '家常', 'common', '中式厨房的起手式。红黄一碰，连外卖都要让路。', ['tomato', 'egg', 'egg']),
   dish('scallion_tofu', '小葱拌豆腐', '凉菜', 'common', '不用开火，一清二白，端上桌全靠那把葱花。', ['scallion', 'tofu']),
-  dish('perilla_cucumber', '紫苏黄瓜', '凉菜', 'common', '不用开火。紫苏一拍，朝天椒负责叫醒。', ['perilla', 'cucumber', 'bird_chili']),
+  dish('smashed_cucumber', '凉拌黄瓜', '凉菜', 'common', '不用开火。拍一下，蒜和香菜负责像一盘菜。', ['cucumber', 'garlic', 'cilantro']),
   dish('vinegar_potato', '醋溜土豆丝', '家常', 'common', '切丝是玩家脑内完成的，锅里只见两块变一盘。', ['potato', 'potato', 'ginger']),
-  dish('braised_eggplant', '红烧茄子', '家常', 'common', '吸油的紫家伙，蒜把它按进酱色。两根才够一盘。', ['eggplant', 'eggplant', 'garlic']),
+  dish('garlic_bokchoy', '蒜蓉小白菜', '家常', 'common', '蒜末一响，小白菜就肯软下来。两棵才够一盘。', ['bokchoy', 'bokchoy', 'garlic']),
+  dish('vinegar_cabbage', '醋溜白菜', '家常', 'common', '外帮也能炒，酸一下才像晚饭。', ['cabbage', 'ginger']),
   dish('stir_beans', '素炒豆角', '家常', 'common', '一把绿筷子过热锅，比干煸省事。', ['greenbean', 'garlic']),
   dish('blistered_pepper', '虎皮青椒', '家常', 'common', '皮起泡才算数，蒜是收尾。', ['pepper', 'pepper', 'garlic']),
   dish('spinach_egg_soup', '菠菜蛋花汤', '汤', 'common', '红根还可以留，汤绿了就算成功。', ['spinach', 'egg']),
   dish('celery_dried_tofu', '芹菜香干', '家常', 'common', '俩都耐造，适合冰箱快满时清位。香干得切够两块。', ['celery', 'dried_tofu', 'dried_tofu']),
   dish('three_fresh', '地三鲜', '家常', 'common', '东北家常的三兄弟，占格不小。', ['potato', 'eggplant', 'pepper']),
   dish('melon_kelp', '冬瓜海带汤', '汤', 'common', '两块湿咸，夏天最肯进嘴。', ['melon', 'kelp']),
-  dish('pan_smallfish', '香煎小鱼', '水产', 'common', '巷口水产摊的老实货，煎两条才够下酒。', ['smallfish', 'smallfish', 'garlic']),
   dish('lettuce_salad', '生菜沙拉', '凉菜', 'common', '整棵脑袋撕开，番茄和黄瓜负责像一盘西餐。', ['lettuce', 'tomato', 'cucumber']),
   dish('harvard_veg_soup', '哈佛蔬菜汤', '汤', 'common', '名字唬人，其实就是土豆胡萝卜玉米番茄一锅炖。', ['potato', 'carrot', 'corn', 'tomato']),
   dish('candied_taro', '拔丝芋头', '家常', 'common', '两块芋头，糖在玩家脑内完成，出锅还能拉丝。', ['taro', 'taro']),
   dish('ants_tree', '蚂蚁上树', '荤', 'common', '粉丝是树，肉末是蚁，一盘里挤满了故事。', ['vermicelli', 'pork', 'pork']),
-  dish('chive_shrimp', '韭菜炒河虾', '水产', 'common', '青的香，灰的弹，河沿到江边都认这盘。', ['chive', 'river_shrimp', 'river_shrimp']),
   dish('oyster_egg', '生蚝煎蛋', '水产', 'common', '壳里的人下了蛋，金黄把腥按住。', ['oyster', 'egg', 'egg']),
   dish('stir_liver', '小炒猪肝', '荤', 'common', '火要大，肝要嫩，青椒负责叫。', ['pork_liver', 'pepper', 'garlic']),
+  dish('pepper_pork', '青椒炒肉', '荤', 'common', '肉摊开门第一道，姜负责去腥。', ['pork', 'pork', 'pepper', 'pepper', 'ginger']),
   dish('tremella_lily_soup', '银耳百合莲子汤', '汤', 'common', '四样干货泡开，汤才肯白，枸杞负责像有人懂。', ['tremella', 'lily', 'lotus_seed', 'goji']),
 
-  // ── 高级（蓝）：开始要蓝货，或者要成把地放 ──────────────────
+  // ── 良品（绿）：开始要绿货，或者要成把地放 ──────────────────
+  dish('perilla_cucumber', '紫苏黄瓜', '家常', 'rare', '湘味热锅。黄瓜片煎黄，紫苏叶和朝天椒一起香起来。', ['perilla', 'cucumber', 'bird_chili']),
+  dish('onion_wood_ear', '洋葱拌木耳', '凉菜', 'rare', '不用开火。木耳泡开，洋葱一拌，黑白脆。', ['onion', 'wood_ear', 'wood_ear']),
+  dish('chive_shrimp', '韭菜炒河虾', '水产', 'rare', '青的香，灰的弹，河沿水边才配这盘。', ['chive', 'river_shrimp', 'river_shrimp']),
   dish('mushroom_bokchoy', '香菇青菜', '家常', 'rare', '鲜菇配最常见的叶子，不靠鸡汤。菇得放够两朵。', ['mushroom', 'mushroom', 'bokchoy', 'bokchoy']),
   dish('carrot_mushroom', '胡萝卜炒香菇', '家常', 'rare', '橙和褐，素炒里最像「加了荤」。', ['mushroom', 'mushroom', 'carrot', 'carrot']),
   dish('broccoli_garlic', '素炒西兰花', '家常', 'rare', '认市场货，不认西餐厅。蒜要两头才压得住。', ['broccoli', 'garlic', 'garlic']),
@@ -173,16 +179,16 @@ export const RECIPES: RecipeDef[] = [
   dish('wood_ear_egg', '木耳炒蛋', '家常', 'rare', '黑白分明，脆的那半是木耳在负责。', ['wood_ear', 'wood_ear', 'egg', 'egg']),
   dish('clam_soup', '姜汤花蛤', '汤', 'rare', '吐沙在玩家脑内完成，姜负责安心。三只才听得见响。', ['clam', 'clam', 'clam', 'ginger']),
   dish('tomato_fish', '番茄小鱼', '水产', 'rare', '酸甜兜住小鱼，比清蒸省事。', ['smallfish', 'smallfish', 'tomato', 'tomato']),
+  dish('mixed_fish_pot', '杂鱼锅', '汤', 'rare', '什么鱼都肯下。小鱼两条，再加一条土鲫，姜把腥按住。', ['smallfish', 'smallfish', 'crucian', 'ginger']),
   dish('pan_hairtail', '干煎带鱼', '水产', 'rare', '银腰带下锅，姜蒜是边角料。', ['hairtail', 'ginger', 'garlic']),
   dish('crucian_tofu', '鲫鱼豆腐汤', '汤', 'rare', '土鲫认汤，不认红烧。', ['crucian', 'tofu', 'ginger']),
-  dish('pepper_pork', '青椒炒肉', '荤', 'rare', '肉摊开门第一道，姜负责去腥。', ['pork', 'pork', 'pepper', 'pepper', 'ginger']),
   dish('potato_chicken', '土豆烧鸡腿', '荤', 'rare', '一只带骨的，两块泥里的，炖到软。', ['chicken_leg', 'potato', 'potato']),
   dish('bamboo_pork', '春笋炒肉', '荤', 'rare', '笋比肉贵的那一个月，才配这么炒。', ['bamboo_shoot', 'bamboo_shoot', 'pork']),
   dish('yam_chestnut', '板栗山药煲', '家常', 'rare', '两样都粉，一锅炖到互相分不清。', ['yam', 'yam', 'chestnut', 'chestnut', 'chestnut']),
   dish('dried_tofu_pork', '香干回锅肉', '荤', 'rare', '肉先煸出油，香干再进去抢。', ['pork', 'pork', 'dried_tofu', 'dried_tofu', 'pepper']),
   dish('chestnut_duck', '板栗烧鸭', '荤', 'rare', '鸭油裹住栗子，八角负责出香。', ['duck_leg', 'chestnut', 'chestnut', 'chestnut', 'ginger', 'star_anise']),
 
-  // ── 稀有（紫）：非得攒紫货不可，一盘顶一天 ──────────────────
+  // ── 上品（蓝）：非得攒蓝货不可，一盘顶一天 ──────────────────
   dish('garlic_shrimp', '蒜蓉虾', '水产', 'epic', '蒜末噼啪一响，三只虾就同意被你卖掉。', ['shrimp', 'shrimp', 'shrimp', 'garlic', 'garlic']),
   dish('ginger_crab', '葱姜炒蟹', '水产', 'epic', '钳子还在挥，葱姜负责把它按住。', ['crab', 'ginger', 'ginger', 'scallion', 'scallion']),
   dish('steam_yellowfish', '清蒸黄鱼', '水产', 'epic', '金灿灿一条，姜片比酱料诚实。', ['yellowfish', 'ginger', 'ginger', 'scallion', 'scallion']),
@@ -223,44 +229,53 @@ export function findDuplicateIngredientSets(recipes: readonly RecipeDef[] = RECI
 export const START_RECIPES: RecipeId[] = ['stirfry', 'tomato_egg', 'scallion_tofu'];
 
 /**
- * 烹饪台只送普通菜，一级两本。
- * 下标 0 = 烹饪台升到内部 1（界面 2 级）新给的两本。
- * 前两档只用巷口货；后面跟着河沿 / 山坞 / 江边 / 老城开场。
+ * 烹饪台主要送普通菜。
+ * 下标 0 = 烹饪台升到内部 1（界面 2 级）新给的。
+ * 前两档只用巷口货；河沿开场那档补凉拌黄瓜 / 杂鱼锅（绿谱，要鲫鱼） / 洋葱拌木耳 / 醋溜白菜。
+ * 韭菜炒河虾走河沿油纸，不再白送炒蛋。
+ * 紫苏黄瓜是良品绿谱，材料只出香料夜摊，台 1 先让人认得这道菜。
  */
 export const TABLE_UNLOCKS: RecipeId[][] = [
   ['perilla_cucumber', 'vinegar_potato'],
-  ['braised_eggplant', 'pan_smallfish'],
-  ['blistered_pepper', 'lettuce_salad'],
+  ['garlic_bokchoy'],
+  ['smashed_cucumber', 'mixed_fish_pot', 'blistered_pepper', 'lettuce_salad', 'onion_wood_ear', 'vinegar_cabbage'],
   ['stir_beans', 'harvard_veg_soup'],
   ['spinach_egg_soup', 'candied_taro'],
   ['celery_dried_tofu', 'ants_tree'],
-  ['three_fresh', 'stir_liver'],
-  ['melon_kelp', 'chive_shrimp'],
+  ['three_fresh', 'stir_liver', 'pepper_pork'],
+  ['melon_kelp'],
   ['oyster_egg', 'tremella_lily_soup'],
 ];
 
-/** 厨艺升级送高级菜，不必每级都送。空档留给以后加菜。稀有菜一律不走这里。 */
-export const COOK_UNLOCK_AT: Record<number, RecipeId> = {
+/** 厨艺升级送良品菜，不必每级都送。空档留给以后加菜。上品蓝本一律不走这里。 */
+export type CookUnlockGrant = RecipeId | readonly RecipeId[];
+
+export const COOK_UNLOCK_AT: Record<number, CookUnlockGrant> = {
   2: 'broccoli_garlic',
   3: 'carrot_mushroom',
-  4: 'wood_ear_egg',
+  4: 'potato_chicken',
   5: 'yuxiang_eggplant',
   6: 'lotus_pepper',
   7: 'clam_soup',
-  8: 'pepper_pork',
+  8: 'wood_ear_egg',
   9: 'bamboo_pork',
-  10: 'potato_chicken',
   13: 'pan_hairtail',
   14: 'crucian_tofu',
 };
 
+export function cookUnlocksAt(level: number): RecipeId[] {
+  const row = COOK_UNLOCK_AT[level];
+  if (!row) return [];
+  return typeof row === 'string' ? [row] : [...row];
+}
+
 /**
- * 油纸菜谱池。巷口和河沿只压得到蓝本，紫本要走到山坞以后才见得着。
+ * 油纸菜谱池。巷口和河沿只压得到绿本，上品蓝本要走到山坞以后才见得着。
  * 允许跨场重复，捡过的会被 remainingMarketRecipes 滤掉。
  */
 export const MARKET_RECIPE_POOL: Record<MarketId, RecipeId[]> = {
   xiangko: ['mushroom_bokchoy', 'tomato_fish'],
-  heyan: ['dried_tofu_pork', 'cabbage_belly', 'radish_ribs'],
+  heyan: ['dried_tofu_pork', 'chive_shrimp', 'cabbage_belly', 'radish_ribs'],
   shanwu: ['yam_chestnut', 'chestnut_duck', 'matsutake_chicken', 'yandu_xian'],
   jiangbian: [
     'garlic_shrimp', 'ginger_crab', 'steam_yellowfish', 'braised_eel', 'wild_fish_soup',
@@ -308,8 +323,7 @@ export function recipesGainedByTable(fromLevel: number, toLevel: number): Recipe
 export function recipesGainedByCook(fromLevel: number, toLevel: number): RecipeId[] {
   const out: RecipeId[] = [];
   for (let lv = fromLevel + 1; lv <= toLevel; lv++) {
-    const id = COOK_UNLOCK_AT[lv];
-    if (id) out.push(id);
+    out.push(...cookUnlocksAt(lv));
   }
   return out;
 }
@@ -331,7 +345,7 @@ export function isRecipeUnlocked(save: RecipeUnlockView, id: RecipeId): boolean 
   }
   const cook = Math.max(1, Math.floor(save.level));
   for (let lv = 2; lv <= cook; lv++) {
-    if (COOK_UNLOCK_AT[lv] === id) return true;
+    if (cookUnlocksAt(lv).includes(id)) return true;
   }
   return false;
 }

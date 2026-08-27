@@ -64,6 +64,14 @@
       "notes": "点烹饪：煎炸"
     },
     {
+      "name": "eat",
+      "text": "close dry home kitchen, eating a home-cooked meal from a ceramic bowl with chopsticks: two short chews of warm rice and vegetables, one light ceramic bowl clink, soft swallow, 0.95 seconds, intimate and dry, no cartoon gulp, no soup slurp loop, no voice, no talking, no music, no reverb hall",
+      "duration": 0.95,
+      "prompt_influence": 0.6,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/eat.mp3",
+      "notes": "冰箱吃掉：吃饭"
+    },
+    {
       "name": "cook_done",
       "text": "a ceramic bowl set on wood then a second ceramic bowl stacked and a light iron pot tap, three distinct kitchen pot and bowl hits in a row, close dry kitchen, no sizzle, no voice, no music, no reverb",
       "duration": 0.9,

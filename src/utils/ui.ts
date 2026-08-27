@@ -1,13 +1,14 @@
 import * as PIXI from 'pixi.js';
 import { AudioManager } from '@/core/AudioManager';
+import { Ease, TweenManager } from '@/core/TweenManager';
 import { RARITY_STYLE, type Rarity } from '@/sim/rarity';
 import { fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from './assets';
 
 export const FONT = 'PingFang SC, sans-serif';
 
 /**
- * 格子的稀有度描边：绿=普通 / 蓝=高级 / 紫=稀有。
- * 外面先描一圈浅色再压深色，木纹底和暗色图标上也分得清蓝和紫。
+ * 格子的稀有度描边：白=普通 / 绿=良品 / 蓝=上品。
+ * 外面先描一圈浅色再压本色，奶油底上也分得清白绿蓝。
  */
 export function drawRarityFrame(
   g: PIXI.Graphics,
@@ -25,6 +26,29 @@ export function drawRarityFrame(
   g.drawRoundedRect(x, y, w, h, r);
   g.lineStyle(width, style.frame, 1);
   g.drawRoundedRect(x, y, w, h, r);
+}
+
+const RARITY_FLARE = 'subpkg_kitchen/ui_pickup_flare.png';
+
+/** 捡到菜时垫在后面的发散光：用收摊那张光晕，按品质染色，叠光。 */
+export function makeRarityFlare(rarity: Rarity, size: number): PIXI.Sprite {
+  const style = RARITY_STYLE[rarity];
+  const flare = new PIXI.Sprite(gameTexture(RARITY_FLARE));
+  flare.anchor.set(0.5);
+  flare.blendMode = PIXI.BLEND_MODES.ADD;
+  flare.tint = style.float;
+  flare.alpha = rarity === 'common' ? 0.52 : 0.68;
+  flare.width = size;
+  flare.height = size;
+  flare.rotation = Math.random() * Math.PI * 2;
+  flare.eventMode = 'none';
+  whenTextureReady(RARITY_FLARE, () => {
+    if (flare.destroyed) return;
+    flare.texture = gameTexture(RARITY_FLARE);
+    flare.width = size;
+    flare.height = size;
+  });
+  return flare;
 }
 
 export function makeLabel(
@@ -427,6 +451,124 @@ export function makeHudButton(
   (root as any)._h = height;
   (root as any)._fill = fill;
   return root;
+}
+
+function drawSparkle(g: PIXI.Graphics, x: number, y: number, r: number, color: number, alpha: number): void {
+  g.beginFill(color, alpha);
+  g.moveTo(x, y - r);
+  g.lineTo(x + r * 0.28, y - r * 0.28);
+  g.lineTo(x + r, y);
+  g.lineTo(x + r * 0.28, y + r * 0.28);
+  g.lineTo(x, y + r);
+  g.lineTo(x - r * 0.28, y + r * 0.28);
+  g.lineTo(x - r, y);
+  g.lineTo(x - r * 0.28, y - r * 0.28);
+  g.closePath();
+  g.endFill();
+}
+
+function tagAlive(node: PIXI.Container): boolean {
+  return !node.destroyed && !!node.parent;
+}
+
+/** 第一次见到这味食材：朱红底金字，带一点星光呼吸。 */
+export function makeNewFoodTag(size = 24): PIXI.Container {
+  const root = new PIXI.Container();
+  root.eventMode = 'none';
+  const label = makeLabel('新食材', size, 0xFFF3A0, {
+    fontFamily: FONT,
+    fontWeight: '700',
+    dropShadow: true,
+    dropShadowColor: '#6A1208',
+    dropShadowAlpha: 0.5,
+    dropShadowBlur: 0,
+    dropShadowDistance: 1.2,
+    dropShadowAngle: Math.PI / 2,
+  });
+  label.anchor.set(0.5);
+  const padX = Math.round(size * 0.72);
+  const padY = Math.round(size * 0.34);
+  const w = Math.ceil(label.width + padX * 2);
+  const h = Math.max(Math.round(size * 1.72), Math.ceil(label.height + padY * 2));
+  const glow = new PIXI.Graphics();
+  glow.beginFill(0xFF6A3A, 0.4);
+  glow.drawEllipse(0, 2, w * 0.62, h * 0.78);
+  glow.endFill();
+  const chip = new PIXI.Graphics();
+  chip.lineStyle(Math.max(2, Math.round(size * 0.1)), 0x8B1408, 1);
+  chip.beginFill(0xE8332A);
+  chip.drawRoundedRect(-w / 2, -h / 2, w, h, h / 2);
+  chip.endFill();
+  const sparks = new PIXI.Graphics();
+  drawSparkle(sparks, -w / 2 + 4, -h * 0.38, size * 0.34, 0xFFF36A, 1);
+  drawSparkle(sparks, w / 2 - 3, h * 0.3, size * 0.24, 0xFFE08A, 1);
+  sparks.eventMode = 'none';
+  root.addChild(glow, chip, sparks, label);
+  root.scale.set(1);
+  const pulse = (): void => {
+    if (!tagAlive(root)) return;
+    TweenManager.to({
+      target: root.scale,
+      props: { x: 1.12, y: 1.12 },
+      duration: 0.48,
+      ease: Ease.easeOutQuad,
+      onComplete: () => {
+        if (!tagAlive(root)) return;
+        TweenManager.to({
+          target: root.scale,
+          props: { x: 1, y: 1 },
+          duration: 0.48,
+          ease: Ease.easeInOutQuad,
+          onComplete: pulse,
+        });
+      },
+    });
+  };
+  const twinkle = (): void => {
+    if (!tagAlive(sparks)) return;
+    TweenManager.to({
+      target: sparks,
+      props: { alpha: 0.35 },
+      duration: 0.42,
+      ease: Ease.easeInOutQuad,
+      onComplete: () => {
+        if (!tagAlive(sparks)) return;
+        TweenManager.to({
+          target: sparks,
+          props: { alpha: 1 },
+          duration: 0.42,
+          ease: Ease.easeInOutQuad,
+          onComplete: twinkle,
+        });
+      },
+    });
+  };
+  pulse();
+  twinkle();
+  return root;
+}
+
+/** 摊上菜名：粗体字，不描边。普通白，良品绿，上品蓝。 */
+export function makeStallNameTag(
+  text: string,
+  ink: number,
+  opts: { maxWidth?: number } = {},
+): PIXI.Text {
+  const maxW = opts.maxWidth ?? 0;
+  let size = 22;
+  const style = (): Partial<PIXI.ITextStyle> => ({
+    fontFamily: FONT,
+    fontWeight: '700',
+  });
+  let label = makeLabel(text, size, ink, style());
+  if (maxW > 40) {
+    while (size > 16 && label.width > maxW) {
+      size -= 1;
+      label.destroy();
+      label = makeLabel(text, size, ink, style());
+    }
+  }
+  return label;
 }
 
 /** 场景标题用的奶油纸片。 */

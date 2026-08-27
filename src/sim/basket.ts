@@ -18,16 +18,22 @@ export interface BasketState {
   cols: number;
   rows: number;
   wetCols: number;
+  wetRows: number;
+  dryRows: number;
   insulatedBottom: boolean;
   items: BasketItem[];
 }
 
+export type BasketCellKind = 'wet' | 'dry' | 'none';
+
 /** 塑料袋/菜篮：出门干区列数。 */
 export const BAG_DRY_COLS = [4, 4, 4, 4, 5, 5, 5, 5, 6, 6];
-/** 塑料袋/菜篮：出门共用行数。开局 2 行，湿区刚好 2×2。 */
+/** 塑料袋/菜篮：出门干区行数。只影响干区，不拉高湿区。 */
 export const BAG_ROWS = [2, 3, 3, 4, 4, 5, 5, 6, 6, 7];
-/** 泡沫箱/水桶：出门湿区列数。开局 2 列 × 2 行。 */
-export const FOAM_WET_COLS = [2, 2, 2, 3, 3, 3, 4, 4, 4, 5];
+/** 泡沫箱/水桶：出门湿区列数。只跟水桶等级走。 */
+export const FOAM_WET_COLS = [2, 2, 3, 3, 3, 4, 4, 5, 5, 5];
+/** 泡沫箱/水桶：出门湿区行数。每一级至少变一维。 */
+export const FOAM_WET_ROWS = [2, 3, 3, 4, 5, 5, 6, 6, 7, 8];
 
 function clampBagLevel(level: number): number {
   return Math.max(0, Math.min(9, Math.floor(level)));
@@ -45,25 +51,48 @@ export function foamWetCols(foamLevel: number): number {
   return FOAM_WET_COLS[clampBagLevel(foamLevel)] ?? 2;
 }
 
+export function foamWetRows(foamLevel: number): number {
+  return FOAM_WET_ROWS[clampBagLevel(foamLevel)] ?? 2;
+}
+
 export function outingDryCells(basketLevel: number): number {
   return bagDryCols(basketLevel) * bagRows(basketLevel);
 }
 
-export function outingWetCells(foamLevel: number, basketLevel: number): number {
-  return foamWetCols(foamLevel) * bagRows(basketLevel);
+export function outingWetCells(foamLevel: number): number {
+  return foamWetCols(foamLevel) * foamWetRows(foamLevel);
 }
 
 export function createBasket(basketLevel: number, foamLevel = 0): BasketState {
   const dryCols = bagDryCols(basketLevel);
+  const dryRows = bagRows(basketLevel);
   const wetCols = foamWetCols(foamLevel);
-  const rows = bagRows(basketLevel);
+  const wetRows = foamWetRows(foamLevel);
   return {
     cols: wetCols + dryCols,
-    rows,
+    rows: Math.max(wetRows, dryRows),
     wetCols,
+    wetRows,
+    dryRows,
     insulatedBottom: clampBagLevel(basketLevel) >= 3,
     items: [],
   };
+}
+
+/** 湿区贴底、干区贴底；矮的那一侧上方空格不可用。 */
+export function basketCellKind(state: BasketState, x: number, y: number): BasketCellKind {
+  if (x < 0 || y < 0 || x >= state.cols || y >= state.rows) return 'none';
+  const wetTop = state.rows - state.wetRows;
+  const dryTop = state.rows - state.dryRows;
+  if (x < state.wetCols && y >= wetTop) return 'wet';
+  if (x >= state.wetCols && y >= dryTop) {
+    return state.insulatedBottom && y === state.rows - 1 ? 'wet' : 'dry';
+  }
+  return 'none';
+}
+
+function isFoamWetCell(state: BasketState, x: number, y: number): boolean {
+  return x < state.wetCols && y >= state.rows - state.wetRows;
 }
 
 export function footprint(def: ItemDef, rot: 0 | 1): { w: number; h: number } {
@@ -122,23 +151,18 @@ export function canPlace(
   const cells = occupiedCells(draft);
   const occ = occupancyMap(state, draft.uid);
   for (const c of cells) {
+    if (basketCellKind(state, c.x, c.y) === 'none') return { ok: false, reason: '超出菜篮' };
     if (occ.has(`${c.x},${c.y}`)) return { ok: false, reason: '这里已经有东西' };
   }
 
-  const inWet = (x: number, y: number): boolean => {
-    if (x < state.wetCols) return true;
-    if (state.insulatedBottom && y === state.rows - 1) return true;
-    return false;
-  };
-
   if (def.zone === 'wet') {
-    if (!cells.every((c) => inWet(c.x, c.y))) {
+    if (!cells.every((c) => basketCellKind(state, c.x, c.y) === 'wet')) {
       return { ok: false, reason: '湿货必须放湿区' };
     }
   }
 
   if (def.live) {
-    const onBottom = cells.some((c) => c.x < state.wetCols && c.y === state.rows - 1);
+    const onBottom = cells.some((c) => isFoamWetCell(state, c.x, c.y) && c.y === state.rows - 1);
     if (!onBottom) return { ok: false, reason: '活物要贴湿区底边' };
   }
 
@@ -175,12 +199,11 @@ export function canPlace(
 export function willDampen(state: BasketState, def: ItemDef, x: number, y: number, rot: 0 | 1): boolean {
   if (def.zone !== 'dry') return false;
   const cells = occupiedCells({ defId: def.id, x, y, rot });
-  return cells.some((c) => c.x < state.wetCols && !(state.insulatedBottom && c.y === state.rows - 1));
+  return cells.some((c) => isFoamWetCell(state, c.x, c.y));
 }
 
 function isWetCell(state: BasketState, x: number, y: number): boolean {
-  if (x < state.wetCols) return true;
-  return !!(state.insulatedBottom && y === state.rows - 1);
+  return basketCellKind(state, x, y) === 'wet';
 }
 
 /** 干货先扫干区，湿货只认湿格。near 用来旋转后就近挪一格。 */
@@ -195,6 +218,7 @@ function sortedOrigins(
   for (let y = 0; y <= state.rows - h; y++) {
     for (let x = 0; x <= state.cols - w; x++) {
       const cells = occupiedCells({ defId: def.id, x, y, rot });
+      if (cells.some((c) => basketCellKind(state, c.x, c.y) === 'none')) continue;
       const wet = cells.filter((c) => isWetCell(state, c.x, c.y)).length;
       let score = wet;
       if (def.zone === 'wet') score = wet === cells.length ? 0 : 99;
@@ -358,6 +382,7 @@ export function emptyCellsHint(state: BasketState): Array<{ x: number; y: number
   const cells: Array<{ x: number; y: number }> = [];
   for (let y = 0; y < state.rows; y++) {
     for (let x = 0; x < state.cols; x++) {
+      if (basketCellKind(state, x, y) === 'none') continue;
       if (!occ.has(`${x},${y}`)) cells.push({ x, y });
     }
   }

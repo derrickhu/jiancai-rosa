@@ -14,6 +14,8 @@ import {
   displayName,
   getItem,
   itemsForStall,
+  pileToBasketDraft,
+  tryAutoPlace,
   visibleDefId,
   type PileItem,
   type RunEventLog,
@@ -31,7 +33,7 @@ import {
 } from '@/sim';
 import { layoutRouteMap, type RouteCell, type RouteMapView } from '@/gameobjects/market/MapView';
 import { AudioManager } from '@/core/AudioManager';
-import { FONT, HUD_ICON, drawRarityFrame, fillRect, makeHudButton, makeLabel, makeMuteButton, makePaperChip, makeSlicedButton, makeStatPill } from '@/utils/ui';
+import { FONT, HUD_ICON, fillRect, makeHudButton, makeLabel, makeMuteButton, makeNewFoodTag, makePaperChip, makeRarityFlare, makeSlicedButton, makeStallNameTag, makeStatPill } from '@/utils/ui';
 import { Platform } from '@/core/PlatformService';
 import { TweenManager, Ease } from '@/core/TweenManager';
 import { applyFit, fitCover, fitSpriteInBox, fitWidthBottom, gameTexture, isTextureFailed, isTextureReady, itemLookTexture, itemTexture, whenTextureReady } from '@/utils/assets';
@@ -73,6 +75,8 @@ export class MarketScene implements Scene {
   private _shownEvent = '';
   /** 按路线节点记初始堆量，同类摊的两张卡各算各的。 */
   private _crateMax: Record<string, number> = {};
+  /** 桌上已摆过的菜钉住坐标，后抽的只往空位放，不把先抽的挤走。 */
+  private _tablePins = new Map<string, Map<string, { rx: number; ry: number; w: number; h: number }>>();
 
   constructor() {
     this.container.addChild(this._bg);
@@ -89,6 +93,7 @@ export class MarketScene implements Scene {
     EventBus.on(EV.runExtracted, this._onExtract);
     this._bodyKey = '';
     this._crateMax = {};
+    this._tablePins.clear();
     this._walking = false;
     this._body.alpha = 1;
     this._shownEvent = RunManager.run?.lastEvent?.nodeId ?? '';
@@ -105,6 +110,7 @@ export class MarketScene implements Scene {
     this._body.alpha = 1;
     this._clearReveal();
     this._clearGodPick();
+    this._tablePins.clear();
     this._basket.close(true);
     this._event.close(true);
   }
@@ -443,10 +449,7 @@ export class MarketScene implements Scene {
     if (!isTextureReady(tex)) return;
 
     const wrap = new PIXI.Container();
-    const glow = new PIXI.Graphics();
-    glow.beginFill(0xF4EFE6, 0.3);
-    glow.drawCircle(0, 0, 110);
-    glow.endFill();
+    const glow = makeRarityFlare(getItem(gain.defId).rarity, 400);
     const sprite = new PIXI.Sprite(tex);
     sprite.anchor.set(0.5);
     fitSpriteInBox(sprite, 220, 220);
@@ -462,6 +465,11 @@ export class MarketScene implements Scene {
     name.anchor.set(0.5, 0);
     name.position.set(0, 118);
     wrap.addChild(glow, sprite, name);
+    if (gain.firstSeen && gain.quality !== 'rotten') {
+      const badge = makeNewFoodTag(26);
+      badge.position.set(0, -132);
+      wrap.addChild(badge);
+    }
     wrap.position.set(Game.designWidth / 2, Math.round(Game.logicHeight * 0.46));
     wrap.scale.set(0.2);
     wrap.alpha = 0;
@@ -494,6 +502,7 @@ export class MarketScene implements Scene {
             delay: 0.35,
             onComplete: () => {
               if (wrap.parent) wrap.parent.removeChild(wrap);
+              wrap.destroy({ children: true });
             },
           });
           return;
@@ -519,6 +528,7 @@ export class MarketScene implements Scene {
           delay: 0.5,
           onComplete: () => {
             if (wrap.parent) wrap.parent.removeChild(wrap);
+            wrap.destroy({ children: true });
           },
         });
       },
@@ -590,6 +600,11 @@ export class MarketScene implements Scene {
         fallback.endFill();
         wrap.addChild(fallback);
       }
+      if (spot.firstSeen) {
+        const badge = makeNewFoodTag(24);
+        badge.position.set(0, -72);
+        wrap.addChild(badge);
+      }
       wrap.on('pointertap', () => {
         if (play.picksLeft <= 0) {
           AudioManager.play('ui_deny');
@@ -642,16 +657,18 @@ export class MarketScene implements Scene {
     tip.position.set(16, Game.safeTop + 110);
     this._body.addChild(tip);
 
+    // 河沿蛋豆摊底图上沿有蛋筐/蛋托，桌上菜要比默认再靠下一截。
+    const tableTop = run.marketId === 'heyan' && stallId === 'egg' ? 0.36 : 0.26;
     const table = {
       x: 24,
-      y: Math.round(h * 0.26),
+      y: Math.round(h * tableTop),
       w: w - 48,
       h: 280,
     };
     this._stackPos = { x: Math.round(w * 0.5), y: Math.round(h * 0.60) };
     this._body.addChild(this._stallPile(nodeId, stallId, this._stackPos.x, this._stackPos.y, specialty));
 
-    const placed = this._packPile(RunManager.currentPile(), table);
+    const placed = this._packPile(nodeId, RunManager.currentPile(), table);
     placed.forEach((slot) => {
       const token = this._pileToken(slot.item, slot.x, slot.y, slot.w, slot.h);
       const flight = this._flying.get(slot.item.uid);
@@ -767,10 +784,8 @@ export class MarketScene implements Scene {
     if (flight.wrap) return;
     AudioManager.playGain();
 
-    const glow = new PIXI.Graphics();
-    glow.beginFill(0xF4EFE6, 0.28);
-    glow.drawCircle(0, 0, 96);
-    glow.endFill();
+    const glow = makeRarityFlare(getItem(defId).rarity, 280);
+    const flareA = glow.alpha;
     glow.alpha = 0;
 
     fitSpriteInBox(sprite, REVEAL_FACE, REVEAL_FACE);
@@ -797,13 +812,21 @@ export class MarketScene implements Scene {
     name.alpha = 0;
     name.position.set(0, -REVEAL_FACE * 0.48);
     wrap.addChild(name);
+    let badge: PIXI.Container | null = null;
+    if (item.firstSeen && item.quality !== 'rotten') {
+      badge = makeNewFoodTag(24);
+      badge.alpha = 0;
+      badge.position.set(0, -REVEAL_FACE * 0.48 - 26);
+      wrap.addChild(badge);
+    }
 
     const landX = slot.x + slot.w / 2;
     const landY = slot.y + slot.h / 2;
     const finish = () => this._landFlight(item.uid);
 
-    TweenManager.to({ target: glow, props: { alpha: 1 }, duration: 0.1 });
+    TweenManager.to({ target: glow, props: { alpha: flareA }, duration: 0.1 });
     TweenManager.to({ target: name, props: { alpha: 1 }, duration: 0.1 });
+    if (badge) TweenManager.to({ target: badge, props: { alpha: 1 }, duration: 0.1 });
     TweenManager.to({
       target: wrap.scale,
       props: { x: 1, y: 1 },
@@ -812,6 +835,7 @@ export class MarketScene implements Scene {
       onComplete: () => {
         TweenManager.to({ target: glow, props: { alpha: 0 }, duration: 0.16 });
         TweenManager.to({ target: name, props: { alpha: 0 }, duration: 0.16 });
+        if (badge) TweenManager.to({ target: badge, props: { alpha: 0 }, duration: 0.16 });
         TweenManager.to({
           target: wrap,
           props: { x: landX, y: landY },
@@ -849,8 +873,12 @@ export class MarketScene implements Scene {
     if (flight.wrap) {
       TweenManager.cancelTarget(flight.wrap);
       TweenManager.cancelTarget(flight.wrap.scale);
-      flight.wrap.children.forEach((child) => TweenManager.cancelTarget(child));
+      flight.wrap.children.forEach((child) => {
+        TweenManager.cancelTarget(child);
+        if (child instanceof PIXI.Container) TweenManager.cancelTarget(child.scale);
+      });
       if (flight.wrap.parent) flight.wrap.parent.removeChild(flight.wrap);
+      flight.wrap.destroy({ children: true });
     }
     if (flight.token && !flight.token.destroyed) flight.token.alpha = 1;
     this._flying.delete(uid);
@@ -883,27 +911,63 @@ export class MarketScene implements Scene {
     }
   }
 
+  private _pinsFor(nodeId: string): Map<string, { rx: number; ry: number; w: number; h: number }> {
+    let pins = this._tablePins.get(nodeId);
+    if (!pins) {
+      pins = new Map();
+      this._tablePins.set(nodeId, pins);
+    }
+    return pins;
+  }
+
   private _packPile(
+    nodeId: string,
     pile: PileItem[],
     table: { x: number; y: number; w: number; h: number },
   ): Array<{ item: PileItem; x: number; y: number; w: number; h: number }> {
     const unit = Math.min(112, Math.floor(table.w / 5.4));
-    let cx = table.x;
-    let cy = table.y;
-    let rowH = 0;
-    const out: Array<{ item: PileItem; x: number; y: number; w: number; h: number }> = [];
-    for (const item of pile) {
+    const gapX = 14;
+    const gapY = 16;
+    const pins = this._pinsFor(nodeId);
+    const live = new Set(pile.map((it) => it.uid));
+    for (const uid of [...pins.keys()]) {
+      if (!live.has(uid)) pins.delete(uid);
+    }
+
+    const sizeOf = (item: PileItem): { w: number; h: number } => {
       const def = getItem(visibleDefId(item));
-      const tw = Math.max(unit, def.w * unit);
-      const th = Math.max(unit, def.h * unit);
-      if (cx + tw > table.x + table.w && cx > table.x) {
-        cx = table.x;
-        cy += rowH + 16;
-        rowH = 0;
+      return { w: Math.max(unit, def.w * unit), h: Math.max(unit, def.h * unit) };
+    };
+
+    const out: Array<{ item: PileItem; x: number; y: number; w: number; h: number }> = [];
+    const pending: PileItem[] = [];
+    for (const item of pile) {
+      const size = sizeOf(item);
+      const pin = pins.get(item.uid);
+      if (pin && pin.w === size.w && pin.h === size.h) {
+        out.push({ item, x: table.x + pin.rx, y: table.y + pin.ry, w: pin.w, h: pin.h });
+      } else {
+        pending.push(item);
       }
-      out.push({ item, x: cx, y: cy, w: tw, h: th });
-      cx += tw + 14;
-      rowH = Math.max(rowH, th);
+    }
+
+    const appendSlot = (tw: number, th: number): { x: number; y: number; w: number; h: number } => {
+      if (!out.length) return { x: table.x, y: table.y, w: tw, h: th };
+      const lastY = Math.max(...out.map((slot) => slot.y));
+      const row = out.filter((slot) => slot.y === lastY);
+      const rowH = Math.max(...row.map((slot) => slot.h));
+      const cx = Math.max(...row.map((slot) => slot.x + slot.w + gapX));
+      if (cx + tw > table.x + table.w && row.length) {
+        return { x: table.x, y: lastY + rowH + gapY, w: tw, h: th };
+      }
+      return { x: cx, y: lastY, w: tw, h: th };
+    };
+
+    for (const item of pending) {
+      const size = sizeOf(item);
+      const slot = appendSlot(size.w, size.h);
+      out.push({ item, ...slot });
+      pins.set(item.uid, { rx: slot.x - table.x, ry: slot.y - table.y, w: slot.w, h: slot.h });
     }
     return out;
   }
@@ -919,31 +983,31 @@ export class MarketScene implements Scene {
     const root = new PIXI.Container();
     root.position.set(x, y);
 
-    // 摊上只给蓝紫货描边，绿货全描一遍会把整张桌子变成彩灯
-    if (def.rarity !== 'common') {
-      const halo = new PIXI.Graphics();
-      halo.beginFill(RARITY_STYLE[def.rarity].glow, 0.16);
-      halo.drawRoundedRect(2, 2, tw - 4, th - 4, 14);
-      halo.endFill();
-      drawRarityFrame(halo, 2, 2, tw - 4, th - 4, def.rarity, { radius: 14 });
-      halo.eventMode = 'none';
-      root.addChild(halo);
-    }
-
     const look = item.quality === 'rotten' ? 'rotten' : 'clean';
     const icon = new PIXI.Sprite(itemLookTexture(visibleDefId(item), look));
     whenTextureReady(`subpkg_images/${visibleDefId(item)}${look === 'clean' ? '' : `_${look}`}.png`, () => {
       if (this.container.parent) this._sync(true);
     });
-    fitSpriteInBox(icon, tw * 0.92, th * 0.92);
+    const rotten = item.quality === 'rotten';
+    const tag = makeStallNameTag(
+      RunManager.labelFor(item),
+      rotten ? 0xE07058 : RARITY_STYLE[def.rarity].float,
+      { maxWidth: Math.max(96, tw + 8) },
+    );
+    tag.anchor.set(0.5, 1);
+    const tagH = tag.height;
+    fitSpriteInBox(icon, tw * 0.86, Math.max(48, th - tagH - 4));
     icon.anchor.set(0.5);
-    icon.position.set(tw / 2, th / 2);
+    icon.position.set(tw / 2, (th - tagH) / 2);
     if (look === 'rotten' && !isTextureReady(gameTexture(`subpkg_images/${def.id}_rotten.png`))) icon.tint = 0x6B4A32;
     root.addChild(icon);
-    const tag = makeLabel(RunManager.labelFor(item), 16, item.quality === 'rotten' ? 0xE07A5F : 0xFFF8F0);
-    tag.anchor.set(0.5, 1);
-    tag.position.set(tw / 2, th - 2);
+    tag.position.set(tw / 2, th - 1);
     root.addChild(tag);
+    if (item.firstSeen && item.quality !== 'rotten') {
+      const badge = makeNewFoodTag(24);
+      badge.position.set(tw / 2, icon.y - icon.height * 0.5 + 6);
+      root.addChild(badge);
+    }
 
     root.eventMode = 'static';
     root.cursor = 'pointer';
@@ -954,21 +1018,25 @@ export class MarketScene implements Scene {
 
   private _takeItem(uid: string): void {
     const item = this._findPile(uid);
-    if (item?.defId === GOD_PICK.id && !item.inspected) {
+    if (!item) return;
+    if (item.defId === GOD_PICK.id && !item.inspected) {
       this._playGodPick(uid);
       return;
     }
-    const result = RunManager.take(uid);
-    if (result === 'rotten') {
+    if (item.quality === 'rotten') {
       AudioManager.play('ui_deny');
       Platform.showToast('坏了，捡不了');
-    } else if (result === 'need_space') {
+      return;
+    }
+    if (!tryAutoPlace(RunManager.basket, pileToBasketDraft(item))) {
       AudioManager.play('ui_deny');
       this._basket.open(uid);
-    } else if (result === 'placed' && item) {
-      if (item.quality === 'god' || item.defId === GOD_PICK.id) AudioManager.playGain();
-      else AudioManager.play('basket_place');
+      return;
     }
+    // 先出声再 take：take 会同步拆掉整桌，模拟器里后播的 InnerAudio 经常被吞。
+    if (item.quality === 'god' || item.defId === GOD_PICK.id) AudioManager.playGain();
+    else AudioManager.play('basket_place');
+    RunManager.take(uid);
   }
 
   private _playGodPick(uid: string): void {
@@ -1044,6 +1112,11 @@ export class MarketScene implements Scene {
     name.anchor.set(0.5);
     name.position.set(0, -108);
     wrap.addChild(name);
+    if (KitchenManager.discoverFood(GOD_PICK.id)) {
+      const badge = makeNewFoodTag(28);
+      badge.position.set(0, -228);
+      wrap.addChild(badge);
+    }
 
     const land = this._basketBtn
       ? { x: this._basketBtn.x + 62, y: this._basketBtn.y + 22 }
@@ -1104,7 +1177,7 @@ export class MarketScene implements Scene {
         child.children.forEach((grand) => TweenManager.cancelTarget(grand));
       }
     });
-    this._godLayer.removeChildren();
+    this._godLayer.removeChildren().forEach((child) => child.destroy({ children: true }));
     this._godPlaying = false;
   }
 

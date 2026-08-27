@@ -38,6 +38,7 @@ import {
   bagRows,
   fridgeOwnCap,
   foamWetCols,
+  foamWetRows,
   tableUnlockNext,
   layoutFor,
   saveGmLayout,
@@ -52,7 +53,7 @@ import { applyFit, fitSpriteInBox, fitWidthBottom, gameTexture, isTextureFailed,
 import { OutingCurtain } from '@/gameobjects/ui/OutingCurtain';
 import { destinationBootPaths } from '@/utils/outingAssets';
 
-type HotspotId = 'door' | 'basket' | 'recipe' | 'fridge' | 'foam' | 'wok' | 'board' | 'sell';
+type HotspotId = 'door' | 'basket' | 'fridge' | 'foam' | 'board';
 type UpgradePick = FurnId | 'house';
 
 const DRAG_SLOP = 14;
@@ -93,7 +94,7 @@ export class KitchenScene implements Scene {
   private _fit = { x: 0, y: 0, scale: 1, srcW: 1600, srcH: 900 };
   private _itemDrag: { id: FurnId; nx0: number; ny0: number } | null = null;
   private _gmPick: FurnId | null = null;
-  private _gmView: Record<FurnId, number> = { fridge: 0, cook: 0, table: 0, basket: 0, foam: 0, recipe: 0 };
+  private _gmView: Record<FurnId, number> = { fridge: 0, table: 0, basket: 0, foam: 0 };
   private _gmHouse = 0;
   private _furnRoots = new Map<FurnId, PIXI.Container>();
   private _upgradePick: UpgradePick | null = null;
@@ -919,8 +920,7 @@ export class KitchenScene implements Scene {
         return `${nextShown}级容量  ${fridgeOwnCap(lv)}→${fridgeOwnCap(lv + 1)}`;
       }
       if (id === 'foam') {
-        const rows = bagRows(furnLevel(save, 'basket'));
-        return `${nextShown}级容量  ${foamWetCols(lv)}×${rows}→${foamWetCols(lv + 1)}×${rows}`;
+        return `${nextShown}级容量  ${foamWetCols(lv)}×${foamWetRows(lv)}→${foamWetCols(lv + 1)}×${foamWetRows(lv + 1)}`;
       }
       if (id === 'basket') {
         return `${nextShown}级容量  ${bagDryCols(lv)}×${bagRows(lv)}→${bagDryCols(lv + 1)}×${bagRows(lv + 1)}`;
@@ -990,16 +990,8 @@ export class KitchenScene implements Scene {
       this._fridge.open();
       return;
     }
-    if (id === 'recipe') {
-      this._recipeBook.open();
-      return;
-    }
-    if (id === 'board' || id === 'wok') {
+    if (id === 'board') {
       this._cook.open();
-      return;
-    }
-    if (id === 'sell') {
-      this._fridge.open();
       return;
     }
     if (id === 'basket' || id === 'foam') {

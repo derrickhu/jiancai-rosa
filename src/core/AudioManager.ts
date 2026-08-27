@@ -18,6 +18,7 @@ export const SFX_IDS = [
   'fridge_open',
   'cook_sizzle',
   'cook_done',
+  'eat',
   'level_up',
   'upgrade',
   'recipe_paper',

@@ -1,21 +1,28 @@
 import * as PIXI from 'pixi.js';
 import { Game } from '@/core/Game';
 import {
+  RARITY_STYLE,
+  displayName,
+  GOD_PICK,
   fridgeItemBlurb,
   fridgeItemName,
   fridgeItemQty,
   fridgeItemUnitPrice,
   fridgeKind,
   getItem,
+  itemRarity,
+  rarityLabel,
   recipeById,
   recipeEatStamina,
+  recipeRarity,
   recipeSellPrice,
   sellPrice,
   type FridgeItem,
   type Quality,
+  type Rarity,
   type RecipeId,
 } from '@/sim';
-import { FONT, bindUiClick, fillRect, makeLabel, makeQtyMark } from '@/utils/ui';
+import { FONT, bindUiClick, drawRarityFrame, fillRect, makeLabel, makeQtyMark } from '@/utils/ui';
 import {
   dishTexture,
   fitSpriteInBox,
@@ -43,9 +50,12 @@ export interface ItemInspectView {
   kind: 'food' | 'dish';
   defId: string;
   quality: Quality;
+  rarity: Rarity;
   unitPrice: number;
   maxQty: number;
   eatStamina?: number;
+  /** 占格、干湿等，跟在品质后面。 */
+  note?: string;
 }
 
 export function inspectFromFridge(it: FridgeItem): ItemInspectView {
@@ -57,6 +67,7 @@ export function inspectFromFridge(it: FridgeItem): ItemInspectView {
     kind: dish ? 'dish' : 'food',
     defId: it.defId,
     quality: it.quality,
+    rarity: dish ? recipeRarity(it.defId as RecipeId) : itemRarity(it.defId),
     unitPrice: fridgeItemUnitPrice(it),
     maxQty: fridgeItemQty(it),
     eatStamina: recipe ? recipeEatStamina(recipe) : undefined,
@@ -72,6 +83,7 @@ export function inspectFromRecipe(id: RecipeId): ItemInspectView | null {
     kind: 'dish',
     defId: id,
     quality: 'fresh',
+    rarity: recipe.rarity,
     unitPrice: recipeSellPrice(id),
     maxQty: 1,
     eatStamina: recipeEatStamina(recipe),
@@ -79,16 +91,31 @@ export function inspectFromRecipe(id: RecipeId): ItemInspectView | null {
 }
 
 export function inspectFromItem(id: string): ItemInspectView | null {
+  return inspectFromFood({ defId: id, quality: 'common', inspected: true });
+}
+
+export function inspectFromFood(opts: {
+  defId: string;
+  quality: Quality;
+  inspected?: boolean;
+}): ItemInspectView | null {
   try {
-    const def = getItem(id);
+    const inspected = opts.inspected ?? true;
+    const lookId = opts.defId === GOD_PICK.id && !inspected ? 'smallfish' : opts.defId;
+    const def = getItem(opts.defId);
+    const look = getItem(lookId);
     return {
-      title: def.name,
-      blurb: def.blurb,
+      title: displayName(opts.defId, inspected, opts.quality),
+      blurb: opts.quality === 'rotten'
+        ? (def.blurbRotten ?? '放久了，连自己都认不出自己。')
+        : look.blurb,
       kind: 'food',
-      defId: id,
-      quality: 'common',
-      unitPrice: sellPrice(id, 'common', true),
+      defId: lookId,
+      quality: opts.quality,
+      rarity: look.rarity,
+      unitPrice: sellPrice(opts.defId, opts.quality, inspected),
       maxQty: 1,
+      note: `${def.zone === 'wet' ? '湿货' : '干货'} ${def.w}×${def.h}`,
     };
   } catch {
     return null;
@@ -141,10 +168,10 @@ export function makeItemInspectCard(opts: {
   const iconBox = 88;
   const iconHost = new PIXI.Container();
   const iconBg = new PIXI.Graphics();
-  iconBg.lineStyle(2, INK, 0.25);
   iconBg.beginFill(0xE8DFD0, 0.7);
   iconBg.drawRoundedRect(0, 0, iconBox, iconBox, 16);
   iconBg.endFill();
+  drawRarityFrame(iconBg, 2, 2, iconBox - 4, iconBox - 4, view.rarity, { radius: 16 });
   iconHost.addChild(iconBg);
   if (view.kind === 'dish') {
     const path = `subpkg_images/dish_${view.defId}.png`;
@@ -172,14 +199,22 @@ export function makeItemInspectCard(opts: {
   card.addChild(iconHost);
 
   const name = makeLabel(view.title, 28, INK, { fontWeight: '700' });
-  name.position.set(132, 36);
+  name.position.set(132, 28);
   card.addChild(name);
+  const grade = makeLabel(
+    view.note ? `${rarityLabel(view.rarity)} · ${view.note}` : rarityLabel(view.rarity),
+    20,
+    RARITY_STYLE[view.rarity].ink,
+    { fontWeight: '700' },
+  );
+  grade.position.set(132, 64);
+  card.addChild(grade);
 
   const unit = view.unitPrice;
   const goldN = unit * qty;
   if (unit > 0) {
     const gold = makeLabel(`售价  ${unit}`, 22, TERRACOTTA, { fontWeight: '700' });
-    gold.position.set(132, 78);
+    gold.position.set(132, 90);
     card.addChild(gold);
     whenTextureReady(COIN, () => opts.onReady?.());
     const coinTex = gameTexture(COIN);
@@ -187,13 +222,13 @@ export function makeItemInspectCard(opts: {
       const coin = new PIXI.Sprite(coinTex);
       fitSpriteInBox(coin, 32, 32);
       coin.anchor.set(0, 0.5);
-      coin.position.set(132 + gold.width + 6, 90);
+      coin.position.set(132 + gold.width + 6, 102);
       coin.eventMode = 'none';
       card.addChild(coin);
     }
   } else {
     const gold = makeLabel('坏了，卖不掉', 22, MUTED, { fontWeight: '700' });
-    gold.position.set(132, 78);
+    gold.position.set(132, 90);
     card.addChild(gold);
   }
 

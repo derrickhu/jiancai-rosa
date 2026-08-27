@@ -30,9 +30,15 @@ export const MARKET_PLAN: Record<MarketId, MarketPlan> = {
 
 /**
  * 油纸不进公共权重。每局先掷这一下，中了才放一张。
- * 大约七八进才碰上一次。
+ * 巷口更松：这是第一次见油纸的地方。从没在本场捡过的，那局保底放一张。
  */
-export const RECIPE_VISIT_CHANCE = 0.12;
+export const RECIPE_VISIT_CHANCE: Record<MarketId, number> = {
+  xiangko: 0.7,
+  heyan: 0.5,
+  shanwu: 0.42,
+  jiangbian: 0.38,
+  laocheng: 0.36,
+};
 
 /** 填非保底层用。公共权重池；每场独特内容靠脚本节拍另挂，不靠这张表。 */
 export const CARD_WEIGHTS: Record<MarketId, Array<[CardKind, number]>> = {
@@ -88,15 +94,22 @@ export const STALL_WEIGHTS: Record<MarketId, Array<[StallId, number]>> = {
 };
 
 /**
- * 巷口篮子小，摊上不能铺一堆。没写的场走 STALLS 默认件数。
+ * 巷口少铺；河沿只比巷口多 1 件上限。没写的场走 STALLS 默认件数。
  * 收费摊再另加 paystallPileBonus。
  */
 const MARKET_STALL_COUNT: Partial<Record<MarketId, Partial<Record<StallId, [number, number]>>>> = {
   xiangko: {
-    leaf: [2, 3],
-    root: [2, 3],
-    egg: [2, 3],
-    fish: [1, 2],
+    leaf: [3, 4],
+    root: [3, 4],
+    egg: [3, 4],
+    fish: [2, 3],
+  },
+  heyan: {
+    leaf: [3, 5],
+    root: [3, 5],
+    egg: [3, 5],
+    fish: [2, 4],
+    meat: [3, 4],
   },
 };
 
@@ -106,7 +119,7 @@ export function stallPileRange(marketId: MarketId, stall: StallId): [number, num
 
 /** 收费摊比普通摊多留一点，巷口只多 1 件，免得一摊就塞满塑料袋。 */
 export function paystallPileBonus(marketId: MarketId): number {
-  return marketId === 'xiangko' ? 1 : 2;
+  return marketId === 'xiangko' || marketId === 'heyan' ? 1 : 2;
 }
 
 /**

@@ -29,12 +29,14 @@ import {
   houseLevel,
   ingestExtract,
   noteDex,
+  discoverFood,
   regenStamina,
   sellItems,
   selectVehicle,
   spendStamina,
   buyVehicle as purchaseVehicle,
   todayKey,
+  msUntilLocalMidnight,
   canVisitSpecial as saveCanVisitSpecial,
   markSpecialVisit as saveMarkSpecialVisit,
   specialVisitCount as saveSpecialVisitCount,
@@ -42,17 +44,37 @@ import {
   type RecipeId,
 } from '@/sim/kitchen';
 import { getSpecialMarket, type SpecialMarketId } from '@/sim/specialMarkets';
-import { foamWetCols, outingDryCells } from '@/sim/basket';
+import { foamWetCols, foamWetRows, outingDryCells } from '@/sim/basket';
 import { furnLabel, houseLabel, type FurnId } from '@/sim/kitchenLayout';
 import type { CardKind } from '@/sim/marketEvents';
 import type { MarketId } from '@/sim/destinations';
 import { vehicleById, type VehicleId } from '@/sim/vehicles';
 import type { ExtractedItem } from '@/sim/run';
+import type { Quality } from '@/sim/items';
 
 class KitchenManagerClass {
   private _cookFx: { xp: number; levels: number } | null = null;
   private _unlockQueue: RecipeId[] = [];
+  private _dayKey = todayKey();
+  private _dayTimer: ReturnType<typeof setTimeout> | null = null;
   pendingHaul: ExtractedItem[] | null = null;
+
+  constructor() {
+    this._armDayRollover();
+  }
+
+  /** 本地 0 点换日：特殊市场看广告次数当场清零。 */
+  private _armDayRollover(): void {
+    if (this._dayTimer) clearTimeout(this._dayTimer);
+    this._dayTimer = setTimeout(() => {
+      const key = todayKey();
+      if (key !== this._dayKey) {
+        this._dayKey = key;
+        this.emit();
+      }
+      this._armDayRollover();
+    }, msUntilLocalMidnight());
+  }
 
   get save(): KitchenSave {
     return SaveManager.data;
@@ -187,7 +209,7 @@ class KitchenManagerClass {
     }
     SaveManager.replace(save);
     this.emit();
-    AudioManager.play('cook_done');
+    AudioManager.play('eat');
     Platform.showToast(`吃了${name}，体力 +${stamina ?? 1}`, 'success');
     return true;
   }
@@ -245,6 +267,14 @@ class KitchenManagerClass {
     if ((levels ?? 0) > 0) Platform.showToast(`${name} 出锅，厨艺升到 ${save.level} 级`, 'success');
     else if ((xp ?? 0) > 0) Platform.showToast(`${name} 出锅，+${xp} 经验`, 'success');
     else Platform.showToast(`${name} 出锅，放进冰箱了`, 'success');
+  }
+
+  discoverFood(defId: string, quality?: Quality): boolean {
+    const next = discoverFood(this.save, defId, quality);
+    if (!next.first) return false;
+    SaveManager.replace(next.save);
+    this.emit();
+    return true;
   }
 
   findRecipe(id: RecipeId): void {
@@ -320,7 +350,7 @@ class KitchenManagerClass {
     const lv = furnLevel(save, id);
     if (id === 'fridge') Platform.showToast(`冰箱 ${lv + 1} 级 · 容量 ${fridgeOwnCap(lv)}`, 'success');
     else if (id === 'foam') {
-      Platform.showToast(`${furnLabel(id, lv)} · 出门湿区 ${foamWetCols(lv)} 列`, 'success');
+      Platform.showToast(`${furnLabel(id, lv)} · 出门湿区 ${foamWetCols(lv)}×${foamWetRows(lv)}`, 'success');
     }
     else if (id === 'basket') {
       Platform.showToast(`${furnLabel(id, lv)} · 出门干区 ${outingDryCells(lv)} 格`, 'success');

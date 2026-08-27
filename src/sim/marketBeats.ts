@@ -215,7 +215,7 @@ const heyanDock: BeatFn = (ctx) => {
           cardArt: 'subpkg_images/market_card_heyan_bank.jpg',
           encounter: {
             type: 'gather',
-            pool: ['lotus', 'water_spinach', 'celery'],
+            pool: ['lotus', 'water_spinach', 'celery', 'chive'],
             picks: 3,
             bg: 'subpkg_images/stall_rummage_heyan_bank.jpg',
           },
@@ -263,7 +263,7 @@ const heyanBank: BeatFn = (ctx) => {
     cardArt: 'subpkg_images/market_card_heyan_bank.jpg',
     encounter: {
       type: 'gather',
-      pool: ['water_spinach', 'celery', 'lotus'],
+      pool: ['water_spinach', 'celery', 'lotus', 'chive'],
       picks: 3,
       bg: 'subpkg_images/stall_rummage_heyan_bank.jpg',
     },

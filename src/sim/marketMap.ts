@@ -56,8 +56,8 @@ export interface MarketMap {
   scenes: Record<string, RouteScene>;
 }
 
-/** 这几种卡要走过一次才明牌，之前只显示背面。 */
-const MYSTERY: CardKind[] = ['freebie', 'deadend', 'empty', 'favor', 'recipe'];
+/** 这几种卡要走过一次才明牌，之前只显示背面。油纸明牌，免得当成问号绕开。 */
+const MYSTERY: CardKind[] = ['freebie', 'deadend', 'empty', 'favor'];
 
 export function isMysteryCard(kind: CardKind): boolean {
   return MYSTERY.includes(kind);
@@ -134,7 +134,10 @@ export function layerCount(marketId: MarketId): number {
  * 先铺保底摊位层，再按权重填其余层，最后按车道连边。
  * 反过来做（先随机再补保底）会出现整局撞不到蛋豆摊的局。
  */
-export function buildMarketMap(marketId: MarketId, seed: number, opts?: { allowRecipe?: boolean }): MarketMap {
+export function buildMarketMap(marketId: MarketId, seed: number, opts?: {
+  allowRecipe?: boolean;
+  forceRecipe?: boolean;
+}): MarketMap {
   const plan = MARKET_PLAN[marketId];
   const rng = mulberry32(seed);
   const total = layerCount(marketId);
@@ -222,7 +225,7 @@ export function buildMarketMap(marketId: MarketId, seed: number, opts?: { allowR
     main: { id: 'main', bg: MARKET_ART[marketId].routeBg, layers },
   };
   applyMarketBeats(marketId, nodes, layers, scenes, rng);
-  placeVisitRecipe(nodes, layers, rng, opts?.allowRecipe !== false);
+  placeVisitRecipe(marketId, nodes, layers, rng, opts?.allowRecipe !== false, !!opts?.forceRecipe);
 
   return { marketId, seed, nodes, layers, scenes };
 }
@@ -319,14 +322,17 @@ export function linkSceneLayers(rng: Rng, nodes: Record<string, MapNode>, layers
   linkLayers(rng, nodes, layers);
 }
 
-const RECIPE_HOST: CardKind[] = ['freebie', 'empty', 'favor', 'deadend'];
+const RECIPE_HOST_BEST: CardKind[] = ['freebie', 'empty', 'favor'];
+const RECIPE_HOST_FALLBACK: CardKind[] = ['deadend'];
 
 /** 一局最多一张油纸。先掷整局概率，再挑一张主路事件卡换掉。 */
 function placeVisitRecipe(
+  marketId: MarketId,
   nodes: Record<string, MapNode>,
   layers: string[][],
   rng: Rng,
   allow: boolean,
+  force = false,
 ): void {
   const extra = Object.values(nodes).filter((n) => n.kind === 'recipe').slice(allow ? 1 : 0);
   for (const node of extra) {
@@ -334,13 +340,16 @@ function placeVisitRecipe(
     node.encounter = encounterFromKind(node);
   }
   if (!allow || Object.values(nodes).some((n) => n.kind === 'recipe')) return;
-  if (rng() >= RECIPE_VISIT_CHANCE) return;
-  const hosts = layers.flatMap((ids, layer) => (
+  if (!force && rng() >= RECIPE_VISIT_CHANCE[marketId]) return;
+  const pickHosts = (kinds: readonly CardKind[]) => layers.flatMap((ids, layer) => (
     layer === 0 ? [] : ids.filter((id) => {
       const n = nodes[id];
-      return (!n.sceneId || n.sceneId === 'main') && RECIPE_HOST.includes(n.kind);
+      return (!n.sceneId || n.sceneId === 'main') && kinds.includes(n.kind);
     })
   ));
+  const hosts = pickHosts(RECIPE_HOST_BEST).length
+    ? pickHosts(RECIPE_HOST_BEST)
+    : pickHosts(RECIPE_HOST_FALLBACK);
   const id = hosts.length ? rngPick(rng, hosts) : undefined;
   if (!id) return;
   const old = nodes[id];

@@ -1,5 +1,7 @@
 import * as PIXI from 'pixi.js';
 import { Game } from '@/core/Game';
+import { EventBus } from '@/core/EventBus';
+import { EV } from '@/config/events';
 import { SceneManager, type Scene } from '@/core/SceneManager';
 import { Platform } from '@/core/PlatformService';
 import { KitchenManager } from '@/managers/KitchenManager';
@@ -70,13 +72,19 @@ export class DestinationScene implements Scene {
   onEnter(): void {
     this._browse = KitchenManager.save.vehicle;
     this._scroller.enable();
+    EventBus.on(EV.kitchenChanged, this._onKitchen);
     AudioManager.playBgm('outing');
     this.relayout();
   }
 
   onExit(): void {
+    EventBus.off(EV.kitchenChanged, this._onKitchen);
     this._scroller.disable();
   }
+
+  private _onKitchen = (): void => {
+    if (this.container.parent) this.relayout();
+  };
 
   relayout(): void {
     this._ui.removeChildren();
@@ -640,7 +648,7 @@ export class DestinationScene implements Scene {
     }
     if (!KitchenManager.canVisitSpecial(market.id)) {
       AudioManager.play('ui_deny');
-      Platform.showToast('明天再来');
+      Platform.showToast('今天次数用完了，0点重置');
       return;
     }
     if (!KitchenManager.fridgeAcceptsOuting()) {
@@ -651,7 +659,7 @@ export class DestinationScene implements Scene {
     if (OutingCurtain.busy) return;
     Platform.showRewardedVideo(() => {
       if (!KitchenManager.canVisitSpecial(market.id)) {
-        Platform.showToast('明天再来');
+        Platform.showToast('今天次数用完了，0点重置');
         return;
       }
       KitchenManager.markSpecialVisit(market.id);

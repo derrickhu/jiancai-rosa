@@ -12,6 +12,7 @@ minigame/index.html
 .tmp_loading/
 .tmp_mapcheck/
 .tmp_art/
+.tmp_dish/
 
 .env
 .env.*

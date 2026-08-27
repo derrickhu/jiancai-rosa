@@ -147,6 +147,10 @@
       },
       {
         "type": "file",
+        "value": "subpkg_audio/eat.mp3"
+      },
+      {
+        "type": "file",
         "value": "subpkg_audio/event_pop.mp3"
       },
       {
@@ -319,6 +323,10 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/dish_cilantro_egg.png"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/dish_clam_soup.png"
       },
       {
@@ -403,6 +411,10 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/dish_mixed_fish_pot.png"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/dish_mushroom_bokchoy.png"
       },
       {
@@ -419,15 +431,15 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/dish_onion_wood_ear.png"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/dish_oyster_egg.png"
       },
       {
         "type": "file",
         "value": "subpkg_images/dish_pan_hairtail.png"
-      },
-      {
-        "type": "file",
-        "value": "subpkg_images/dish_pan_smallfish.png"
       },
       {
         "type": "file",
