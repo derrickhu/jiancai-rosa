@@ -22,7 +22,7 @@ export const VEHICLES: VehicleDef[] = [
     name: '走路',
     blurb: '家门口转转，走到哪算哪。',
     cost: 0,
-    markets: ['xiangko', 'heyan'],
+    markets: ['xiangko', 'heyan', 'qiaotou'],
     art: 'subpkg_images/vehicle_walk.png',
   },
   {
@@ -30,15 +30,15 @@ export const VEHICLES: VehicleDef[] = [
     name: '自行车',
     blurb: '翻过那道坡，江边也够得着。',
     cost: 180,
-    markets: ['shanwu', 'jiangbian'],
+    markets: ['shanwu', 'jiangbian', 'nanshi'],
     art: 'subpkg_images/vehicle_bike.png',
   },
   {
     id: 'ebike',
     name: '电动车',
-    blurb: '老城那一趟，走路要散架。',
+    blurb: '老城、渡口和山珍行，走路要散架。',
     cost: 420,
-    markets: ['laocheng'],
+    markets: ['laocheng', 'dukou', 'shanzhen'],
     art: 'subpkg_images/vehicle_ebike.png',
   },
   {

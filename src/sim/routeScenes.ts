@@ -48,6 +48,14 @@ const SCENES: Partial<Record<MarketId, Record<string, RouteSceneDef>>> = {
       enterNote: '下到河埠，缆绳还湿着。',
     },
   },
+  qiaotou: {
+    main: {
+      id: 'main',
+      title: '桥头早市',
+      bg: MARKET_ART.qiaotou.routeBg,
+      enterNote: '回到石桥大路。',
+    },
+  },
   jiangbian: {
     main: {
       id: 'main',

@@ -1,6 +1,6 @@
 import type { MarketId } from './destinations';
 import { encounterFromKind, nodeEncounter, type Encounter } from './encounters';
-import { STALLS, stallsForMarket, type StallId } from './items';
+import { stallDisplayName, stallsForMarket, type StallId } from './items';
 import {
   CARD_WEIGHTS,
   EXTRA_LAYERS,
@@ -63,11 +63,6 @@ export function isMysteryCard(kind: CardKind): boolean {
   return MYSTERY.includes(kind);
 }
 
-const STALL_NAME: Record<StallId, string> = STALLS.reduce(
-  (acc, s) => Object.assign(acc, { [s.id]: s.name }),
-  {} as Record<StallId, string>,
-);
-
 const CARD_NAME: Record<CardKind, string> = {
   stall: '摊位',
   paystall: '货足的摊',
@@ -100,14 +95,17 @@ const CARD_HINT: Record<CardKind, string> = {
   gate: '要身上有信物',
 };
 
-export function cardName(node: MapNode, revealed: boolean): string {
+export function cardName(node: MapNode, revealed: boolean, marketId?: MarketId): string {
   if (!revealed && isMysteryCard(node.kind)) return '？';
   if (node.title) return node.title;
-  if (node.kind === 'stall' && node.stall) return STALL_NAME[node.stall];
+  if (node.kind === 'stall' && node.stall) return stallDisplayName(marketId, node.stall);
   if (node.kind === 'stall' && node.encounter && 'specialty' in node.encounter && node.encounter.specialty) {
     return getSpecialty(node.encounter.specialty)?.name ?? '专属摊';
   }
-  if (node.kind === 'paystall' && node.stall) return `${STALL_NAME[node.stall].replace(/摊$/, '')}·好货`;
+  if (node.kind === 'paystall' && node.stall) {
+    const name = stallDisplayName(marketId, node.stall);
+    return `${name.replace(/[摊担]$/, '')}·好货`;
+  }
   return CARD_NAME[node.kind];
 }
 

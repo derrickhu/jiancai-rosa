@@ -227,6 +227,10 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/dest_dukou.jpg"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/dest_heyan.jpg"
       },
       {
@@ -239,7 +243,15 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/dest_nanshi.jpg"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/dest_oldtown_dry.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dest_qiaotou.jpg"
       },
       {
         "type": "file",
@@ -248,6 +260,10 @@
       {
         "type": "file",
         "value": "subpkg_images/dest_shanwu.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dest_shanzhen.jpg"
       },
       {
         "type": "file",
@@ -304,6 +320,10 @@
       {
         "type": "file",
         "value": "subpkg_images/dish_carrot_mushroom.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_celery_beef.png"
       },
       {
         "type": "file",
@@ -399,11 +419,19 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/dish_lotus_shrimp_box.png"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/dish_maoxuewang.png"
       },
       {
         "type": "file",
         "value": "subpkg_images/dish_matsutake_chicken.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_melon_cup.png"
       },
       {
         "type": "file",
@@ -459,6 +487,10 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/dish_qianlong_cabbage.png"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/dish_radish_ribs.png"
       },
       {
@@ -488,6 +520,10 @@
       {
         "type": "file",
         "value": "subpkg_images/dish_spinach_egg_soup.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_spinach_ham.png"
       },
       {
         "type": "file",
@@ -563,6 +599,10 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/dish_yuxiang_pork.png"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/market_card_heyan_bank.jpg"
       },
       {
@@ -623,6 +663,14 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/market_card_nanshi_meat.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_card_qiaotou_meat.jpg"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/market_card_shanwu_cave.jpg"
       },
       {
@@ -643,7 +691,15 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/market_card_shanzhen_meat.jpg"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/market_cards.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_cards_dukou.jpg"
       },
       {
         "type": "file",
@@ -659,7 +715,19 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/market_cards_nanshi.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_cards_qiaotou.jpg"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/market_cards_shanwu.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_cards_shanzhen.jpg"
       },
       {
         "type": "file",
@@ -668,6 +736,10 @@
       {
         "type": "file",
         "value": "subpkg_images/market_route_1.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_route_dukou.jpg"
       },
       {
         "type": "file",
@@ -703,6 +775,14 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/market_route_nanshi.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_route_qiaotou.jpg"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/market_route_shanwu.jpg"
       },
       {
@@ -712,6 +792,10 @@
       {
         "type": "file",
         "value": "subpkg_images/market_route_shanwu_trail.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_route_shanzhen.jpg"
       },
       {
         "type": "file",
@@ -776,6 +860,14 @@
       {
         "type": "file",
         "value": "subpkg_images/special_spice_jar_lid.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_dukou_egg.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_dukou_fish.png"
       },
       {
         "type": "file",
@@ -863,6 +955,38 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/stall_pile_nanshi_egg.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_nanshi_leaf.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_nanshi_meat.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_qiaotou_egg.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_qiaotou_fish.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_qiaotou_leaf.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_qiaotou_meat.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_qiaotou_root.png"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/stall_pile_root.png"
       },
       {
@@ -884,6 +1008,38 @@
       {
         "type": "file",
         "value": "subpkg_images/stall_pile_shanwu_root.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_shanzhen_egg.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_shanzhen_fish.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_shanzhen_leaf.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_shanzhen_meat.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_shanzhen_root.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_shanzhen_treasure.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_dukou_egg.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_dukou_fish.jpg"
       },
       {
         "type": "file",
@@ -979,6 +1135,38 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/stall_rummage_nanshi_egg.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_nanshi_leaf.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_nanshi_meat.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_qiaotou_egg.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_qiaotou_fish.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_qiaotou_leaf.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_qiaotou_meat.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_qiaotou_root.jpg"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/stall_rummage_root.jpg"
       },
       {
@@ -1004,6 +1192,30 @@
       {
         "type": "file",
         "value": "subpkg_images/stall_rummage_shanwu_root.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_shanzhen_egg.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_shanzhen_fish.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_shanzhen_leaf.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_shanzhen_meat.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_shanzhen_root.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_shanzhen_treasure.jpg"
       }
     ],
     "include": []

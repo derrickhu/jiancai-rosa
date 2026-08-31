@@ -3,7 +3,7 @@ import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { KitchenManager } from '@/managers/KitchenManager';
-import { RECIPES, recipeUnlockView, unlockedRecipes } from '@/sim';
+import { listedRecipes, recipeUnlockView, unlockedRecipes } from '@/sim';
 import { fillRect, makeButton, makeLabel } from '@/utils/ui';
 import { VerticalScroller } from '@/utils/scroll';
 
@@ -59,7 +59,7 @@ export class RecipeBookPanel extends PIXI.Container {
     const view = recipeUnlockView(KitchenManager.save);
     const known = unlockedRecipes(view);
     const cooked = new Set(KitchenManager.save.recipesCooked);
-    const title = makeLabel(`菜谱  已会 ${known.length}/${RECIPES.length}`, 30, 0xF4EFE6);
+    const title = makeLabel(`菜谱  已会 ${known.length}/${listedRecipes().length}`, 30, 0xF4EFE6);
     title.position.set(54, Game.safeTop + 40);
     this._root.addChild(title);
     const hint = makeLabel('没解锁的不写名字。做过的会打个勾。', 20, 0xC9B8A4);

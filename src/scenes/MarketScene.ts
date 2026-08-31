@@ -11,6 +11,7 @@ import { ensureRecipeUnlockPanel } from '@/gameobjects/ui/RecipeUnlockPanel';
 import {
   GOD_PICK,
   STALLS,
+  stallDisplayName,
   displayName,
   getItem,
   itemsForStall,
@@ -284,6 +285,7 @@ export class MarketScene implements Scene {
       showRoot: !blocked,
       atlas: art.cardAtlas,
       meatCard: art.meatCard,
+      marketId: run.marketId,
       onReady: redraw,
     });
     this._mapView = view;
@@ -649,7 +651,10 @@ export class MarketScene implements Scene {
     back.on('pointertap', () => RunManager.leaveStall());
     this._body.addChild(back);
 
-    const name = makePaperChip(rummageTitle(node) || stall?.name || node.title || '摊', { size: 24 });
+    const name = makePaperChip(
+      rummageTitle(node) || (stallId ? stallDisplayName(run.marketId, stallId) : stall?.name) || node.title || '摊',
+      { size: 24 },
+    );
     name.position.set(168, Game.safeTop + 58);
     this._body.addChild(name);
 

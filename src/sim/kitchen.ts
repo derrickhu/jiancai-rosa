@@ -34,6 +34,8 @@ export {
   recipeById,
   recipeEatStamina,
   recipeSellPrice,
+  listedRecipes,
+  HIDDEN_RECIPE_IDS,
   START_RECIPES,
   TABLE_UNLOCKS,
   COOK_UNLOCK_AT,
@@ -55,9 +57,9 @@ import {
 
 export const STAMINA_MAX = 5;
 export const STAMINA_REGEN_MS = 30 * 60 * 1000;
-export const FRIDGE_BASE = 12;
+export const FRIDGE_BASE = 18;
 /** 冰箱内部 0–9 级的格数。回家后干湿饭菜都进这些格，不分仓。每升一级 +6。 */
-export const FRIDGE_CAP = [12, 18, 24, 30, 36, 42, 48, 54, 60, 66];
+export const FRIDGE_CAP = [18, 24, 30, 36, 42, 48, 54, 60, 66, 72];
 /** 同一格里同种食材/饭菜最多叠多少份。多了另开一格。 */
 export const FRIDGE_STACK = 10;
 export const UPGRADE_BASKET_I = 80;
@@ -633,9 +635,9 @@ export const HOUSE_COOK_NEED = [4, 8];
 export const COOK_LEVEL_MAX = 15;
 /**
  * COOK_XP_TO_NEXT[当前厨艺] = 升到下一级所需。
- * 大约是旧表的 3 倍：做菜给的经验没变，升一级要炒更久，才跟得上家具金币节奏。
+ * 前 8 级维持原曲线；9→15 削平，避免最后两场卡在单级 70 道上品上。
  */
-export const COOK_XP_TO_NEXT = [0, 60, 110, 180, 250, 340, 450, 580, 720, 900, 1120, 1350, 1620, 1930, 2250];
+export const COOK_XP_TO_NEXT = [0, 60, 110, 180, 250, 340, 450, 580, 720, 820, 940, 1060, 1180, 1300, 1420];
 const COOK_XP_MAXED = COOK_XP_TO_NEXT[COOK_LEVEL_MAX - 1];
 
 /** 烹饪台从当前内部等级再升一级时新解锁几本。 */
@@ -645,7 +647,7 @@ export function tableUnlockNext(fromLevel: number): number {
 
 /** 升到下一级家具所需厨艺。下标是当前内部等级 0–8。 */
 const FURN_COOK_NEED: Record<FurnId, number[]> = {
-  table: [1, 1, 3, 4, 6, 7, 8, 10, 12],
+  table: [1, 3, 3, 5, 7, 9, 11, 12, 13],
   fridge: [1, 1, 3, 4, 5, 6, 7, 9, 11],
   basket: [1, 2, 3, 4, 5, 6, 7, 9, 11],
   foam: [1, 1, 3, 4, 5, 6, 7, 9, 11],

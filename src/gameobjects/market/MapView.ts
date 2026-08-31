@@ -1,5 +1,5 @@
 import * as PIXI from 'pixi.js';
-import { LANES, cardHint, cardName, isMysteryCard, type CardKind, type StallId } from '@/sim';
+import { LANES, cardHint, cardName, isMysteryCard, type CardKind, type MarketId, type StallId } from '@/sim';
 import type { RouteOption } from '@/managers/RunManager';
 import { fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from '@/utils/assets';
 import { HUD_ICON, makeLabel } from '@/utils/ui';
@@ -127,6 +127,7 @@ export function makeRouteCard(opts: {
   atlas?: string;
   /** 有肉摊的菜场用独立卡面，不再借用蛋豆格。 */
   meatCard?: string;
+  marketId?: MarketId;
   onReady?: () => void;
   onTap?: () => void;
 }): PIXI.Container {
@@ -193,7 +194,7 @@ export function makeRouteCard(opts: {
 
   const showFee = option.revealed && option.fee > 0;
   const titleSize = Math.round(width * (mode === 'far' ? 0.15 : showFee ? 0.108 : 0.125));
-  const title = makeLabel(cardName(option.node, option.revealed), titleSize, 0xF6EDE0, {
+  const title = makeLabel(cardName(option.node, option.revealed, opts.marketId), titleSize, 0xF6EDE0, {
     fontWeight: '700',
     dropShadow: true,
     dropShadowColor: 0x2A2018,
@@ -324,6 +325,7 @@ export function layoutRouteMap(opts: {
   showRoot?: boolean;
   atlas?: string;
   meatCard?: string;
+  marketId?: MarketId;
   onReady?: () => void;
 }): RouteMapView {
   const root = new PIXI.Container();
@@ -414,6 +416,7 @@ export function layoutRouteMap(opts: {
         mode: ROW_MODES[i],
         atlas: opts.atlas,
         meatCard: opts.meatCard,
+        marketId: opts.marketId,
         onReady: opts.onReady,
         onTap: () => opts.onPick(cell.option.node.id),
       });

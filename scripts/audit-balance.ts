@@ -13,9 +13,11 @@ import {
   tallyNeeds,
   findDuplicateIngredientSets,
   ingredientSetKey,
+  HIDDEN_RECIPE_IDS,
+  listedRecipes,
 } from '../src/sim/recipes';
 import { MARKETS } from '../src/sim/destinations';
-import { rarityLabel, type Rarity } from '../src/sim/rarity';
+import { RARITY_ORDER, rarityLabel, type Rarity } from '../src/sim/rarity';
 let problems = 0;
 const bad = (msg: string) => {
   problems += 1;
@@ -23,7 +25,7 @@ const bad = (msg: string) => {
 };
 
 console.log('\n=== 食材：稀有度 / 占格 / 每格单价 ===');
-for (const r of ['common', 'rare', 'epic'] as Rarity[]) {
+for (const r of RARITY_ORDER) {
   const rows = [...ITEMS, GOD_PICK]
     .filter((it) => it.rarity === r)
     .sort((a, b) => a.w * a.h - b.w * b.h);
@@ -39,7 +41,7 @@ for (const r of ['common', 'rare', 'epic'] as Rarity[]) {
 }
 
 console.log('\n=== 规则校验：同稀有度内，占格越大越贵 ===');
-for (const r of ['common', 'rare', 'epic'] as Rarity[]) {
+for (const r of RARITY_ORDER) {
   const rows = [...ITEMS].filter((it) => it.rarity === r && it.zone === 'dry' && !it.stalls.includes('meat'));
   const sorted = [...rows].sort((a, b) => a.w * a.h - b.w * b.h);
   for (let i = 1; i < sorted.length; i++) {
@@ -59,7 +61,7 @@ for (const it of ITEMS) {
   if (!byArea.has(key)) byArea.set(key, []);
   byArea.get(key)!.push({ name: it.name, rarity: it.rarity, price: it.prices.common });
 }
-const rank: Record<Rarity, number> = { common: 0, rare: 1, epic: 2 };
+const rank: Record<Rarity, number> = { common: 0, rare: 1, epic: 2, legendary: 3 };
 for (const [area, rows] of byArea) {
   for (const a of rows) {
     for (const b of rows) {
@@ -71,7 +73,7 @@ for (const [area, rows] of byArea) {
 }
 
 console.log('\n=== 菜谱：份数 / 经验 / 材料成本 / 出锅价 ===');
-for (const r of ['common', 'rare', 'epic'] as Rarity[]) {
+for (const r of RARITY_ORDER) {
   const rows = RECIPES.filter((x) => x.rarity === r);
   console.log(`\n[${rarityLabel(r)}菜] ${rows.length} 道`);
   for (const rec of rows) {
@@ -116,7 +118,7 @@ Object.keys(COOK_UNLOCK_AT).forEach((lv) => {
 });
 Object.entries(MARKET_RECIPE_POOL).forEach(([m, ids]) => ids.forEach((id) => note(id, `市场:${m}`)));
 
-for (const rec of RECIPES) {
+for (const rec of listedRecipes()) {
   const from = seen.get(rec.id);
   if (!from) bad(`${rec.name} 没有任何解锁来源`);
 }
@@ -130,8 +132,7 @@ for (const [id, from] of seen) {
   const grant = from.filter((f) => !f.startsWith('市场:'));
   if (grant.length > 1) bad(`${rec.name} 被送了多次：${grant.join(' / ')}`);
   if (grant.length && shop.length) bad(`${rec.name} 既被送又在市场池里：${from.join(' / ')}`);
-  if (rec.rarity === 'common' && shop.length) bad(`${rec.name} 是普通菜却进了市场池`);
-  if (rec.rarity === 'epic' && grant.length) bad(`${rec.name} 是上品菜却被白送`);
+  if (shop.length > 3) bad(`${rec.name} 进了超过 3 个市场池`);
 }
 console.log(`  开局 ${START_RECIPES.length} 本 / 烹饪台 ${TABLE_UNLOCKS.flat().length} 本 ` +
   `/ 厨艺 ${Object.keys(COOK_UNLOCK_AT).flatMap((lv) => cookUnlocksAt(Number(lv))).length} 本 / 市场池 ${new Set(Object.values(MARKET_RECIPE_POOL).flat()).size} 本`);

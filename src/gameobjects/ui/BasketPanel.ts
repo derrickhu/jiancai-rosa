@@ -19,6 +19,7 @@ import {
 } from '@/sim';
 import { inspectFromFood, makeItemInspectCard } from './ItemInspectCard';
 import { drawRarityFrame, fillRect, makeLabel, makeSlicedButton } from '@/utils/ui';
+import { VerticalScroller } from '@/utils/scroll';
 import { fitSpriteInBox, gameTexture, isTextureReady, itemTexture, whenTextureReady } from '@/utils/assets';
 
 const BG = 'subpkg_kitchen/ui_basket_panel.png';
@@ -28,6 +29,7 @@ const PAPER = 0xFFF8F0;
 const WALNUT = 0x8B5A2B;
 const WET = 0x3A6A72;
 const DRY = 0xC4A574;
+const FLEX = 0x8A9A4A;
 const OK = 0x5C8A3A;
 const SWAP = 0xC48A22;
 const BAD = 0xB04A3A;
@@ -49,6 +51,8 @@ export class BasketPanel extends PIXI.Container {
   private _unsub: (() => void) | null = null;
   private _grid = { x: 0, y: 0, cell: 56, cols: 6, rows: 5 };
   private _stageRect = { x: 0, y: 0, w: 0, h: 0 };
+  private _scroller: VerticalScroller;
+  private _unlocking = false;
   private _drag: {
     uid: string;
     from: DragFrom;
@@ -80,6 +84,7 @@ export class BasketPanel extends PIXI.Container {
     this.on('pointerup', (e) => this._onUp(e.global.x, e.global.y));
     this.on('pointerupoutside', (e) => this._onUp(e.global.x, e.global.y));
     OverlayManager.container.addChild(this);
+    this._scroller = new VerticalScroller(this, { visible: () => this._isOpen && !this._drag });
   }
 
   open(placingUid?: string): void {
@@ -89,8 +94,11 @@ export class BasketPanel extends PIXI.Container {
     this._inspectUid = null;
     this._rot = 0;
     this._drag = null;
+    this._unlocking = false;
     this._isOpen = true;
     this.visible = true;
+    this._scroller.reset();
+    this._scroller.enable();
     this.hitArea = new PIXI.Rectangle(0, 0, Game.designWidth, Game.logicHeight);
     OverlayManager.container.on('pointerup', this._boundUp);
     OverlayManager.container.on('pointerupoutside', this._boundUp);
@@ -115,8 +123,10 @@ export class BasketPanel extends PIXI.Container {
     this.placingUid = null;
     this._inspectUid = null;
     this._drag = null;
+    this._unlocking = false;
     this._float.removeChildren();
     this._ghost.clear();
+    this._scroller.disable();
     this._unsub?.();
     this._unsub = null;
     OverlayManager.container.off('pointerup', this._boundUp);
@@ -318,40 +328,125 @@ export class BasketPanel extends PIXI.Container {
   ): void {
     const basket = RunManager.basket;
     const pad = 6;
-    const cell = Math.max(36, Math.min(64, Math.floor((cav.w - pad * 2) / basket.cols), Math.floor((cav.h - pad * 2) / basket.rows)));
+    const cell = Math.max(24, Math.min(64, Math.floor((cav.w - pad * 2) / Math.max(1, basket.cols))));
     const gridW = basket.cols * cell;
     const gridH = basket.rows * cell;
     const gridX = cav.x + (cav.w - gridW) / 2;
-    const gridY = cav.y + (cav.h - gridH) / 2;
+    const gridY = cav.y + pad;
     this._grid = { x: box.x + gridX, y: box.y + gridY, cell, cols: basket.cols, rows: basket.rows };
 
     const wetTip = makeLabel(`湿 ${basket.wetCols}×${basket.wetRows}`, 15, 0x2A4A5A, { fontWeight: '700' });
-    wetTip.position.set(gridX + 2, gridY - 20);
+    wetTip.position.set(gridX + 2, cav.y - 20);
     shell.addChild(wetTip);
     const dryTip = makeLabel(`干 ${basket.cols - basket.wetCols}×${basket.dryRows}`, 15, WALNUT, { fontWeight: '700' });
     dryTip.anchor.set(1, 0);
-    dryTip.position.set(gridX + gridW - 2, gridY - 20);
+    dryTip.position.set(gridX + gridW - 2, cav.y - 20);
     shell.addChild(dryTip);
+    if (basket.flexUnlocked) {
+      const flexTip = makeLabel('当次通用', 13, 0x5A6A28, { fontWeight: '700' });
+      flexTip.anchor.set(0.5, 0);
+      flexTip.position.set(gridX + gridW / 2, cav.y - 20);
+      shell.addChild(flexTip);
+    }
+
+    const viewport = new PIXI.Container();
+    const mask = new PIXI.Graphics();
+    mask.beginFill(0xffffff);
+    mask.drawRoundedRect(cav.x, cav.y, cav.w, cav.h, 12);
+    mask.endFill();
+    mask.eventMode = 'none';
+    viewport.mask = mask;
+    shell.addChild(mask);
+    shell.addChild(viewport);
+
+    const padHit = new PIXI.Graphics();
+    padHit.beginFill(0x000000, 0.001);
+    padHit.drawRect(cav.x, cav.y, cav.w, cav.h);
+    padHit.endFill();
+    padHit.eventMode = 'none';
+    viewport.addChild(padHit);
+
+    const content = new PIXI.Container();
+    viewport.addChild(content);
 
     for (let y = 0; y < basket.rows; y++) {
       for (let x = 0; x < basket.cols; x++) {
         const kind = basketCellKind(basket, x, y);
+        if (kind === 'none') continue;
         const g = new PIXI.Graphics();
-        g.lineStyle(1, INK, kind === 'none' ? 0.08 : 0.18);
+        g.lineStyle(1, INK, 0.18);
         if (kind === 'wet') g.beginFill(WET, 0.34);
         else if (kind === 'dry') g.beginFill(DRY, 0.28);
-        else g.beginFill(0xD8D0C4, 0.12);
+        else g.beginFill(FLEX, 0.34);
         g.drawRoundedRect(gridX + x * cell, gridY + y * cell, cell - 3, cell - 3, 7);
         g.endFill();
         g.eventMode = 'none';
-        shell.addChild(g);
+        content.addChild(g);
       }
+    }
+
+    if (!basket.flexUnlocked) {
+      content.addChild(this._flexUnlockBtn(gridX, gridY, gridW, cell));
     }
 
     for (const item of basket.items) {
       if (this._drag?.uid === item.uid) continue;
-      shell.addChild(this._basketTile(item, gridX, gridY, cell));
+      content.addChild(this._basketTile(item, gridX, gridY, cell));
     }
+
+    this._scroller.attach({
+      content,
+      maxScroll: Math.max(0, gridH - (cav.h - pad)),
+      baseY: 0,
+      hit: { x: box.x + cav.x, y: box.y + cav.y, w: cav.w, h: cav.h },
+    });
+  }
+
+  private _flexUnlockBtn(gridX: number, gridY: number, gridW: number, cell: number): PIXI.Container {
+    const root = new PIXI.Container();
+    const w = gridW - 3;
+    const h = cell - 3;
+    const bg = new PIXI.Graphics();
+    bg.beginFill(0xFFF8F0, 0.92);
+    bg.lineStyle(2, 0xC46A3A, 0.88);
+    bg.drawRoundedRect(0, 0, w, h, 7);
+    bg.endFill();
+    root.addChild(bg);
+    if (h >= 36) {
+      const title = makeLabel('看广告解锁一行', Math.min(16, Math.floor(h * 0.38)), 0x8A3B32, { fontWeight: '700' });
+      title.anchor.set(0.5, 1);
+      title.position.set(w / 2, h * 0.52);
+      root.addChild(title);
+      const sub = makeLabel('当次 · 干湿都能放', Math.min(13, Math.floor(h * 0.28)), WALNUT, { fontWeight: '600' });
+      sub.anchor.set(0.5, 0);
+      sub.position.set(w / 2, h * 0.54);
+      root.addChild(sub);
+    } else {
+      const title = makeLabel('看广告解锁一行 · 当次通用', Math.min(14, Math.max(10, h - 8)), 0x8A3B32, { fontWeight: '700' });
+      title.anchor.set(0.5);
+      title.position.set(w / 2, h / 2);
+      root.addChild(title);
+    }
+    root.position.set(gridX, gridY);
+    root.eventMode = 'static';
+    root.cursor = 'pointer';
+    root.hitArea = new PIXI.Rectangle(0, 0, w, h);
+    root.on('pointertap', () => {
+      if (this._scroller.moved || this._unlocking) return;
+      this._watchFlexAd();
+    });
+    return root;
+  }
+
+  private _watchFlexAd(): void {
+    if (this._unlocking || RunManager.basket.flexUnlocked) return;
+    this._unlocking = true;
+    Platform.showRewardedVideo(() => {
+      this._unlocking = false;
+      if (!RunManager.unlockBasketFlex()) return;
+      AudioManager.play('ui_open');
+      Platform.showToast('多了一行，干湿都能放，回家就没了', 'success');
+    });
   }
 
   private _drawGhost(): void {
@@ -360,12 +455,12 @@ export class BasketPanel extends PIXI.Container {
     if (!drag?.moved) return;
     const def = getItem(drag.defId);
     const { w: fw, h: fh } = footprint(def, drag.rot);
-    const { x, y, cell } = this._grid;
+    const { x, cell } = this._grid;
     const tone = drag.preview === 'empty' ? OK : drag.preview === 'swap' ? SWAP : BAD;
     const line = drag.preview === 'empty' ? 0x8FCB6B : drag.preview === 'swap' ? 0xE0A100 : 0xE07A5F;
     this._ghost.beginFill(tone, 0.38);
     this._ghost.lineStyle(3, line, 0.95);
-    this._ghost.drawRoundedRect(x + drag.gx * cell, y + drag.gy * cell, fw * cell - 3, fh * cell - 3, 8);
+    this._ghost.drawRoundedRect(x + drag.gx * cell, this._gridTop() + drag.gy * cell, fw * cell - 3, fh * cell - 3, 8);
     this._ghost.endFill();
   }
 
@@ -442,6 +537,7 @@ export class BasketPanel extends PIXI.Container {
     root.hitArea = new PIXI.Rectangle(0, 0, w, h);
     root.on('pointerdown', (e) => {
       e.stopPropagation();
+      this._scroller.cancel();
       const item = from === 'basket' ? RunManager.basket.items.find((it) => it.uid === uid) : null;
       this.selectedUid = uid;
       this.placingUid = from === 'stage' ? uid : this.placingUid;
@@ -592,10 +688,14 @@ export class BasketPanel extends PIXI.Container {
     this._onUp(drag.lastX, drag.lastY);
   };
 
+  private _gridTop(): number {
+    return this._grid.y + this._scroller.y;
+  }
+
   private _cellAt(left: number, top: number): { x: number; y: number } | null {
-    const { x, y, cell, cols, rows } = this._grid;
+    const { x, cell, cols, rows } = this._grid;
     const cx = Math.floor((left - x) / cell);
-    const cy = Math.floor((top - y) / cell);
+    const cy = Math.floor((top - this._gridTop()) / cell);
     if (cx < 0 || cy < 0 || cx >= cols || cy >= rows) return null;
     return { x: cx, y: cy };
   }

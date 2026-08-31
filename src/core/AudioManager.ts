@@ -51,16 +51,20 @@ export type BgmId = 'kitchen' | 'outing' | MarketBgmId;
 const MARKET_BGM: Record<string, MarketBgmId> = {
   xiangko: 'market_xiangko',
   heyan: 'market_heyan',
+  qiaotou: 'market_heyan',
   shanwu: 'market_shanwu',
   jiangbian: 'market_jiangbian',
+  nanshi: 'market_laocheng',
   laocheng: 'market_laocheng',
+  dukou: 'market_jiangbian',
+  shanzhen: 'market_laocheng',
 };
 
 const AUDIO_DIR = 'subpkg_audio';
 const BGM_VOL = 0.42;
 const SFX_VOL = 0.86;
 /** 捡到菜 / 结算：压过 BGM 的爽感短句 */
-const REWARD_SFX = new Set<SfxId>(['item_reveal', 'result_safe', 'result_dusk', 'pickup_god']);
+const REWARD_SFX = new Set<SfxId>(['item_reveal', 'result_safe', 'result_dusk', 'pickup_god', 'level_up']);
 const REWARD_VOL = 1;
 const TAG = '[Audio]';
 

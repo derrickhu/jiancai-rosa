@@ -32,25 +32,29 @@ import { marketBootPaths, specialBootPaths } from '@/utils/outingAssets';
 import { SpecialMarketScene } from '@/scenes/SpecialMarketScene';
 
 const DEST_BG = 'subpkg_images/dest_street_bg.jpg';
-/** 卡高 200 + 间距 14。菜场超过四个就得滚，别把「回家」挤下屏。 */
-const CARD_STEP = 214;
+/** 走路一屏正好四张。更高的屏卡不再拉高，多出来的空落在列表里。 */
+const FIT_CARDS = 4;
+const CARD_GAP = 8;
+const CARD_H_MAX = 200;
+const CARD_H_MIN = 156;
 const DRAG_SLOP = 10;
-const VEHICLE_H = 220;
-const DOCK_TITLE_H = 44;
-const HOME_H = 64;
-/** 出行区和回家钮拉开，鞋底下不要贴着回家。 */
-const HOME_GAP = 168;
-/** 回家钮回到靠近屏底的位置。 */
-const HOME_BOTTOM = 20;
+const VEHICLE_H = 214;
+const DOCK_TITLE_H = 40;
+const HOME_H = 60;
+const HOME_GAP = 28;
+const HOME_BOTTOM = 36;
+/** 招牌绳子探进顶栏，木牌本身抬到安全区附近。 */
+const TITLE_LIFT = 78;
+const BANNER_H = 176;
 const TITLE_FONT = 'Songti SC, STSong, PingFang SC, serif';
 const WALNUT = 0x8B5A2B;
 const TERRACOTTA = 0xC46A3A;
 /** 走路鞋团得紧，车要铺满盒子，看起来才比鞋大。 */
 const DOCK_ZOOM: Record<VehicleId, number> = {
-  walk: 0.72,
-  bike: 1,
-  ebike: 1,
-  truck: 1,
+  walk: 0.94,
+  bike: 1.08,
+  ebike: 1.08,
+  truck: 1.08,
 };
 
 export class DestinationScene implements Scene {
@@ -110,8 +114,9 @@ export class DestinationScene implements Scene {
     this._ui.addChild(veil);
 
     const top = Number.isFinite(Game.safeTop) ? Game.safeTop : 96;
-    const headerH = this._drawTitle(w, top, redraw);
-    const pillsY = top + headerH + 4;
+    const titleTop = Math.max(-28, top - TITLE_LIFT);
+    this._drawTitle(w, titleTop, redraw);
+    const pillsY = titleTop + BANNER_H + 16;
     const skill = cookXpView(KitchenManager.save);
     const skillPill = makeCookSkillPill({
       level: skill.level,
@@ -149,10 +154,19 @@ export class DestinationScene implements Scene {
     mute.position.set(w - 64, pillsY);
     this._ui.addChild(mute);
 
-    const listTop = pillsY + 52;
-    const homeY = h - HOME_H - HOME_BOTTOM;
+    const listTop = pillsY + 72;
+    const bottomPad = Math.max(
+      HOME_BOTTOM,
+      (Number.isFinite(Game.safeBottom) ? Game.safeBottom : 0) + 24,
+    );
+    const homeY = h - HOME_H - bottomPad;
     const dockY = homeY - HOME_GAP - VEHICLE_H - DOCK_TITLE_H;
-    const listH = Math.max(180, dockY - 10 - listTop);
+    const listH = Math.max(180, dockY - 8 - listTop);
+    const cardH = Math.max(
+      CARD_H_MIN,
+      Math.min(CARD_H_MAX, Math.floor((listH - (FIT_CARDS - 1) * CARD_GAP) / FIT_CARDS)),
+    );
+    const cardStep = cardH + CARD_GAP;
     const offer = vehicleOffer(KitchenManager.save, this._browse);
     const spots = offer === 'locked' ? [] : marketsForVehicle(this._browse);
     const specialId = ownsVehicle(KitchenManager.save, this._browse)
@@ -160,13 +174,13 @@ export class DestinationScene implements Scene {
       : null;
     const special = specialId ? getSpecialMarket(specialId) : null;
     const cards = spots.length + (special ? 1 : 0);
-    const contentH = Math.max(cards, 1) * CARD_STEP;
+    const contentH = cards > 0 ? cards * cardH + Math.max(0, cards - 1) * CARD_GAP : listH;
     const list = new PIXI.Container();
     spots.forEach((market, i) => {
-      list.addChild(this._card(market, 24, i * CARD_STEP, w - 48));
+      list.addChild(this._card(market, 24, i * cardStep, w - 48, cardH));
     });
     if (special) {
-      list.addChild(this._specialCard(special, 24, spots.length * CARD_STEP, w - 48));
+      list.addChild(this._specialCard(special, 24, spots.length * cardStep, w - 48, cardH));
     }
     if (!cards) {
       const empty = makeLabel(
@@ -198,9 +212,9 @@ export class DestinationScene implements Scene {
     this._ui.addChild(this._homeBtn((w - 280) / 2, homeY, 280, HOME_H, redraw));
   }
 
-  private _drawTitle(w: number, top: number, onReady: () => void): number {
+  private _drawTitle(w: number, top: number, onReady: () => void): void {
     const bannerW = 380;
-    const bannerH = 176;
+    const bannerH = BANNER_H;
     const wrap = new PIXI.Container();
     wrap.position.set((w - bannerW) / 2, top);
     const path = HUD_ICON.destBanner;
@@ -225,16 +239,16 @@ export class DestinationScene implements Scene {
     title.position.set(bannerW / 2, bannerH * 0.58);
     wrap.addChild(title);
     this._ui.addChild(wrap);
-    return bannerH;
   }
 
-  private _card(market: MarketDef, x: number, y: number, width: number): PIXI.Container {
+  private _card(market: MarketDef, x: number, y: number, width: number, height: number): PIXI.Container {
     const root = new PIXI.Container();
     const save = KitchenManager.save;
     const routed = ownsRouteToMarket(save, market.id);
     const unlocked = routed && isMarketUnlocked(market.id, save.level);
     const needRide = vehicleForMarket(market.id);
-    const height = 200;
+    const pad = Math.max(10, Math.round(height * 0.08));
+    const btnH = height < 176 ? 42 : 48;
     const frame = new PIXI.Graphics();
     fillRect(frame, x, y, width, height, 0x5A4636, 18);
     root.addChild(frame);
@@ -245,10 +259,12 @@ export class DestinationScene implements Scene {
     paper.endFill();
     root.addChild(paper);
 
-    const thumbW = 200;
-    const thumbH = 168;
-    const thumbX = x + 16;
-    const thumbY = y + 16;
+    const thumbH = height - pad * 2;
+    const thumbW = Math.round(Math.min(210, thumbH * (200 / 168)));
+    const thumbX = x + pad;
+    const thumbY = y + pad;
+    const textX = thumbX + thumbW + 12;
+    const btnY = y + height - pad - btnH;
     const thumbBg = new PIXI.Graphics();
     fillRect(thumbBg, thumbX, thumbY, thumbW, thumbH, 0x2A221C, 12);
     root.addChild(thumbBg);
@@ -275,56 +291,56 @@ export class DestinationScene implements Scene {
       const lock = makeLabel('未解锁', 20, 0xFFF8F0, { fontWeight: '700' });
       const chip = new PIXI.Graphics();
       chip.beginFill(0x2A2018, 0.62);
-      chip.drawRoundedRect(thumbX + 48, thumbY + 66, 104, 36, 18);
+      chip.drawRoundedRect(thumbX + (thumbW - 104) / 2, thumbY + (thumbH - 36) / 2, 104, 36, 18);
       chip.endFill();
-      lock.position.set(thumbX + 62, thumbY + 72);
+      lock.position.set(thumbX + (thumbW - 104) / 2 + 14, thumbY + (thumbH - 36) / 2 + 6);
       root.addChild(chip);
       root.addChild(lock);
     }
 
-    const name = makeLabel(market.name, 28, 0x2A2018, { fontWeight: '700' });
-    name.position.set(x + 236, y + 20);
+    const name = makeLabel(market.name, height < 176 ? 24 : 28, 0x2A2018, { fontWeight: '700' });
+    name.position.set(textX, y + pad);
     root.addChild(name);
 
-    const hint = makeLabel(market.hint, 20, 0x5A4636, {
+    const hint = makeLabel(market.hint, height < 176 ? 18 : 20, 0x5A4636, {
       wordWrap: true,
-      wordWrapWidth: width - 260,
+      wordWrapWidth: width - (textX - x) - pad,
     });
-    hint.position.set(x + 236, y + 62);
+    hint.position.set(textX, y + pad + 36);
     root.addChild(hint);
 
     if (unlocked) {
       const go = makeSlicedButton({
         label: '出发',
         width: 168,
-        height: 48,
+        height: btnH,
         skin: 'terracotta',
         onReady: () => {
           if (this.container.parent) this.relayout();
         },
       });
-      go.position.set(x + 236, y + 136);
+      go.position.set(textX, btnY);
       go.on('pointertap', () => {
         if (this._scroller.moved) return;
         this._depart(market);
       });
       root.addChild(go);
-      root.addChild(this._staminaCost(x + 416, y + 136, market.staminaCost, save.stamina < market.staminaCost));
+      root.addChild(this._staminaCost(textX + 180, btnY, market.staminaCost, save.stamina < market.staminaCost));
     } else {
       const label = routed ? `厨艺 ${market.unlockLevel} 解锁` : `先买${needRide.name}`;
       const need = makeSlicedButton({
         label,
         width: 168,
-        height: 48,
+        height: btnH,
         skin: 'wood',
         onReady: () => {
           if (this.container.parent) this.relayout();
         },
       });
       need.eventMode = 'none';
-      need.position.set(x + 236, y + 136);
+      need.position.set(textX, btnY);
       root.addChild(need);
-      root.addChild(this._staminaCost(x + 416, y + 136, market.staminaCost, false));
+      root.addChild(this._staminaCost(textX + 180, btnY, market.staminaCost, false));
       root.eventMode = 'static';
       root.cursor = 'pointer';
       root.hitArea = new PIXI.Rectangle(x, y, width, height);
@@ -341,11 +357,12 @@ export class DestinationScene implements Scene {
     return root;
   }
 
-  private _specialCard(market: SpecialMarketDef, x: number, y: number, width: number): PIXI.Container {
+  private _specialCard(market: SpecialMarketDef, x: number, y: number, width: number, height: number): PIXI.Container {
     const root = new PIXI.Container();
     const used = KitchenManager.specialVisitCount(market.id);
     const left = used < market.dailyLimit;
-    const height = 200;
+    const pad = Math.max(10, Math.round(height * 0.08));
+    const btnH = height < 176 ? 42 : 48;
     const frame = new PIXI.Graphics();
     fillRect(frame, x, y, width, height, 0x5A4636, 18);
     root.addChild(frame);
@@ -356,10 +373,12 @@ export class DestinationScene implements Scene {
     paper.endFill();
     root.addChild(paper);
 
-    const thumbW = 200;
-    const thumbH = 168;
-    const thumbX = x + 16;
-    const thumbY = y + 16;
+    const thumbH = height - pad * 2;
+    const thumbW = Math.round(Math.min(210, thumbH * (200 / 168)));
+    const thumbX = x + pad;
+    const thumbY = y + pad;
+    const textX = thumbX + thumbW + 12;
+    const btnY = y + height - pad - btnH;
     const thumbBg = new PIXI.Graphics();
     fillRect(thumbBg, thumbX, thumbY, thumbW, thumbH, 0x2A221C, 12);
     root.addChild(thumbBg);
@@ -383,33 +402,33 @@ export class DestinationScene implements Scene {
       }
     }
 
-    const name = makeLabel(market.name, 28, 0x2A2018, { fontWeight: '700' });
-    name.position.set(x + 236, y + 20);
+    const name = makeLabel(market.name, height < 176 ? 24 : 28, 0x2A2018, { fontWeight: '700' });
+    name.position.set(textX, y + pad);
     root.addChild(name);
 
-    const hint = makeLabel(market.hint, 20, 0x5A4636, {
+    const hint = makeLabel(market.hint, height < 176 ? 18 : 20, 0x5A4636, {
       wordWrap: true,
-      wordWrapWidth: width - 260,
+      wordWrapWidth: width - (textX - x) - pad,
     });
-    hint.position.set(x + 236, y + 62);
+    hint.position.set(textX, y + pad + 36);
     root.addChild(hint);
 
     const go = makeSlicedButton({
       label: '看广告进',
       width: 168,
-      height: 48,
+      height: btnH,
       skin: left ? 'terracotta' : 'wood',
       onReady: () => {
         if (this.container.parent) this.relayout();
       },
     });
-    go.position.set(x + 236, y + 136);
+    go.position.set(textX, btnY);
     go.on('pointertap', () => {
       if (this._scroller.moved) return;
       this._enterSpecial(market);
     });
     root.addChild(go);
-    root.addChild(this._dailyChip(x + 416, y + 136, used, market.dailyLimit));
+    root.addChild(this._dailyChip(textX + 180, btnY, used, market.dailyLimit));
     return root;
   }
 

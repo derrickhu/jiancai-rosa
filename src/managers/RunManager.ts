@@ -38,6 +38,7 @@ import {
   talkScript,
   pickTalkFood,
   tryAutoPlace,
+  unlockBasketFlex,
   visibleDefId,
   furnLevel,
   type BasketItem,
@@ -549,6 +550,14 @@ class RunManagerClass {
     this.basket = result.state;
     this.emit();
     return null;
+  }
+
+  /** 看广告解锁顶上一行，只当次有效，干湿都能放。 */
+  unlockBasketFlex(): boolean {
+    if (this.basket.flexUnlocked) return false;
+    this.basket = unlockBasketFlex(this.basket);
+    this.emit();
+    return true;
   }
 
   moveBasketItem(uid: string, x: number, y: number, rot: 0 | 1): string | null {

@@ -161,7 +161,7 @@ function applyShanwuBeats(ctx: BeatCtx): void {
         cardArt: 'subpkg_images/market_card_shanwu_cave.jpg',
         encounter: {
           type: 'gather',
-          pool: ['mushroom', 'wood_ear', 'matsutake'],
+          pool: ['mushroom', 'wood_ear'],
           picks: 3,
           bg: 'subpkg_images/stall_rummage_shanwu_cave.jpg',
         },
@@ -215,7 +215,7 @@ const heyanDock: BeatFn = (ctx) => {
           cardArt: 'subpkg_images/market_card_heyan_bank.jpg',
           encounter: {
             type: 'gather',
-            pool: ['lotus', 'water_spinach', 'celery', 'chive'],
+            pool: ['kelp', 'scallion'],
             picks: 3,
             bg: 'subpkg_images/stall_rummage_heyan_bank.jpg',
           },
@@ -263,7 +263,7 @@ const heyanBank: BeatFn = (ctx) => {
     cardArt: 'subpkg_images/market_card_heyan_bank.jpg',
     encounter: {
       type: 'gather',
-      pool: ['water_spinach', 'celery', 'lotus', 'chive'],
+      pool: ['kelp', 'scallion'],
       picks: 3,
       bg: 'subpkg_images/stall_rummage_heyan_bank.jpg',
     },
@@ -512,14 +512,35 @@ export function applyMarketBeats(
     return;
   }
   if (marketId === 'heyan') {
-    applyPicked(ctx, [heyanDock, heyanLotus, heyanUncle, heyanBank], rngInt(rng, 2, 3));
+    applyPicked(ctx, [heyanDock, heyanUncle, heyanBank], rngInt(ctx.rng, 2, 3));
     return;
   }
   if (marketId === 'jiangbian') {
-    applyPicked(ctx, [jiangbianPier, jiangbianCatch, jiangbianAunt, jiangbianCabin], rngInt(rng, 2, 3));
+    applyPicked(ctx, [jiangbianPier, jiangbianCatch, jiangbianAunt, jiangbianCabin], rngInt(ctx.rng, 2, 3));
+    return;
+  }
+  if (marketId === 'nanshi') {
+    applyPicked(ctx, [xiangkoVendor, xiangkoStair], 1);
     return;
   }
   if (marketId === 'laocheng') {
-    applyPicked(ctx, [laochengClerk, laochengGate, laochengCured, laochengAlley], rngInt(rng, 2, 3));
+    applyPicked(ctx, [laochengClerk, laochengGate, laochengCured, laochengAlley], rngInt(ctx.rng, 2, 3));
+    return;
+  }
+  if (marketId === 'dukou') {
+    applyPicked(ctx, [jiangbianPier, jiangbianCatch, jiangbianAunt], rngInt(ctx.rng, 1, 2));
+    return;
+  }
+  if (marketId === 'shanzhen') {
+    applyPicked(ctx, [laochengClerk, laochengCured], 1);
+    const treasureId = pickOverlaySlot(ctx, 2, 7, false);
+    if (treasureId) {
+      overlayCard(ctx, treasureId, {
+        kind: 'stall',
+        title: '山珍筐',
+        templateId: 'shanzhen_treasure',
+        encounter: { type: 'rummage', specialty: 'treasure' },
+      });
+    }
   }
 }

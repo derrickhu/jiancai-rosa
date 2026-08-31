@@ -4,6 +4,7 @@ import {
   initialFreshness,
   rollMarketItem,
   sellPrice,
+  stallsForMarket,
   type Quality,
   type StallId,
 } from './items';
@@ -301,7 +302,8 @@ export function rollFreebie(
   cookLevel = 1,
   wanted?: ReadonlySet<string>,
 ): { defId: string; quality: Quality } {
-  const stall = rngPick(rng, FREEBIE_STALLS);
+  const local = FREEBIE_STALLS.filter((s) => stallsForMarket(marketId).includes(s));
+  const stall = rngPick(rng, local.length ? local : stallsForMarket(marketId));
   const def = rollMarketItem(marketId, stall, cookLevel, rng, wanted);
   return { defId: def.id, quality: rng() < 0.7 ? 'common' : 'fresh' };
 }

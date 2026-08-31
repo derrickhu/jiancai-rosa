@@ -71,6 +71,12 @@ export class VerticalScroller {
     this.apply(0);
   }
 
+  /** 子控件开始拖物品时叫，避免和滚动抢手势。 */
+  cancel(): void {
+    this._dragging = false;
+    this.moved = false;
+  }
+
   apply(y: number): void {
     this.y = this._max <= 0 ? 0 : Math.max(-this._max, Math.min(0, y));
     if (this._content) this._content.y = this._baseY + this.y;

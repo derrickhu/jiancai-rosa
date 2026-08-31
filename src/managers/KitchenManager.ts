@@ -17,6 +17,7 @@ import {
   sellFridgeQty,
   COOK_LEVEL_MAX,
   clampCookLevel,
+  defaultSave,
   fridgeAcceptsOuting,
   fridgeCanFit,
   fridgeOwnCap,
@@ -52,9 +53,16 @@ import { vehicleById, type VehicleId } from '@/sim/vehicles';
 import type { ExtractedItem } from '@/sim/run';
 import type { Quality } from '@/sim/items';
 
+export interface CookLevelUp {
+  from: number;
+  to: number;
+  recipes: RecipeId[];
+}
+
 class KitchenManagerClass {
   private _cookFx: { xp: number; levels: number } | null = null;
   private _unlockQueue: RecipeId[] = [];
+  private _levelUps: CookLevelUp[] = [];
   private _dayKey = todayKey();
   private _dayTimer: ReturnType<typeof setTimeout> | null = null;
   pendingHaul: ExtractedItem[] | null = null;
@@ -258,15 +266,14 @@ class KitchenManagerClass {
     if ((xp ?? 0) > 0) this._cookFx = { xp: xp ?? 0, levels: levels ?? 0 };
     SaveManager.replace(save);
     this.emit();
-    if ((levels ?? 0) > 0) {
-      setTimeout(() => AudioManager.play('level_up'), 1000);
-    }
     const name = RECIPES.find((r) => r.id === recipeId)?.name ?? '菜';
-    const learned = recipesGainedByCook(fromLevel, save.level);
-    this.enqueueRecipeUnlocks(learned);
-    if ((levels ?? 0) > 0) Platform.showToast(`${name} 出锅，厨艺升到 ${save.level} 级`, 'success');
-    else if ((xp ?? 0) > 0) Platform.showToast(`${name} 出锅，+${xp} 经验`, 'success');
-    else Platform.showToast(`${name} 出锅，放进冰箱了`, 'success');
+    if ((levels ?? 0) > 0) {
+      this.enqueueCookLevelUp(fromLevel, save.level);
+    } else if ((xp ?? 0) > 0) {
+      Platform.showToast(`${name} 出锅，+${xp} 经验`, 'success');
+    } else {
+      Platform.showToast(`${name} 出锅，放进冰箱了`, 'success');
+    }
   }
 
   discoverFood(defId: string, quality?: Quality): boolean {
@@ -308,18 +315,44 @@ class KitchenManagerClass {
     return this._unlockQueue.shift() ?? null;
   }
 
+  enqueueCookLevelUp(from: number, to: number): void {
+    if (to <= from) return;
+    this._levelUps.push({
+      from,
+      to,
+      recipes: recipesGainedByCook(from, to),
+    });
+    EventBus.emit(EV.cookLeveled);
+  }
+
+  peekCookLevelUp(): CookLevelUp | null {
+    return this._levelUps[0] ?? null;
+  }
+
+  cookLevelUpLeft(): number {
+    return this._levelUps.length;
+  }
+
+  shiftCookLevelUp(): CookLevelUp | null {
+    return this._levelUps.shift() ?? null;
+  }
+
   gmAddCookXp(amount: number): void {
+    const from = this.save.level;
     const { save, levels } = grantCookXp(this.save, amount);
     SaveManager.replace(save);
     this.emit();
-    Platform.showToast(levels > 0 ? `厨艺升到 ${save.level} 级` : `经验 +${amount}`);
+    if (levels > 0) this.enqueueCookLevelUp(from, save.level);
+    else Platform.showToast(`经验 +${amount}`);
   }
 
   gmNudgeCookLevel(delta: number): void {
+    const from = this.save.level;
     const level = clampCookLevel(this.save.level + delta);
     SaveManager.replace({ ...this.save, level, xp: 0 });
     this.emit();
-    Platform.showToast(`厨艺 ${level}/${COOK_LEVEL_MAX}`);
+    if (level > from) this.enqueueCookLevelUp(from, level);
+    else Platform.showToast(`厨艺 ${level}/${COOK_LEVEL_MAX}`);
   }
 
   gmAddStamina(n = 5): void {
@@ -334,6 +367,17 @@ class KitchenManagerClass {
     SaveManager.replace({ ...this.save, money });
     this.emit();
     Platform.showToast(`金币 +${n} · 现有 ${money}`);
+  }
+
+  /** 清掉进度，回到开局。云存档会随后被这局空档盖掉。 */
+  gmResetProgress(): void {
+    this._cookFx = null;
+    this._unlockQueue = [];
+    this._levelUps = [];
+    this.pendingHaul = null;
+    SaveManager.replace(defaultSave());
+    this.emit();
+    Platform.showToast('已清档，从头玩', 'success');
   }
 
   upgrade(id: FurnId): void {

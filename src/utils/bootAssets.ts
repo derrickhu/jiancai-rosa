@@ -10,6 +10,9 @@ export function kitchenBootPaths(save: KitchenSave): string[] {
     'subpkg_images/hud_stamina.png',
     'subpkg_images/hud_dex.png',
     'subpkg_kitchen/ui_recipe_paper.png',
+    'subpkg_kitchen/ui_cook_level_title.png',
+    'subpkg_kitchen/ui_result_burst.png',
+    'subpkg_kitchen/ui_result_card.png',
     OUTING_CURTAIN,
   ];
   for (const id of FURN_IDS) {
