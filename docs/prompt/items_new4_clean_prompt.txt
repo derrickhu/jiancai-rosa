@@ -1,0 +1,13 @@
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading. Whole market ingredients, ordinary objects NOT characters: no faces, no eyes, no mouths. Same style as the existing egg / napa-cabbage / pork-slice / clam icons in this game. Readable silhouette at 64px. NO photorealism, NO 3D render, NO photography, NO pixel art, NO neon. NO TEXT, no labels, no numbers, no watermark, no grid lines drawn as UI.
+
+A 2x2 even grid on solid #FF00FF magenta. Four cells, one item centered in each cell, generous margin, no item touching cell edges.
+
+1 TOP-LEFT century_egg 皮蛋: TWO whole Chinese century eggs (pidan) as a 1x1 cluster, like the existing two-egg icon. Shells are dark grey-green to near-black with mottled ash-clay coating and tiny pale rice-husk specks. Matte dusty surface, NOT warm brown chicken eggs, NOT sliced, NOT showing yolk cross-section. Slightly more oval than chicken eggs.
+
+2 TOP-RIGHT beef 牛肉: a short vertical STACK of lean raw beef STRIPS (1x2 tall), deep burgundy-red muscle with thin pale-cream fat edges only. No thick pork-belly fat layers, not a brisket block, not pink pork. 3/4 view, tidy butcher cut.
+
+3 BOTTOM-LEFT dried_scallop 干贝: three or four whole dried scallop columns (yuanbei) clustered as 1x1. Golden-amber cylinders with visible dry fiber rings, one slightly larger in front. NOT clam shells, NOT wet shellfish, NOT sliced.
+
+4 BOTTOM-RIGHT round_cabbage 卷心菜: ONE tight spherical European cabbage head (2x2). Pale cream-green outer leaves wrapping a compact ball, smoother and paler than ruffled bright-green lettuce, NOT elongated napa cabbage. Whole, uncut.
+
+Game icons, centered, no crossing edges.

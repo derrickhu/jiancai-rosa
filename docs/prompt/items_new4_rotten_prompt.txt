@@ -1,0 +1,13 @@
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading. Whole market ingredients, ordinary objects NOT characters: no faces, no eyes, no mouths. Cute spoiled and sad, NOT horror, no slime monsters, no mold spores flying. Same style as the existing rotten egg icon in this game. Readable silhouette at 64px. NO photorealism, NO pixel art. NO TEXT, no labels, no numbers, no watermark, no grid lines drawn as UI.
+
+A 2x2 even grid on solid #FF00FF magenta. Same four items as the clean sheet, but ROTTEN. One per cell, centered, generous margin.
+
+1 TOP-LEFT century_egg_rotten: two century eggs gone bad, dark shells dull and dusty, coating flaking, one shell cracked with murky collapsed interior (no pine-flower beauty left), faint cartoon odor lines.
+
+2 TOP-RIGHT beef_rotten: stacked lean beef strips gone bad, burgundy faded to grey-brown, fat yellowed, edges darkened and slumped.
+
+3 BOTTOM-LEFT dried_scallop_rotten: dried scallop columns gone damp, gold faded to dirty ochre, surface tacky and darkened, fibers collapsing.
+
+4 BOTTOM-RIGHT round_cabbage_rotten: spherical cabbage gone bad, outer leaves limp and slimy yellow-brown, still a round head, not napa.
+
+Game icons, centered, no crossing edges.
