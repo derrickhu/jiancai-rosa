@@ -8,12 +8,14 @@ import { RecipeBookPanel } from '@/gameobjects/ui/RecipeBookPanel';
 import { DexPanel } from '@/gameobjects/ui/DexPanel';
 import { FridgePanel } from '@/gameobjects/ui/FridgePanel';
 import { CookPanel } from '@/gameobjects/ui/CookPanel';
+import { OrderPanel } from '@/gameobjects/ui/OrderPanel';
+import { EventPanel } from '@/gameobjects/ui/EventPanel';
 import { UpgradePanel } from '@/gameobjects/ui/UpgradePanel';
 import { ensureRecipeUnlockPanel } from '@/gameobjects/ui/RecipeUnlockPanel';
 import { ensureCookLevelUpPanel } from '@/gameobjects/ui/CookLevelUpPanel';
 import { Platform } from '@/core/PlatformService';
 import {
-  STAMINA_MAX,
+  staminaMax,
   FURN_IDS,
   FURN_MAX_LEVEL,
   HOUSE_FALLBACK_SIZE,
@@ -35,6 +37,8 @@ import {
   cookXpView,
   furnCookNeed,
   cookLevel,
+  neighborOfferLog,
+  neighborNpc,
   bagDryCols,
   bagRows,
   fridgeOwnCap,
@@ -49,7 +53,7 @@ import {
   type KitchenSave,
 } from '@/sim';
 import { AudioManager } from '@/core/AudioManager';
-import { HUD_ICON, bindUiClick, fillRect, makeButton, makeCookSkillPill, makeLabel, makeMuteButton, makeStatPill } from '@/utils/ui';
+import { HUD_ICON, PLAYER_LEVEL_HUD, bindUiClick, fillRect, makeButton, makeLabel, makeMuteButton, makePlayerLevelHud, makeStatPill } from '@/utils/ui';
 import { applyFit, fitSpriteInBox, fitWidthBottom, gameTexture, isTextureFailed, isTextureReady, mapNorm, whenTextureReady } from '@/utils/assets';
 import { OutingCurtain } from '@/gameobjects/ui/OutingCurtain';
 import { destinationBootPaths } from '@/utils/outingAssets';
@@ -71,7 +75,10 @@ export class KitchenScene implements Scene {
   private _cook = new CookPanel();
   private _recipeBook = new RecipeBookPanel();
   private _dex = new DexPanel();
+  private _orders = new OrderPanel();
+  private _event = new EventPanel();
   private _upgrade = new UpgradePanel();
+  private _offerTimer = 0;
   private _onChange = () => {
     const fx = KitchenManager.consumeCookFx();
     if (fx && fx.levels <= 0) {
@@ -158,6 +165,8 @@ export class KitchenScene implements Scene {
     AudioManager.playBgm('kitchen');
     ensureCookLevelUpPanel().present();
     ensureRecipeUnlockPanel().present();
+    KitchenManager.beginKitchenVisit();
+    this._queueNeighborOffer();
   }
 
   private _overlayBlocking(): boolean {
@@ -166,6 +175,8 @@ export class KitchenScene implements Scene {
       || this._recipeBook.visible
       || this._upgrade.visible
       || this._dex.visible
+      || this._orders._isOpen
+      || this._event._isOpen
       || ensureRecipeUnlockPanel()._isOpen
       || ensureCookLevelUpPanel()._isOpen;
   }
@@ -182,10 +193,13 @@ export class KitchenScene implements Scene {
     try { Platform.api?.offTouchEnd?.(this._onUp); } catch (_) {}
     try { Platform.api?.offTouchCancel?.(this._onUp); } catch (_) {}
     this._endDrag();
+    this._clearOfferTimer();
     this._fridge.close(true);
     this._cook.close(true);
     this._recipeBook.close(true);
     this._dex.close(true);
+    this._orders.close(true);
+    this._event.close(true);
     this._upgrade.close(true);
     this._upgradePick = null;
     this._xpPop = null;
@@ -440,60 +454,65 @@ export class KitchenScene implements Scene {
   private _drawHud(w: number): void {
     const save = KitchenManager.save;
     const top = Number.isFinite(Game.safeTop) ? Game.safeTop : 96;
-    const y = top + 6;
+    const y = Math.max(4, top - 16);
     const redraw = () => {
       if (this.container.parent) this.relayout();
     };
 
+    const skill = cookXpView(save);
+    const profile = makePlayerLevelHud({
+      avatar: HUD_ICON.player,
+      level: skill.level,
+      text: skill.text,
+      fill: skill.fill,
+      onReady: redraw,
+    });
+    profile.position.set(12, y);
+    this._ui.addChild(profile);
+
+    const pillH = 44;
+    const pillY = y + Math.round((PLAYER_LEVEL_HUD.avatar - pillH) / 2);
+    const resX = 12 + PLAYER_LEVEL_HUD.avatar + PLAYER_LEVEL_HUD.gap + PLAYER_LEVEL_HUD.barW + 12;
     const money = makeStatPill({
       icon: 'subpkg_images/hud_coin.png',
       text: `${save.money}`,
-      width: 176,
+      width: 164,
       onIconReady: redraw,
     });
-    money.position.set(16, y);
+    money.position.set(resX, pillY);
     this._ui.addChild(money);
 
     const sta = makeStatPill({
       icon: 'subpkg_images/hud_stamina.png',
-      text: `${save.stamina}/${STAMINA_MAX}`,
-      width: 210,
-      fill: save.stamina / STAMINA_MAX,
+      text: `${save.stamina}/${staminaMax(save)}`,
+      width: 188,
+      fill: save.stamina / staminaMax(save),
       fillColor: 0x6BA368,
       onIconReady: redraw,
     });
-    sta.position.set(204, y);
+    sta.position.set(resX + 172, pillY);
     this._ui.addChild(sta);
 
-    const skill = cookXpView(save);
-    const skillW = 188;
-    const skillPill = makeCookSkillPill({
-      level: skill.level,
-      text: skill.text,
-      width: skillW,
-      fill: skill.fill,
-    });
-    skillPill.position.set(w - 16 - skillW, y);
-    this._ui.addChild(skillPill);
     if (this._xpPop && Date.now() < this._xpPop.until) {
       const pop = makeLabel(this._xpPop.text, 22, 0xF2C14D, { fontWeight: '700' });
-      pop.anchor.set(1, 0);
-      pop.position.set(w - 16, y + 50);
+      pop.position.set(12 + PLAYER_LEVEL_HUD.avatar + PLAYER_LEVEL_HUD.gap, y + 2);
       this._ui.addChild(pop);
     }
 
-    this._drawDexHud(top, redraw);
+    const STEP = 128;
+    const dexY = top + 208;
+    let slot = dexY;
+    this._drawDexHud(redraw, slot);
+    slot += STEP;
+    if (KitchenManager.liveNeighborOrders().length) {
+      this._drawOrderHud(redraw, slot);
+      slot += STEP;
+    }
     const mute = makeMuteButton(48);
-    mute.position.set(16, top + 330);
+    mute.position.set(16, slot + 32);
     const stopMute = (e: PIXI.FederatedPointerEvent) => e.stopPropagation();
     mute.on('pointerdown', stopMute);
     this._ui.addChild(mute);
-    if (!KitchenManager.canGoMarket()) {
-      const ad = makeButton('看广告 +1 体力', 220, 48, 0x4A6B7A);
-      ad.position.set(16, top + 72);
-      ad.on('pointertap', () => KitchenManager.watchAdStamina());
-      this._ui.addChild(ad);
-    }
 
     if (this._gm) {
       const hint = makeLabel('GM：拖家具 · 屋+/屋-换房子 · 导出后发给我固化', 18, 0xF4EFE6);
@@ -507,7 +526,92 @@ export class KitchenScene implements Scene {
     this._drawGmBar(w);
   }
 
-  private _drawDexHud(top: number, redraw: () => void): void {
+  private _drawOrderHud(redraw: () => void, y: number): void {
+    const orders = KitchenManager.liveNeighborOrders();
+    if (!orders.length) return;
+    const npc = neighborNpc(orders[0].npcId);
+    whenTextureReady(npc.portrait, redraw);
+    const size = 86;
+    const root = new PIXI.Container();
+    const tex = gameTexture(npc.portrait);
+    if (isTextureReady(tex)) {
+      const mask = new PIXI.Graphics();
+      mask.beginFill(0xffffff);
+      mask.drawRoundedRect(6, 6, size - 12, size - 12, 18);
+      mask.endFill();
+      const spr = new PIXI.Sprite(tex);
+      fitSpriteInBox(spr, size - 8, size - 8);
+      spr.anchor.set(0.5);
+      spr.position.set(size / 2, size / 2);
+      spr.mask = mask;
+      spr.eventMode = 'none';
+      root.addChild(mask, spr);
+    } else {
+      const g = new PIXI.Graphics();
+      fillRect(g, 4, 4, size - 8, size - 8, 0xC46A3A, 18);
+      root.addChild(g);
+    }
+    const chip = new PIXI.Graphics();
+    fillRect(chip, 8, size - 2, size - 16, 26, 0xFFF8F0, 12);
+    chip.alpha = 0.92;
+    const label = makeLabel('点菜', 18, 0x2A2018, { fontWeight: '700' });
+    label.anchor.set(0.5, 0);
+    label.position.set(size / 2, size);
+    root.addChild(chip, label);
+
+    const n = Math.min(2, orders.length);
+    const badgeW = 22;
+    const badge = new PIXI.Graphics();
+    badge.beginFill(0xD94A3A, 1);
+    badge.drawRoundedRect(size - badgeW - 2, 2, badgeW, 22, 11);
+    badge.endFill();
+    const count = makeLabel(`${n}`, 13, 0xFFF8F0, { fontWeight: '700' });
+    count.anchor.set(0.5);
+    count.position.set(size - badgeW / 2 - 2, 13);
+    root.addChild(badge, count);
+
+    root.position.set(10, y);
+    root.eventMode = 'static';
+    root.cursor = 'pointer';
+    root.hitArea = new PIXI.Rectangle(0, 0, size, size + 28);
+    const stop = (e: PIXI.FederatedPointerEvent) => e.stopPropagation();
+    root.on('pointerdown', stop);
+    root.on('pointertap', (e) => {
+      e.stopPropagation();
+      this._orders.open();
+    });
+    this._ui.addChild(root);
+  }
+
+  private _queueNeighborOffer(): void {
+    this._clearOfferTimer();
+    const tick = () => {
+      if (!this.container.parent) return;
+      if (this._overlayBlocking()) {
+        this._offerTimer = globalThis.setTimeout(tick, 350) as unknown as number;
+        return;
+      }
+      this._presentNeighborOffer();
+    };
+    tick();
+  }
+
+  private _presentNeighborOffer(): void {
+    if (this._event._isOpen || this._orders._isOpen) return;
+    const draft = KitchenManager.considerNeighborOffer();
+    if (!draft) return;
+    this._event.open(neighborOfferLog(draft), (i) => {
+      if (i === 0) KitchenManager.acceptNeighborOffer();
+      else KitchenManager.refuseNeighborOffer();
+    });
+  }
+
+  private _clearOfferTimer(): void {
+    if (this._offerTimer) globalThis.clearTimeout?.(this._offerTimer);
+    this._offerTimer = 0;
+  }
+
+  private _drawDexHud(redraw: () => void, y: number): void {
     const path = HUD_ICON.dex;
     whenTextureReady(path, redraw);
     const size = 86;
@@ -532,7 +636,7 @@ export class KitchenScene implements Scene {
     label.anchor.set(0.5, 0);
     label.position.set(size / 2, size);
     root.addChild(chip, label);
-    root.position.set(10, top + 208);
+    root.position.set(10, y);
     root.eventMode = 'static';
     root.cursor = 'pointer';
     root.hitArea = new PIXI.Rectangle(0, 0, size, size + 28);
@@ -680,6 +784,8 @@ export class KitchenScene implements Scene {
     this._cook.close(true);
     this._recipeBook.close(true);
     this._dex.close(true);
+    this._orders.close(true);
+    this._event.close(true);
     this._upgrade.close(true);
     this._upgradePick = null;
     ensureRecipeUnlockPanel().close();
@@ -963,10 +1069,10 @@ export class KitchenScene implements Scene {
         return `${nextShown}级容量  ${fridgeOwnCap(lv)}→${fridgeOwnCap(lv + 1)}`;
       }
       if (id === 'foam') {
-        return `${nextShown}级容量  ${foamWetCols(lv)}×${foamWetRows(lv)}→${foamWetCols(lv + 1)}×${foamWetRows(lv + 1)}`;
+        return `容量  ${foamWetCols(lv)}×${foamWetRows(lv)} → ${foamWetCols(lv + 1)}×${foamWetRows(lv + 1)}`;
       }
       if (id === 'basket') {
-        return `${nextShown}级容量  ${bagDryCols(lv)}×${bagRows(lv)}→${bagDryCols(lv + 1)}×${bagRows(lv + 1)}`;
+        return `容量  ${bagDryCols(lv)}×${bagRows(lv)} → ${bagDryCols(lv + 1)}×${bagRows(lv + 1)}`;
       }
       if (id === 'table') {
         return `${nextShown}级  解锁 ${tableUnlockNext(lv)} 本菜谱`;
@@ -1046,7 +1152,7 @@ export class KitchenScene implements Scene {
   private goMarket(): void {
     if (!KitchenManager.canGoMarket()) {
       AudioManager.play('ui_deny');
-      Platform.showToast('体力不足，看个广告也能出门');
+      void KitchenManager.offerShareStamina();
       return;
     }
     if (OutingCurtain.busy) return;

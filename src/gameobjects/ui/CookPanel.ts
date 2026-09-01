@@ -219,8 +219,10 @@ export class CookPanel extends PIXI.Container {
         tab.eventMode = 'none';
         row.addChild(tab);
         const can = recipeCookCount(view, recipe.id);
+        const waiting = KitchenManager.wantedNeighborRecipeIds().has(recipe.id);
         row.alpha = can > 0 || on ? 1 : 0.75;
         if (can > 0) row.addChild(this._readyBadge(rowW, can));
+        if (waiting) row.addChild(this._waitBadge(can > 0 ? rowW - 62 : rowW - 30));
         row.position.set(x + 6, cy);
         row.on('pointertap', () => {
           if (this._scroller.moved) return;
@@ -299,6 +301,13 @@ export class CookPanel extends PIXI.Container {
     name.anchor.set(0.5);
     name.position.set(cx, nameY);
     root.addChild(name);
+    const waiting = KitchenManager.wantedNeighborRecipeIds().has(recipe.id);
+    if (waiting) {
+      const wait = makeLabel('街坊在等', 18, TERRACOTTA, { fontWeight: '700' });
+      wait.anchor.set(0.5);
+      wait.position.set(cx, nameY + 28);
+      root.addChild(wait);
+    }
     const xp = recipeXp(KitchenManager.save, recipe.id);
     const xpLabel = makeLabel(
       `${rarityLabel(recipe.rarity)}  ·  +${xp} 经验`,
@@ -307,7 +316,7 @@ export class CookPanel extends PIXI.Container {
       { fontWeight: '700' },
     );
     xpLabel.anchor.set(0.5);
-    xpLabel.position.set(cx, nameY + 30);
+    xpLabel.position.set(cx, nameY + (waiting ? 50 : 30));
     root.addChild(xpLabel);
 
     const tx = dx;
@@ -322,7 +331,7 @@ export class CookPanel extends PIXI.Container {
       wordWrapWidth: Math.max(80, tw - 12),
       lineHeight: 30,
     });
-    blurb.position.set(tx + 6, nameY + 52);
+    blurb.position.set(tx + 6, nameY + (waiting ? 72 : 52));
     blurb.eventMode = 'none';
     root.addChild(blurb);
 
@@ -447,6 +456,24 @@ export class CookPanel extends PIXI.Container {
       this._inspect = inspectFromItem(iconId);
       this.relayout();
     });
+    return root;
+  }
+
+  private _waitBadge(x: number): PIXI.Container {
+    const root = new PIXI.Container();
+    const text = makeLabel('等', 16, PAPER, { fontWeight: '700' });
+    const w = 28;
+    const h = 26;
+    const g = new PIXI.Graphics();
+    g.beginFill(0x3A6ABF, 1);
+    g.drawRoundedRect(0, 0, w, h, 10);
+    g.endFill();
+    g.eventMode = 'none';
+    text.anchor.set(0.5);
+    text.position.set(w / 2, h / 2 + 0.5);
+    root.addChild(g, text);
+    root.eventMode = 'none';
+    root.position.set(x, -10);
     return root;
   }
 

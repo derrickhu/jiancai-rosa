@@ -20,8 +20,10 @@ export function destinationBootPaths(): string[] {
     'subpkg_images/dest_street_bg.jpg',
     HUD_ICON.destBanner,
     HUD_ICON.home,
+    HUD_ICON.player,
+    HUD_ICON.coin,
     HUD_ICON.stamina,
-    HUD_ICON.fridge,
+    HUD_ICON.peek,
     UI_BTN.terracotta,
     UI_BTN.cream,
     UI_BTN.wood,
@@ -54,6 +56,11 @@ export function marketBootPaths(marketId: MarketId, run?: RunState): string[] {
     art.cardAtlas,
     art.meatCard,
     CARD_FRAME,
+    HUD_ICON.leave,
+    HUD_ICON.back,
+    HUD_ICON.clock,
+    HUD_ICON.coin,
+    HUD_ICON.basket,
     ...RESULT_UI,
   ];
   if (run) {

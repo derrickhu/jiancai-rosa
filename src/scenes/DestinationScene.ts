@@ -7,8 +7,8 @@ import { Platform } from '@/core/PlatformService';
 import { KitchenManager } from '@/managers/KitchenManager';
 import { RunManager } from '@/managers/RunManager';
 import {
-  STAMINA_MAX,
   cookXpView,
+  staminaMax,
   isMarketUnlocked,
   marketsForVehicle,
   neighborVehicle,
@@ -22,12 +22,15 @@ import {
   type MarketDef,
   type SpecialMarketDef,
   type VehicleId,
+  explorePercent,
+  marketExploration,
 } from '@/sim';
 import { AudioManager } from '@/core/AudioManager';
-import { HUD_ICON, bindUiClick, fillRect, makeCookSkillPill, makeLabel, makeMuteButton, makeSlicedButton, makeStatPill } from '@/utils/ui';
+import { HUD_ICON, PLAYER_LEVEL_HUD, bindUiClick, fillRect, makeLabel, makeMuteButton, makePlayerLevelHud, makeSlicedButton, makeStatPill } from '@/utils/ui';
 import { VerticalScroller } from '@/utils/scroll';
 import { applyGray, applyFit, fitCover, fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from '@/utils/assets';
 import { OutingCurtain } from '@/gameobjects/ui/OutingCurtain';
+import { MarketLootPanel } from '@/gameobjects/ui/MarketLootPanel';
 import { marketBootPaths, specialBootPaths } from '@/utils/outingAssets';
 import { SpecialMarketScene } from '@/scenes/SpecialMarketScene';
 
@@ -63,13 +66,14 @@ export class DestinationScene implements Scene {
   private _ui = new PIXI.Container();
   private _scroller: VerticalScroller;
   private _browse: VehicleId = 'walk';
+  private _loot = new MarketLootPanel();
 
   constructor() {
     this.container.eventMode = 'static';
     this.container.addChild(this._ui);
     this._scroller = new VerticalScroller(this.container, {
       slop: DRAG_SLOP,
-      visible: () => !!this.container.parent,
+      visible: () => !!this.container.parent && !this._loot._isOpen,
     });
   }
 
@@ -84,6 +88,7 @@ export class DestinationScene implements Scene {
   onExit(): void {
     EventBus.off(EV.kitchenChanged, this._onKitchen);
     this._scroller.disable();
+    this._loot.close(true);
   }
 
   private _onKitchen = (): void => {
@@ -116,45 +121,46 @@ export class DestinationScene implements Scene {
     const top = Number.isFinite(Game.safeTop) ? Game.safeTop : 96;
     const titleTop = Math.max(-28, top - TITLE_LIFT);
     this._drawTitle(w, titleTop, redraw);
-    const pillsY = titleTop + BANNER_H + 16;
+    const pillsY = titleTop + BANNER_H + 8;
     const skill = cookXpView(KitchenManager.save);
-    const skillPill = makeCookSkillPill({
+    const profile = makePlayerLevelHud({
+      avatar: HUD_ICON.player,
       level: skill.level,
       text: skill.text,
-      width: 200,
       fill: skill.fill,
+      onReady: redraw,
     });
-    skillPill.position.set(20, pillsY);
-    this._ui.addChild(skillPill);
+    profile.position.set(12, pillsY);
+    this._ui.addChild(profile);
 
-    const sta = KitchenManager.save.stamina;
+    const pillH = 44;
+    const pillY = pillsY + Math.round((PLAYER_LEVEL_HUD.avatar - pillH) / 2);
+    const resX = 12 + PLAYER_LEVEL_HUD.avatar + PLAYER_LEVEL_HUD.gap + PLAYER_LEVEL_HUD.barW + 12;
+    const money = makeStatPill({
+      icon: HUD_ICON.coin,
+      text: `${KitchenManager.save.money}`,
+      width: 164,
+      onIconReady: redraw,
+    });
+    money.position.set(resX, pillY);
+    this._ui.addChild(money);
+
     const staPill = makeStatPill({
-      icon: 'subpkg_images/hud_stamina.png',
-      text: `${sta}/${STAMINA_MAX}`,
-      width: 210,
-      fill: sta / STAMINA_MAX,
+      icon: HUD_ICON.stamina,
+      text: `${KitchenManager.save.stamina}/${staminaMax(KitchenManager.save)}`,
+      width: 188,
+      fill: KitchenManager.save.stamina / staminaMax(KitchenManager.save),
       fillColor: 0x6BA368,
       onIconReady: redraw,
     });
-    staPill.position.set(232, pillsY);
+    staPill.position.set(resX + 172, pillY);
     this._ui.addChild(staPill);
 
-    const room = KitchenManager.fridgeRoom();
-    const canStack = KitchenManager.fridgeAcceptsOuting();
-    const icePill = makeStatPill({
-      icon: HUD_ICON.fridge,
-      text: room > 0 ? `空 ${room}` : canStack ? '可叠' : '满了',
-      width: 200,
-      ...(room > 0 || canStack ? {} : { fill: 1, fillColor: 0xE07A5F }),
-      onIconReady: redraw,
-    });
-    icePill.position.set(454, pillsY);
-    this._ui.addChild(icePill);
     const mute = makeMuteButton(44);
-    mute.position.set(w - 64, pillsY);
+    mute.position.set(w - 64, pillY);
     this._ui.addChild(mute);
 
-    const listTop = pillsY + 72;
+    const listTop = pillsY + PLAYER_LEVEL_HUD.height + 8;
     const bottomPad = Math.max(
       HOME_BOTTOM,
       (Number.isFinite(Game.safeBottom) ? Game.safeBottom : 0) + 24,
@@ -310,27 +316,23 @@ export class DestinationScene implements Scene {
     root.addChild(hint);
 
     if (unlocked) {
-      const go = makeSlicedButton({
-        label: '出发',
-        width: 168,
-        height: btnH,
-        skin: 'terracotta',
-        onReady: () => {
-          if (this.container.parent) this.relayout();
-        },
-      });
-      go.position.set(textX, btnY);
-      go.on('pointertap', () => {
-        if (this._scroller.moved) return;
-        this._depart(market);
-      });
-      root.addChild(go);
-      root.addChild(this._staminaCost(textX + 180, btnY, market.staminaCost, save.stamina < market.staminaCost));
+      const goW = 158;
+      const gap = 10;
+      root.addChild(this._departBtn(
+        textX,
+        btnY,
+        goW,
+        btnH,
+        market.staminaCost,
+        save.stamina < market.staminaCost,
+        () => this._depart(market),
+      ));
+      root.addChild(this._exploreMeter(textX + goW + gap, btnY, btnH, market.id));
     } else {
       const label = routed ? `厨艺 ${market.unlockLevel} 解锁` : `先买${needRide.name}`;
       const need = makeSlicedButton({
         label,
-        width: 168,
+        width: 200,
         height: btnH,
         skin: 'wood',
         onReady: () => {
@@ -340,7 +342,6 @@ export class DestinationScene implements Scene {
       need.eventMode = 'none';
       need.position.set(textX, btnY);
       root.addChild(need);
-      root.addChild(this._staminaCost(textX + 180, btnY, market.staminaCost, false));
       root.eventMode = 'static';
       root.cursor = 'pointer';
       root.hitArea = new PIXI.Rectangle(x, y, width, height);
@@ -448,34 +449,138 @@ export class DestinationScene implements Scene {
     return root;
   }
 
-  /** 出发钮右边：包子图 + 消耗。不够就数字发红。 */
-  private _staminaCost(x: number, y: number, cost: number, short: boolean): PIXI.Container {
+  /** 出发和包子消耗挤在一颗钮上。不够就数字发金。 */
+  private _departBtn(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    cost: number,
+    short: boolean,
+    onTap: () => void,
+  ): PIXI.Container {
     const root = new PIXI.Container();
-    const chip = new PIXI.Graphics();
-    chip.lineStyle(2, 0x8B5A2B, 1);
-    chip.beginFill(0xFFF6EA);
-    chip.drawRoundedRect(0, 0, 118, 48, 24);
-    chip.endFill();
-    root.addChild(chip);
+    const btn = makeSlicedButton({
+      label: '',
+      width,
+      height,
+      skin: 'terracotta',
+      onReady: () => {
+        if (this.container.parent) this.relayout();
+      },
+    });
+    btn.position.set(x, y);
+    btn.on('pointertap', () => {
+      if (this._scroller.moved) return;
+      onTap();
+    });
+    root.addChild(btn);
 
+    const word = makeLabel('出发', 22, 0xFFF8F0, { fontWeight: '700' });
+    word.anchor.set(0, 0.5);
     const icon = HUD_ICON.stamina;
     whenTextureReady(icon, () => {
       if (this.container.parent) this.relayout();
     });
     const tex = gameTexture(icon);
-    if (isTextureReady(tex)) {
-      const sp = new PIXI.Sprite(tex);
-      fitSpriteInBox(sp, 40, 40);
-      sp.anchor.set(0.5);
-      sp.position.set(28, 24);
-      root.addChild(sp);
+    const bun = isTextureReady(tex) ? new PIXI.Sprite(tex) : null;
+    if (bun) {
+      fitSpriteInBox(bun, 22, 22);
+      bun.anchor.set(0.5);
+      bun.eventMode = 'none';
+    }
+    const n = makeLabel(`-${cost}`, 18, short ? 0xF2C14D : 0xFFF8F0, { fontWeight: '700' });
+    n.anchor.set(0, 0.5);
+    const clusterW = word.width + 4 + (bun ? 22 : 0) + 2 + n.width;
+    let cx = x + (width - clusterW) / 2;
+    const mid = y + height / 2 + 1;
+    word.position.set(cx, mid);
+    cx += word.width + 4;
+    if (bun) {
+      bun.position.set(cx + 11, mid);
+      cx += 24;
+      root.addChild(bun);
+    }
+    n.position.set(cx, mid);
+    word.eventMode = 'none';
+    n.eventMode = 'none';
+    root.addChild(word, n);
+    return root;
+  }
+
+  /** 无框：探索度后面跟放大镜，下面短粗金条。 */
+  private _exploreMeter(
+    x: number,
+    y: number,
+    height: number,
+    marketId: MarketDef['id'],
+  ): PIXI.Container {
+    const root = new PIXI.Container();
+    const view = marketExploration(KitchenManager.save, marketId);
+    const pct = explorePercent(view);
+    const peek = 36;
+    const barW = 150;
+
+    const label = makeLabel(`探索度 ${pct}%`, 22, 0x3A3228, { fontWeight: '700' });
+    label.position.set(0, 2);
+    root.addChild(label);
+
+    if (view.complete) {
+      const btn = this._peekBtn(peek);
+      btn.position.set(label.width + 6, Math.round((label.height - peek) / 2) + 2);
+      btn.on('pointertap', (e) => {
+        e.stopPropagation();
+        if (this._scroller.moved) return;
+        this._loot.open(marketId);
+      });
+      root.addChild(btn);
     }
 
-    const n = makeLabel(`-${cost}`, 24, short ? 0xC46A3A : 0x3A3228, { fontWeight: '700' });
-    n.anchor.set(0, 0.5);
-    n.position.set(52, 24);
-    root.addChild(n);
+    const barH = 16;
+    const barY = height - barH - 2;
+    const well = new PIXI.Graphics();
+    well.beginFill(0x5A4636);
+    well.drawRoundedRect(0, barY, barW, barH, 8);
+    well.endFill();
+    well.beginFill(0xE8DFD0);
+    well.drawRoundedRect(2, barY + 2, barW - 4, barH - 4, 6);
+    well.endFill();
+    root.addChild(well);
+    if (view.ratio > 0) {
+      const fw = Math.max(12, (barW - 4) * (view.complete ? 1 : view.ratio));
+      const fill = new PIXI.Graphics();
+      fill.beginFill(0xE0A100);
+      fill.drawRoundedRect(2, barY + 2, fw, barH - 4, 6);
+      fill.endFill();
+      fill.beginFill(0xF6D56B, 0.5);
+      fill.drawRoundedRect(2, barY + 2, fw, 5, 5);
+      fill.endFill();
+      root.addChild(fill);
+    }
+
     root.position.set(x, y);
+    return root;
+  }
+
+  private _peekBtn(size: number): PIXI.Container {
+    const root = new PIXI.Container();
+    const path = HUD_ICON.peek;
+    whenTextureReady(path, () => {
+      if (this.container.parent) this.relayout();
+    });
+    const tex = gameTexture(path);
+    if (isTextureReady(tex)) {
+      const spr = new PIXI.Sprite(tex);
+      fitSpriteInBox(spr, size, size);
+      spr.anchor.set(0.5);
+      spr.position.set(size / 2, size / 2);
+      spr.eventMode = 'none';
+      root.addChild(spr);
+    }
+    root.eventMode = 'static';
+    root.cursor = 'pointer';
+    root.hitArea = new PIXI.Rectangle(0, 0, size, size);
+    bindUiClick(root);
     return root;
   }
 
@@ -642,7 +747,7 @@ export class DestinationScene implements Scene {
     }
     if (!KitchenManager.canGoMarket()) {
       AudioManager.play('ui_deny');
-      Platform.showToast('体力不足，看个广告也能出门');
+      void KitchenManager.offerShareStamina();
       return;
     }
     if (!KitchenManager.fridgeAcceptsOuting()) {

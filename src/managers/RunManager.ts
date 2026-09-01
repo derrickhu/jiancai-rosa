@@ -52,6 +52,8 @@ import {
   type RunEventLog,
   type DropResult,
   type RunState,
+  liveNeighborOrders,
+  orderIngredientIds,
 } from '@/sim';
 import { KitchenManager } from './KitchenManager';
 import type { MarketId } from '@/sim';
@@ -82,6 +84,11 @@ class RunManagerClass {
     return unlockedIngredients(recipeUnlockView(KitchenManager.save));
   }
 
+  /** 挂着的点菜单用料，再叠一层，减轻有单没料。 */
+  private _boosted(): Set<string> {
+    return new Set(orderIngredientIds(liveNeighborOrders(KitchenManager.save.neighborOrders)));
+  }
+
   start(marketId: MarketId = 'xiangko'): boolean {
     if (!KitchenManager.startRun()) return false;
     const seed = newSeed();
@@ -95,6 +102,7 @@ class RunManagerClass {
       forceRecipe: remainingMarketRecipes(marketId, KitchenManager.save.recipesFound).length
         === MARKET_RECIPE_POOL[marketId].length,
       wanted: this._wanted(),
+      boosted: this._boosted(),
     });
     if (hasGodPick(this.run)) KitchenManager.markGodPickToday();
     this.basket = createBasket(
@@ -411,7 +419,7 @@ class RunManagerClass {
     return spots.map((spot) => {
       if (seen.has(spot.defId)) return spot;
       seen.add(spot.defId);
-      return { ...spot, firstSeen: KitchenManager.discoverFood(spot.defId) };
+      return { ...spot, firstSeen: KitchenManager.discoverFood(spot.defId, undefined, this.run?.marketId) };
     });
   }
 
@@ -421,6 +429,7 @@ class RunManagerClass {
       state.marketId,
       cookLevel(KitchenManager.save),
       this._wanted(),
+      this._boosted(),
     );
     return this._placeFood(state, node.id, node.kind, defId, quality, '摊主收筐时漏下的，还新鲜着，捡回去。');
   }
@@ -445,7 +454,7 @@ class RunManagerClass {
           kind,
           marketId: state.marketId,
           text: '篮子满了，先腾个位子再捡。',
-          gain: { defId, quality, taken: false, firstSeen: KitchenManager.discoverFood(defId, quality) },
+          gain: { defId, quality, taken: false, firstSeen: KitchenManager.discoverFood(defId, quality, state.marketId) },
         },
       };
     }
@@ -458,7 +467,7 @@ class RunManagerClass {
         kind,
         marketId: state.marketId,
         text,
-        gain: { defId, quality, taken: true, firstSeen: KitchenManager.discoverFood(defId, quality) },
+        gain: { defId, quality, taken: true, firstSeen: KitchenManager.discoverFood(defId, quality, state.marketId) },
       },
     };
   }
@@ -507,7 +516,7 @@ class RunManagerClass {
       drawn: true,
       revealed: true,
       inspected: item.defId !== GOD_PICK.id,
-      firstSeen: KitchenManager.discoverFood(visibleDefId(item), item.quality),
+      firstSeen: KitchenManager.discoverFood(visibleDefId(item), item.quality, this.run.marketId),
     });
     this.emit();
     return this.findPile(item.uid) ?? item;
@@ -711,7 +720,7 @@ class RunManagerClass {
     const item = this.findPile(uid);
     if (!item || item.defId !== GOD_PICK.id || item.inspected) return;
     this.patchPile(uid, { inspected: true });
-    KitchenManager.discoverFood(GOD_PICK.id);
+    KitchenManager.discoverFood(GOD_PICK.id, undefined, this.run?.marketId);
     if (!quiet) Platform.showToast('原来是野生大黄鱼', 'success');
   }
 
@@ -756,7 +765,7 @@ class RunManagerClass {
   private _applyDrop(result: DropResult): string | null {
     if (!result.ok) return result.reason;
     this.basket = result.state;
-    if (result.evicted) this._pushTray(result.evicted);
+    for (const item of result.evicted) this._pushTray(item);
     return null;
   }
 

@@ -31,14 +31,14 @@ export type BasketCellKind = 'wet' | 'dry' | 'flex' | 'none';
 /** 最上预留的广告通用行。锁着时不占可用格，坐标仍从这一行下面起算，解锁不用挪货。 */
 export const BASKET_FLEX_ROWS = 1;
 
-/** 塑料袋/菜篮：出门干区列数。后面升级优先加列。 */
-export const BAG_DRY_COLS = [4, 4, 5, 5, 5, 6, 6, 7, 7, 8];
+/** 塑料袋/菜篮：出门干区列数。每升一级至少加一列或一行。 */
+export const BAG_DRY_COLS = [4, 4, 5, 5, 6, 6, 7, 7, 8, 8];
 /** 塑料袋/菜篮：出门干区行数。只影响干区，从上往下长。 */
-export const BAG_ROWS = [3, 4, 4, 4, 5, 5, 5, 5, 6, 6];
-/** 泡沫箱/水桶：出门湿区列数。后面升级优先加列。 */
+export const BAG_ROWS = [3, 4, 4, 5, 5, 6, 6, 7, 7, 8];
+/** 泡沫箱/水桶：出门湿区列数。每升一级至少加一列或一行。 */
 export const FOAM_WET_COLS = [2, 2, 3, 3, 4, 4, 5, 5, 6, 6];
 /** 泡沫箱/水桶：出门湿区行数。只影响湿区，从上往下长。 */
-export const FOAM_WET_ROWS = [3, 4, 4, 4, 4, 5, 5, 5, 5, 6];
+export const FOAM_WET_ROWS = [3, 4, 4, 5, 5, 6, 6, 7, 7, 8];
 
 function clampBagLevel(level: number): number {
   return Math.max(0, Math.min(9, Math.floor(level)));
@@ -96,9 +96,7 @@ export function basketCellKind(state: BasketState, x: number, y: number): Basket
   if (y < BASKET_FLEX_ROWS) return state.flexUnlocked ? 'flex' : 'none';
   const localY = y - BASKET_FLEX_ROWS;
   if (x < state.wetCols && localY < state.wetRows) return 'wet';
-  if (x >= state.wetCols && localY < state.dryRows) {
-    return state.insulatedBottom && localY === state.dryRows - 1 ? 'wet' : 'dry';
-  }
+  if (x >= state.wetCols && localY < state.dryRows) return 'dry';
   return 'none';
 }
 
@@ -309,55 +307,53 @@ function overlappingOthers(
 
 export type DropPreview = 'empty' | 'swap' | 'blocked';
 
-/** 影子用：空位绿、一件黄、多件或违规红。 */
+/** 影子用：空位绿、压到已有货黄、湿干不对或越界红。 */
 export function previewDrop(
   state: BasketState,
   draft: Pick<BasketItem, 'uid' | 'defId' | 'x' | 'y' | 'rot'>,
 ): DropPreview {
   const others = overlappingOthers(state, draft);
-  if (others.length > 1) return 'blocked';
   const ignore = new Set([draft.uid, ...others.map((it) => it.uid)]);
   const cleared: BasketState = {
     ...state,
     items: state.items.filter((it) => !ignore.has(it.uid)),
   };
   if (!canPlace(cleared, draft).ok) return 'blocked';
-  return others.length === 1 ? 'swap' : 'empty';
+  return others.length > 0 ? 'swap' : 'empty';
 }
 
 export type DropResult =
-  | { ok: true; state: BasketState; evicted: BasketItem | null }
+  | { ok: true; state: BasketState; evicted: BasketItem[] }
   | { ok: false; reason: string };
 
 /**
- * 空位放下；压到刚好一件则交换。
- * 篮内互拖：对方能坐进旧格就对换，否则自动找空位，再不行上托盘。
- * 托盘拖进来：被压到的那件上托盘。
+ * 空位放下；压到一件：篮内能对换就对换，否则上暂存。
+ * 压到多件：范围内的都上暂存，再放下。
  */
 export function tryDrop(state: BasketState, incoming: BasketItem): DropResult {
   const others = overlappingOthers(state, incoming);
-  if (others.length > 1) return { ok: false, reason: '压到太多件，换不开' };
   const old = state.items.find((it) => it.uid === incoming.uid) ?? null;
-  const evict = others[0] ?? null;
-  const ignore = new Set([incoming.uid, evict?.uid].filter((id): id is string => !!id));
+  const ignore = new Set([incoming.uid, ...others.map((it) => it.uid)]);
   const cleared: BasketState = {
     ...state,
     items: state.items.filter((it) => !ignore.has(it.uid)),
   };
   const landed = place(cleared, incoming);
   if (!landed.ok) return landed;
-  if (!evict) return { ok: true, state: landed.state, evicted: null };
+  if (others.length === 0) return { ok: true, state: landed.state, evicted: [] };
 
-  if (old) {
+  if (others.length === 1 && old) {
+    const evict = others[0];
     const swapped = place(landed.state, { ...evict, x: old.x, y: old.y });
-    if (swapped.ok) return { ok: true, state: swapped.state, evicted: null };
+    if (swapped.ok) return { ok: true, state: swapped.state, evicted: [] };
     const nudged = tryAutoPlace(landed.state, evict);
     if (nudged) {
       const put = place(landed.state, nudged);
-      if (put.ok) return { ok: true, state: put.state, evicted: null };
+      if (put.ok) return { ok: true, state: put.state, evicted: [] };
     }
+    return { ok: true, state: landed.state, evicted: [evict] };
   }
-  return { ok: true, state: landed.state, evicted: evict };
+  return { ok: true, state: landed.state, evicted: others };
 }
 
 export function tryRelocate(
@@ -377,22 +373,22 @@ export function tryRotateItem(state: BasketState, uid: string): DropResult {
   const item = state.items.find((it) => it.uid === uid);
   if (!item) return { ok: false, reason: '篮里没有' };
   const def = getItem(item.defId);
-  if (def.w === def.h) return { ok: true, state, evicted: null };
+  if (def.w === def.h) return { ok: true, state, evicted: [] };
   const rot: 0 | 1 = item.rot === 0 ? 1 : 0;
   const without = removeItem(state, uid);
   const same = { ...item, rot };
   if (canPlace(without, same).ok) {
     const put = place(without, same);
-    return put.ok ? { ok: true, state: put.state, evicted: null } : put;
+    return put.ok ? { ok: true, state: put.state, evicted: [] } : put;
   }
   for (const { x, y } of sortedOrigins(without, def, rot, { x: item.x, y: item.y })) {
     const draft = { ...item, x, y, rot };
     if (canPlace(without, draft).ok) {
       const put = place(without, draft);
-      return put.ok ? { ok: true, state: put.state, evicted: null } : put;
+      return put.ok ? { ok: true, state: put.state, evicted: [] } : put;
     }
   }
-  return { ok: true, state: without, evicted: { ...item, rot } };
+  return { ok: true, state: without, evicted: [{ ...item, rot }] };
 }
 
 export function removeItem(state: BasketState, uid: string): BasketState {
@@ -409,6 +405,64 @@ export function emptyCellsHint(state: BasketState): Array<{ x: number; y: number
     }
   }
   return cells;
+}
+
+export interface StagingSlot {
+  uid: string;
+  defId: string;
+  x: number;
+  y: number;
+  rot: 0 | 1;
+}
+
+/** 暂存区按真实占格从左到右、从上到下排。至少三行，装不下就往下长。 */
+export function packStagingLayout(
+  items: Array<{ uid: string; defId: string }>,
+  cols: number,
+): { slots: StagingSlot[]; rows: number } {
+  const safeCols = Math.max(1, cols);
+  const occ = new Set<string>();
+  const slots: StagingSlot[] = [];
+  let usedRows = 0;
+
+  const blocked = (x: number, y: number, w: number, h: number): boolean => {
+    if (x < 0 || y < 0 || x + w > safeCols) return true;
+    for (let dy = 0; dy < h; dy++) {
+      for (let dx = 0; dx < w; dx++) {
+        if (occ.has(`${x + dx},${y + dy}`)) return true;
+      }
+    }
+    return false;
+  };
+
+  const mark = (x: number, y: number, w: number, h: number): void => {
+    for (let dy = 0; dy < h; dy++) {
+      for (let dx = 0; dx < w; dx++) occ.add(`${x + dx},${y + dy}`);
+    }
+    usedRows = Math.max(usedRows, y + h);
+  };
+
+  for (const it of items) {
+    const def = getItem(it.defId);
+    const rots: Array<0 | 1> = def.w === def.h ? [0] : [0, 1];
+    let placed = false;
+    for (const rot of rots) {
+      const { w, h } = footprint(def, rot);
+      if (w > safeCols) continue;
+      for (let y = 0; y < 24 && !placed; y++) {
+        for (let x = 0; x <= safeCols - w; x++) {
+          if (blocked(x, y, w, h)) continue;
+          mark(x, y, w, h);
+          slots.push({ uid: it.uid, defId: it.defId, x, y, rot });
+          placed = true;
+          break;
+        }
+      }
+      if (placed) break;
+    }
+  }
+
+  return { slots, rows: Math.max(3, usedRows) };
 }
 
 export function validPlacements(

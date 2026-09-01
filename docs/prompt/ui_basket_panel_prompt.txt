@@ -1,11 +1,15 @@
 Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft cel shading, gentle highlights, warm wood and paper colors. Warm golden market-kitchen lighting, tidy not grimy, no photorealism, no pixel art, no neon. NO TEXT, no labels, no numbers, no captions, no watermark, no Chinese characters, no Latin letters, no buttons, no icons, no food, no vegetables, no grid lines, no cell dividers.
 
-A single vertical OPEN MARKET CRATE used as a game inventory panel, isolated on a flat solid WHITE background. Front view, centered, filling most of the height. Portrait 9:16.
+A single vertical OPEN MARKET CRATE used as a game inventory panel, filling the ENTIRE 9:16 frame edge to edge. Front view, no white margin, no floating object on a studio backdrop.
 
-It is a handmade wooden outing-crate / shopping basket opened toward the camera:
-- Thick honey-walnut wood frame, rounded corners, soft wood grain, slightly plump like the other kitchen UI shells.
-- TOP 18%: a shallow cream oil-paper tray pocket set into the wood, completely EMPTY and smooth. Reserved for incoming items later. No writing, no produce.
-- MIDDLE 64%: a LARGE EMPTY crate well. Warm tan woven-wood floor (#E8D5B0 / #C4A574), completely flat and blank so a grid can be drawn on top. Soft inner shadow around the rim only. NO slats across the well, NO divider wall, NO wet/dry labels, NO grid.
-- BOTTOM 16%: a thicker wood kickplate / handle bar, empty, reserved for buttons later. A short hemp rope handle hint at the very bottom is ok.
+Handmade wooden outing-crate opened toward the camera:
+- Thick honey-walnut wood frame, rounded corners, soft wood grain, plump like other kitchen UI shells.
+- TOP 6%: a VERY THIN walnut title plank, empty, reserved for a title later. Do not make this band tall.
+- NEXT 24%: a TALL empty staging well with a smooth cream-tan wood floor (#EDE3D0). This well must be clearly taller than a thin shelf — about one quarter of the crate height — so three rows of inventory squares can sit inside. Completely blank so a grid can be drawn on top. Soft inner shadow on the rim only. NO grid, NO slots, NO items.
+- A thin walnut divider rail.
+- NEXT 50%: a LARGE deep crate well. Warm tan woven-wood floor (#E8D5B0 / #C4A574), completely flat and blank so a backpack grid can be drawn on top. Soft inner shadow around the rim only. NO slats across the well, NO divider wall, NO wet/dry labels, NO grid.
+- BOTTOM 15%: a thicker wood kickplate / handle bar, empty, reserved for buttons. A short hemp rope handle hint at the very bottom is ok.
 
-Rounded crate silhouette, dark-brown outline all around. Isolated object, lots of white around it, no market stall, no floor, no people. Full frame.
+Keep the same rustic crate language as the reference: honey walnut frame, cream top well, diagonal woven middle, rope handle at the bottom. Only change the proportions: taller cream staging well, thinner title plank.
+
+Rounded crate silhouette, dark-brown outline all around. No market stall, no floor, no people. Full-bleed crate, edge to edge.

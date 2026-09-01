@@ -319,6 +319,77 @@ class PlatformServiceClass {
     console.log('[Toast]', title);
   }
 
+  /** 主包分享图。微信会话卡片建议约 5:4。 */
+  readonly shareImageUrls = [
+    'boot/share_market_g.jpg',
+    'boot/share_market_k.jpg',
+  ];
+
+  pickShareImage(): string {
+    const list = this.shareImageUrls;
+    return list[Math.floor(Math.random() * list.length)] ?? list[0];
+  }
+
+  bindShareMenu(getTitle: () => string, getImageUrl?: () => string): void {
+    const api = this._api;
+    if (!api) return;
+    const imageUrl = () => getImageUrl?.() || this.pickShareImage();
+    try {
+      api.showShareMenu?.({
+        withShareTicket: true,
+        menus: ['shareAppMessage', 'shareTimeline'],
+      });
+    } catch (_) {}
+    try {
+      api.onShareAppMessage?.(() => ({ title: getTitle(), imageUrl: imageUrl() }));
+    } catch (_) {}
+    try {
+      api.onShareTimeline?.(() => ({ title: getTitle(), imageUrl: imageUrl() }));
+    } catch (_) {}
+  }
+
+  shareAppMessage(opts: { title: string; imageUrl?: string }): boolean {
+    try {
+      if (typeof this._api?.shareAppMessage !== 'function') return false;
+      this._api.shareAppMessage({
+        title: opts.title,
+        imageUrl: opts.imageUrl || this.pickShareImage(),
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  showModal(opts: {
+    title: string;
+    content: string;
+    confirmText?: string;
+    cancelText?: string;
+  }): Promise<boolean> {
+    return new Promise((resolve) => {
+      try {
+        if (typeof this._api?.showModal === 'function') {
+          this._api.showModal({
+            title: opts.title,
+            content: opts.content,
+            confirmText: opts.confirmText || '确定',
+            cancelText: opts.cancelText || '取消',
+            showCancel: true,
+            success: (res: any) => resolve(!!res?.confirm),
+            fail: () => resolve(false),
+          });
+          return;
+        }
+      } catch (_) {}
+      if (typeof globalThis.confirm === 'function') {
+        resolve(globalThis.confirm(`${opts.title}\n${opts.content}`));
+        return;
+      }
+      resolve(false);
+    });
+  }
+
   /** MVP 先直接发奖励；接广告后接到这里。 */
   showRewardedVideo(onReward: () => void): void {
     this.showToast('广告位稍后接入', 'none');

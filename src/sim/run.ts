@@ -146,6 +146,8 @@ export function createRun(opts: {
   forceRecipe?: boolean;
   /** 已解锁菜谱要用的食材。传进来摊上就会多出这些货。 */
   wanted?: ReadonlySet<string>;
+  /** 街坊点的菜还缺的料，再叠一层权重。 */
+  boosted?: ReadonlySet<string>;
 }): RunState {
   const marketId = opts.marketId ?? 'xiangko';
   const seed = opts.seed ?? newSeed();
@@ -172,7 +174,7 @@ export function createRun(opts: {
     for (let i = 0; i < n; i++) {
       const def = spec
         ? rollSpecialtyItem(spec.id, rng, cookLevel)
-        : rollMarketItem(marketId, node.stall ?? 'egg', cookLevel, rng, opts.wanted);
+        : rollMarketItem(marketId, node.stall ?? 'egg', cookLevel, rng, opts.wanted, opts.boosted);
       list.push({
         uid: nextUid('p'),
         defId: def.id,
@@ -301,10 +303,11 @@ export function rollFreebie(
   marketId: MarketId = 'xiangko',
   cookLevel = 1,
   wanted?: ReadonlySet<string>,
+  boosted?: ReadonlySet<string>,
 ): { defId: string; quality: Quality } {
   const local = FREEBIE_STALLS.filter((s) => stallsForMarket(marketId).includes(s));
   const stall = rngPick(rng, local.length ? local : stallsForMarket(marketId));
-  const def = rollMarketItem(marketId, stall, cookLevel, rng, wanted);
+  const def = rollMarketItem(marketId, stall, cookLevel, rng, wanted, boosted);
   return { defId: def.id, quality: rng() < 0.7 ? 'common' : 'fresh' };
 }
 

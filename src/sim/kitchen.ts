@@ -1,6 +1,9 @@
 import { displayName, getItem, GOD_PICK, sellPrice, type Quality } from './items';
+import { migrateSeenMarketFoods, marketFoodKey } from './marketExploration';
+import type { MarketId } from './destinations';
 import { VEHICLES, migrateVehicles, ownsVehicle, vehicleById, vehicleIndex, vehicleOffer, type VehicleId } from './vehicles';
 import { nextUid, type ExtractedItem } from './run';
+import { migrateNeighborOrders, type NeighborOrder } from './neighborOrders';
 import {
   RECIPES,
   TABLE_UNLOCKS,
@@ -55,8 +58,28 @@ import {
   type FurnId,
 } from './kitchenLayout';
 
-export const STAMINA_MAX = 5;
+/** 1 级满体力。每升一级上限再加 STAMINA_PER_LEVEL。 */
+export const STAMINA_MAX = 10;
+export const STAMINA_PER_LEVEL = 1;
+export const STAMINA_AD_GAIN = 5;
+/** 转发朋友圈/会话回来加的体力。先不接广告。 */
+export const STAMINA_SHARE_GAIN = 5;
+export const SHARE_STAMINA_TITLES = [
+  '快来，来菜场捡菜，捡捡捡！',
+  '菜场漏了一地，不捡可惜了',
+  '今晚吃啥？先去菜场捡一篮',
+];
+export const SHARE_IMAGE_URLS = [
+  'boot/share_market_g.jpg',
+  'boot/share_market_k.jpg',
+];
 export const STAMINA_REGEN_MS = 30 * 60 * 1000;
+
+/** 当前厨艺对应的体力上限。1 级 10 点，之后每级 +1。 */
+export function staminaMax(save: Pick<KitchenSave, 'level'> | number): number {
+  const level = typeof save === 'number' ? clampCookLevel(save) : clampCookLevel(save.level);
+  return STAMINA_MAX + STAMINA_PER_LEVEL * (level - 1);
+}
 export const FRIDGE_BASE = 18;
 /** 冰箱内部 0–9 级的格数。回家后干湿饭菜都进这些格，不分仓。每升一级 +6。 */
 export const FRIDGE_CAP = [18, 24, 30, 36, 42, 48, 54, 60, 66, 72];
@@ -171,12 +194,18 @@ export interface KitchenSave {
   xp: number;
   /** 明牌记忆：走过的卡型，存 `菜场:卡型`。地图每局重生，所以不记节点 id。 */
   seenCards: string[];
+  /** 这个菜场见过的食材，存 `菜场:食材`。探索度只认这里，不和图鉴共用。 */
+  seenMarketFoods: string[];
   /** 出门选点页当前骑的那辆。走路开局就有。 */
   vehicle: VehicleId;
   /** 已买下的交通工具。走路不写也算有。 */
   vehicles: VehicleId[];
   /** 特殊市场每日次数。日切跟神捡同一套 todayKey，本地 0 点换日。 */
   specialVisits: Record<string, { date: string; count: number }>;
+  /** 街坊点菜，最多两张。 */
+  neighborOrders: NeighborOrder[];
+  /** 下次最早能再弹点菜的时间。 */
+  neighborOfferAt: number;
 }
 
 function migrateSpecialVisits(raw: unknown): Record<string, { date: string; count: number }> {
@@ -246,9 +275,12 @@ export function defaultSave(now = Date.now()): KitchenSave {
     level: 1,
     xp: 0,
     seenCards: [],
+    seenMarketFoods: [],
     vehicle: 'walk',
     vehicles: ['walk'],
     specialVisits: {},
+    neighborOrders: [],
+    neighborOfferAt: 0,
   };
 }
 
@@ -269,8 +301,18 @@ export function normalizeSave(raw: Partial<KitchenSave> | null, now = Date.now()
     recipesCooked: migrateRecipeIds(raw.recipesCooked),
     recipesFound: migrateRecipeIds((raw as KitchenSave).recipesFound),
     seenCards: Array.isArray(raw.seenCards) ? raw.seenCards : [],
+    seenMarketFoods: migrateSeenMarketFoods(raw, {
+      dexSeen: Array.isArray(raw.dexSeen) ? raw.dexSeen : [],
+      dexInspected: Array.isArray(raw.dexInspected) ? raw.dexInspected : [],
+      seenCards: Array.isArray(raw.seenCards) ? raw.seenCards : [],
+    }),
     ...migrateVehicles(raw),
     specialVisits: migrateSpecialVisits((raw as KitchenSave).specialVisits),
+    neighborOrders: migrateNeighborOrders((raw as KitchenSave).neighborOrders),
+    neighborOfferAt: typeof (raw as KitchenSave).neighborOfferAt === 'number'
+      && Number.isFinite((raw as KitchenSave).neighborOfferAt)
+      ? Math.max(0, Math.floor((raw as KitchenSave).neighborOfferAt))
+      : 0,
   };
   next.basketLevel = next.furnLevels.basket;
   next.fridgeExtra = next.furnLevels.fridge > 0 || next.furnLevels.foam > 0;
@@ -450,11 +492,12 @@ function consumeFridgeQty(fridge: FridgeItem[], used: Map<string, number>): Frid
 }
 
 export function regenStamina(save: KitchenSave, now = Date.now()): KitchenSave {
-  if (save.stamina >= STAMINA_MAX) return { ...save, staminaAt: now };
+  const cap = staminaMax(save);
+  if (save.stamina >= cap) return { ...save, staminaAt: now };
   const elapsed = Math.max(0, now - save.staminaAt);
   const gained = Math.floor(elapsed / STAMINA_REGEN_MS);
   if (gained <= 0) return save;
-  const stamina = Math.min(STAMINA_MAX, save.stamina + gained);
+  const stamina = Math.min(cap, save.stamina + gained);
   const leftover = elapsed % STAMINA_REGEN_MS;
   return { ...save, stamina, staminaAt: now - leftover };
 }
@@ -474,6 +517,14 @@ export function discoverFood(
     return { save, first: false };
   }
   return { save: { ...save, dexSeen: [...save.dexSeen, defId] }, first: true };
+}
+
+/** 这个菜场见过这味，图鉴里已有也要记，探索度才按场算。 */
+export function noteMarketFood(save: KitchenSave, marketId: MarketId, defId: string, quality?: Quality): KitchenSave {
+  if (quality === 'rotten' || !defId) return save;
+  const key = marketFoodKey(marketId, defId);
+  if (save.seenMarketFoods.includes(key)) return save;
+  return { ...save, seenMarketFoods: [...save.seenMarketFoods, key] };
 }
 
 export function noteDex(save: KitchenSave, items: ExtractedItem[]): KitchenSave {
@@ -519,21 +570,22 @@ export function eatDish(
   const recipe = recipeById(item.defId);
   if (!recipe) return { save, error: '未知菜谱' };
   const next = regenStamina(save, now);
-  if (next.stamina >= STAMINA_MAX) return { save: next, error: '体力满了，先出门或卖掉' };
+  const cap = staminaMax(next);
+  if (next.stamina >= cap) return { save: next, error: '体力满了，先出门或卖掉' };
   const gainEach = recipeEatStamina(recipe);
-  const room = STAMINA_MAX - next.stamina;
+  const room = cap - next.stamina;
   const want = Math.min(fridgeItemQty(item), Math.max(1, Math.floor(qty)));
   const portions = Math.min(want, Math.max(0, Math.floor(room / Math.max(1, gainEach))));
   if (portions <= 0) return { save: next, error: '体力满了，先出门或卖掉' };
   const fridge = consumeFridgeQty(next.fridge, new Map([[uid, portions]]));
   const gained = portions * gainEach;
-  const stamina = Math.min(STAMINA_MAX, next.stamina + gained);
+  const stamina = Math.min(cap, next.stamina + gained);
   return {
     save: {
       ...next,
       fridge,
       stamina,
-      staminaAt: stamina >= STAMINA_MAX ? now : next.staminaAt,
+      staminaAt: stamina >= cap ? now : next.staminaAt,
     },
     stamina: gained,
     name: recipe.name,
@@ -828,10 +880,12 @@ export function spendStamina(save: KitchenSave, now = Date.now()): { save: Kitch
   const next = regenStamina(save, now);
   if (next.stamina <= 0) return { save: next, error: '没有体力了' };
   const stamina = next.stamina - 1;
-  return { save: { ...next, stamina, staminaAt: stamina >= STAMINA_MAX ? now : next.staminaAt } };
+  const cap = staminaMax(next);
+  return { save: { ...next, stamina, staminaAt: stamina >= cap ? now : next.staminaAt } };
 }
 
 export function addStamina(save: KitchenSave, n = 1, now = Date.now()): KitchenSave {
   const next = regenStamina(save, now);
-  return { ...next, stamina: Math.min(STAMINA_MAX + 3, next.stamina + n) };
+  const cap = staminaMax(next);
+  return { ...next, stamina: Math.min(cap, next.stamina + n) };
 }

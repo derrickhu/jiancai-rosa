@@ -320,6 +320,102 @@ export function stallsForMarket(marketId: MarketId): StallId[] {
   return Object.keys(MARKET_POOLS[marketId]) as StallId[];
 }
 
+/** 这个菜场摊上会出现的食材，去重后按摊型顺序。 */
+export function marketFoodIds(marketId: MarketId): string[] {
+  const pools = MARKET_POOLS[marketId];
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const stall of Object.keys(pools) as StallId[]) {
+    const p = pools[stall];
+    if (!p) continue;
+    for (const id of [...p.common, ...p.rare, ...p.epic, ...p.legendary]) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      ids.push(id);
+    }
+  }
+  return ids;
+}
+
+function clamp01(n: number): number {
+  if (n <= 0) return 0;
+  if (n >= 1) return 1;
+  return n;
+}
+
+/** 跟 rollMarketItem 同一条掷档链，算出各稀有档被抽中的概率。 */
+function tierPickChances(
+  p: StallPool,
+  legendary: number,
+  epic: number,
+  rare: number,
+): Record<Rarity, number> {
+  const pLeg = p.legendary.length ? clamp01(legendary) : 0;
+  const epicLo = p.legendary.length ? clamp01(legendary) : 0;
+  const pEpic = p.epic.length ? Math.max(0, clamp01(legendary + epic) - epicLo) : 0;
+  const rareLo = pLeg + pEpic;
+  const pRare = p.rare.length ? Math.max(0, clamp01(legendary + epic + rare) - rareLo) : 0;
+  let pCommon = Math.max(0, 1 - pLeg - pEpic - pRare);
+  if (!p.common.length && pCommon > 0) {
+    if (p.rare.length) return { common: 0, rare: pRare + pCommon, epic: pEpic, legendary: pLeg };
+    if (p.epic.length) return { common: 0, rare: pRare, epic: pEpic + pCommon, legendary: pLeg };
+    if (p.legendary.length) return { common: 0, rare: pRare, epic: pEpic, legendary: pLeg + pCommon };
+  }
+  return { common: pCommon, rare: pRare, epic: pEpic, legendary: pLeg };
+}
+
+export interface MarketProduceRow {
+  id: string;
+  chance: number;
+  stall: StallId;
+  rarity: Rarity;
+}
+
+/**
+ * 在这个菜场随机进一摊（按摊型权重）再抽一件时，各味的基础概率。
+ * 不含菜谱加偏、点菜单加偏；厨艺会影响绿/蓝/紫档。
+ */
+export function marketProduceChances(
+  marketId: MarketId,
+  cookLevel: number,
+  stallWeights: ReadonlyArray<readonly [StallId, number]>,
+): MarketProduceRow[] {
+  const lv = Math.max(0, cookLevel - 1);
+  const legendary = LEGENDARY_CHANCE[marketId] + lv * LEGENDARY_PER_LEVEL;
+  const epic = EPIC_CHANCE[marketId] + lv * EPIC_PER_LEVEL;
+  const rare = RARE_CHANCE[marketId] + lv * RARE_PER_LEVEL;
+  const bias = MARKET_ITEM_WEIGHT[marketId];
+  const totalW = stallWeights.reduce((sum, [, w]) => sum + w, 0);
+  const acc = new Map<string, MarketProduceRow>();
+
+  for (const [stall, sw] of stallWeights) {
+    const p = MARKET_POOLS[marketId][stall];
+    if (!p || totalW <= 0 || sw <= 0) continue;
+    const pStall = sw / totalW;
+    const tiers = tierPickChances(p, legendary, epic, rare);
+    const bags: Array<[Rarity, string[]]> = [
+      ['common', p.common],
+      ['rare', p.rare],
+      ['epic', p.epic],
+      ['legendary', p.legendary],
+    ];
+    for (const [rarity, ids] of bags) {
+      const pTier = tiers[rarity];
+      if (!pTier || !ids.length) continue;
+      const sum = ids.reduce((n, id) => n + (bias?.[id] ?? 1), 0);
+      if (sum <= 0) continue;
+      for (const id of ids) {
+        const chance = pStall * pTier * ((bias?.[id] ?? 1) / sum);
+        const prev = acc.get(id);
+        if (!prev) acc.set(id, { id, chance, stall, rarity });
+        else acc.set(id, { ...prev, chance: prev.chance + chance });
+      }
+    }
+  }
+
+  return [...acc.values()].sort((a, b) => b.chance - a.chance || a.id.localeCompare(b.id));
+}
+
 /** 巷口里香菜、茄子、黄瓜、白菜略少见。茄子比黄瓜常见，土豆仍是根茎摊主货。 */
 const MARKET_ITEM_WEIGHT: Partial<Record<MarketId, Record<string, number>>> = {
   xiangko: {
@@ -340,18 +436,21 @@ const MARKET_ITEM_WEIGHT: Partial<Record<MarketId, Record<string, number>>> = {
   },
 };
 
-/** 手里已解锁的菜谱要用到的食材，在摊上加权。 */
+/** 手里已解锁的菜谱要用到的食材，在摊上加权。挂着的点菜单再叠一层。 */
 function pickBiased(
   rng: Rng,
   ids: string[],
   wanted?: ReadonlySet<string>,
   extra?: Record<string, number>,
+  boosted?: ReadonlySet<string>,
 ): string {
   if (ids.length < 2) return ids[0] ?? rngPick(rng, ids);
-  if (!wanted && !extra) return rngPick(rng, ids);
+  if (!wanted && !extra && !boosted) return rngPick(rng, ids);
   return rngWeighted(rng, ids.map((id) => {
-    const base = extra?.[id] ?? 1;
-    return [id, wanted?.has(id) ? base * 3 : base] as const;
+    let weight = extra?.[id] ?? 1;
+    if (wanted?.has(id)) weight *= 3;
+    if (boosted?.has(id)) weight *= 2;
+    return [id, weight] as const;
   }));
 }
 
@@ -365,6 +464,7 @@ export function rollMarketItem(
   cookLevel: number,
   rng: Rng,
   wanted?: ReadonlySet<string>,
+  boosted?: ReadonlySet<string>,
 ): ItemDef {
   const p = MARKET_POOLS[marketId][stall];
   if (!p) return rngPick(rng, itemsForStall(stall));
@@ -382,7 +482,7 @@ export function rollMarketItem(
   if (!ids.length) ids = p.rare.length ? p.rare : p.epic.length ? p.epic : p.legendary;
   if (!ids.length) return rngPick(rng, itemsForStall(stall));
 
-  return getItem(pickBiased(rng, ids, wanted, MARKET_ITEM_WEIGHT[marketId]));
+  return getItem(pickBiased(rng, ids, wanted, MARKET_ITEM_WEIGHT[marketId], boosted));
 }
 
 export function shapeLabel(defId: string, rot: 0 | 1 = 0): string {

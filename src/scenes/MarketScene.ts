@@ -10,8 +10,6 @@ import { EventPanel } from '@/gameobjects/ui/EventPanel';
 import { ensureRecipeUnlockPanel } from '@/gameobjects/ui/RecipeUnlockPanel';
 import {
   GOD_PICK,
-  STALLS,
-  stallDisplayName,
   displayName,
   getItem,
   itemsForStall,
@@ -21,20 +19,17 @@ import {
   type PileItem,
   type RunEventLog,
   type StallId,
-  getMarket,
   getSpecialty,
   MARKET_ART,
   nodeEncounter,
   RARITY_STYLE,
-  rummageTitle,
   sceneBg,
-  sceneTitle,
   stallPileArt,
   stallRummageArt,
 } from '@/sim';
 import { layoutRouteMap, type RouteCell, type RouteMapView } from '@/gameobjects/market/MapView';
 import { AudioManager } from '@/core/AudioManager';
-import { FONT, HUD_ICON, fillRect, makeHudButton, makeLabel, makeMuteButton, makeNewFoodTag, makePaperChip, makeRarityFlare, makeSlicedButton, makeStallNameTag, makeStatPill } from '@/utils/ui';
+import { FONT, HUD_ICON, bindUiClick, fillRect, makeLabel, makeNewFoodTag, makeRarityFlare, makeSlicedButton, makeStallNameTag, makeStatPill } from '@/utils/ui';
 import { Platform } from '@/core/PlatformService';
 import { TweenManager, Ease } from '@/core/TweenManager';
 import { applyFit, fitCover, fitSpriteInBox, fitWidthBottom, gameTexture, isTextureFailed, isTextureReady, itemLookTexture, itemTexture, whenTextureReady } from '@/utils/assets';
@@ -53,13 +48,17 @@ export class MarketScene implements Scene {
   readonly container = new PIXI.Container();
   private _bg = new PIXI.Container();
   private _hud = new PIXI.Container();
+  private _dusk = new PIXI.Container();
+  private _res = new PIXI.Container();
   private _body = new PIXI.Container();
   private _basket = new BasketPanel();
   private _result = new ResultPanel();
   private _onRun = () => this._sync();
   private _onExtract = (result: ExtractResult) => this._result.open(result);
   private _bodyKey = '';
-  private _timerText: PIXI.Text | null = null;
+  private _duskNum: PIXI.Text | null = null;
+  private _duskSteps = -1;
+  private _duskUrgent = false;
   private _basketBtn: PIXI.Container | null = null;
   private _revealLayer = new PIXI.Container();
   private _godLayer = new PIXI.Container();
@@ -83,6 +82,7 @@ export class MarketScene implements Scene {
     this.container.addChild(this._bg);
     this.container.addChild(this._body);
     this.container.addChild(this._revealLayer);
+    this._hud.addChild(this._dusk, this._res);
     this.container.addChild(this._hud);
     this.container.addChild(this._godLayer);
     this.container.eventMode = 'static';
@@ -112,6 +112,7 @@ export class MarketScene implements Scene {
     this._clearReveal();
     this._clearGodPick();
     this._tablePins.clear();
+    this._clearDusk();
     this._basket.close(true);
     this._event.close(true);
   }
@@ -141,6 +142,10 @@ export class MarketScene implements Scene {
     }
     const key = this._pileKey();
     if (force || key !== this._bodyKey) {
+      const rummageKey = run.currentNodeId ? `rummage|${run.currentNodeId}|` : '';
+      if (run.mode === 'rummage' && rummageKey && !this._bodyKey.startsWith(rummageKey)) {
+        this._clearStalePops();
+      }
       this._bodyKey = key;
       this._body.removeChildren();
       this._mapView = null;
@@ -166,44 +171,48 @@ export class MarketScene implements Scene {
     return `map|${run.sceneId}|${run.atNodeId ?? '-'}|${run.stepsLeft}|${run.options.join(',')}|${run.peeked.length}|${run.note}`;
   }
 
+  private _hudTop(): number {
+    return Math.max(4, (Number.isFinite(Game.safeTop) ? Game.safeTop : 96) - 8);
+  }
+
+  private _pillY(): number {
+    return this._hudTop() + 164;
+  }
+
+  private _hudFloor(): number {
+    return this._pillY() + 52;
+  }
+
   private _drawHud(): void {
-    this._hud.removeChildren();
+    this._res.removeChildren();
+    this._basketBtn = null;
     const run = RunManager.run;
     const w = Game.designWidth;
     if (!run) {
-      this._timerText = null;
+      this._clearDusk();
       return;
     }
 
-    const y = Game.safeTop + 6;
+    this._syncDusk(run, w);
     const redraw = () => {
       if (this.container.parent) this._drawHud();
     };
-    const dusk = makeStatPill({
-      icon: HUD_ICON.clock,
-      text: `天色 ${run.stepsLeft}`,
-      width: 148,
-      fill: run.stepsLeft / Math.max(1, run.stepsMax),
-      fillColor: run.stepsLeft <= 2 ? 0xE07A5F : 0xE0A100,
-      onIconReady: redraw,
-    });
-    dusk.position.set(14, y);
-    this._hud.addChild(dusk);
-    this._timerText = dusk.children.find((c) => c instanceof PIXI.Text) as PIXI.Text;
+    const pillY = this._pillY();
+    const coinW = 156;
+    const bagW = 168;
+    const gap = 16;
+    const rowX = Math.round((w - coinW - gap - bagW) / 2);
 
-    const midPill = makeStatPill({
+    const money = makeStatPill({
       icon: HUD_ICON.coin,
       text: `${KitchenManager.save.money}`,
-      width: 168,
+      width: coinW,
       onIconReady: redraw,
     });
-    midPill.position.set(168, y);
-    this._hud.addChild(midPill);
+    money.position.set(rowX, pillY);
+    this._res.addChild(money);
 
-    const room = KitchenManager.fridgeRoom();
     const bag = RunManager.basket.items;
-    const bagN = bag.length;
-    const bagNeed = KitchenManager.fridgeSlotsNeeded(bag);
     const bagWet = bag.filter((it) => {
       try {
         return getItem(it.defId).zone === 'wet';
@@ -211,37 +220,197 @@ export class MarketScene implements Scene {
         return false;
       }
     }).length;
-    const ice = makeStatPill({
-      icon: HUD_ICON.fridge,
-      text: room > 0 ? `空${room}` : '满',
-      width: 118,
-      ...(bagNeed > room ? { fill: 1, fillColor: 0xE07A5F } : {}),
-      onIconReady: redraw,
-    });
-    ice.position.set(342, y);
-    this._hud.addChild(ice);
-
+    const room = KitchenManager.fridgeRoom();
+    const bagNeed = KitchenManager.fridgeSlotsNeeded(bag);
     this._basketBtn = makeStatPill({
       icon: HUD_ICON.basket,
-      text: `干${bagN - bagWet}湿${bagWet}`,
-      width: 124,
+      text: `干${bag.length - bagWet} 湿${bagWet}`,
+      width: bagW,
       ...(bagNeed > room ? { fill: 1, fillColor: 0xE07A5F } : {}),
       onIconReady: redraw,
     });
     this._basketBtn.eventMode = 'static';
     this._basketBtn.cursor = 'pointer';
-    this._basketBtn.hitArea = new PIXI.Rectangle(0, 0, 124, 44);
-    this._basketBtn.position.set(466, y);
+    this._basketBtn.hitArea = new PIXI.Rectangle(0, 0, bagW, 44);
+    this._basketBtn.position.set(rowX + coinW + gap, pillY);
     this._basketBtn.on('pointertap', () => this._basket.open());
-    this._hud.addChild(this._basketBtn);
+    this._res.addChild(this._basketBtn);
 
-    const leave = makeHudButton('回家', 132, 44, 0xC46A3A);
-    leave.position.set(w - 146, y);
-    leave.on('pointertap', () => RunManager.extract(true));
-    this._hud.addChild(leave);
-    const mute = makeMuteButton(40);
-    mute.position.set(w - 56, y + 50);
-    this._hud.addChild(mute);
+    const side = 104;
+    const y = this._hudTop();
+    if (run.mode === 'rummage' || run.mode === 'play') {
+      const back = this._roundIconBtn(
+        HUD_ICON.back,
+        '返回菜场',
+        () => (run.mode === 'play' ? RunManager.leavePlay() : RunManager.leaveStall()),
+        redraw,
+      );
+      back.position.set(16, y);
+      this._res.addChild(back);
+    }
+    const leave = this._roundIconBtn(HUD_ICON.leave, '回家', () => RunManager.extract(true), redraw);
+    leave.position.set(w - 16 - side, y);
+    this._res.addChild(leave);
+  }
+
+  private _syncDusk(run: NonNullable<typeof RunManager.run>, w: number): void {
+    const urgent = run.stepsLeft <= 2;
+    const top = this._hudTop();
+    const cx = w / 2;
+    if (!this._dusk.getChildByName('duskClock')) this._clearDusk();
+    if (!this._duskNum) {
+      const clock = new PIXI.Sprite(gameTexture(HUD_ICON.clock));
+      clock.name = 'duskClock';
+      clock.anchor.set(0.5);
+      clock.eventMode = 'none';
+      whenTextureReady(HUD_ICON.clock, () => {
+        if (this.container.parent) this._drawHud();
+      });
+      this._dusk.addChild(clock);
+      const cap = makeLabel('天色', 36, 0xFFF6E8, {
+        fontFamily: TITLE_FONT,
+        fontWeight: '700',
+        stroke: '#2A2018',
+        strokeThickness: 6,
+      });
+      cap.anchor.set(0.5, 0);
+      cap.name = 'duskCap';
+      this._dusk.addChild(cap);
+      const num = makeLabel(`${run.stepsLeft}`, 88, 0xF2C14D, {
+        fontFamily: TITLE_FONT,
+        fontWeight: '700',
+        stroke: '#2A2018',
+        strokeThickness: 8,
+      });
+      num.anchor.set(0.5, 0);
+      this._dusk.addChild(num);
+      this._duskNum = num;
+    }
+    const clock = this._dusk.getChildByName('duskClock') as PIXI.Sprite | null;
+    const cap = this._dusk.getChildByName('duskCap') as PIXI.Text | null;
+    const clockSide = 48;
+    if (clock && isTextureReady(clock.texture)) fitSpriteInBox(clock, clockSide, clockSide);
+    if (clock && cap) {
+      const rowW = clockSide + 10 + cap.width;
+      clock.position.set(cx - rowW / 2 + clockSide / 2, top + 22);
+      cap.position.set(cx - rowW / 2 + clockSide + 10 + cap.width / 2, top + 4);
+    } else if (cap) {
+      cap.position.set(cx, top + 4);
+    }
+    const num = this._duskNum;
+    num.position.set(cx, top + 48);
+    if (num.text !== `${run.stepsLeft}`) num.text = `${run.stepsLeft}`;
+    if (urgent !== this._duskUrgent) {
+      num.style.fill = urgent ? 0xE24B3A : 0xF2C14D;
+      this._duskUrgent = urgent;
+      this._setDuskBlink(urgent);
+    }
+    if (this._duskSteps >= 0 && run.stepsLeft < this._duskSteps) this._punchDusk();
+    this._duskSteps = run.stepsLeft;
+  }
+
+  private _punchDusk(): void {
+    const num = this._duskNum;
+    if (!num || num.destroyed) return;
+    TweenManager.cancelTarget(num.scale);
+    num.scale.set(1);
+    TweenManager.to({
+      target: num.scale,
+      props: { x: 1.34, y: 1.34 },
+      duration: 0.1,
+      ease: Ease.easeOutQuad,
+      onComplete: () => {
+        if (!num.destroyed) {
+          TweenManager.to({
+            target: num.scale,
+            props: { x: 1, y: 1 },
+            duration: 0.22,
+            ease: Ease.easeOutBack,
+          });
+        }
+      },
+    });
+  }
+
+  private _setDuskBlink(on: boolean): void {
+    const num = this._duskNum;
+    if (!num || num.destroyed) return;
+    TweenManager.cancelTarget(num);
+    num.alpha = 1;
+    if (!on) return;
+    const pulse = (): void => {
+      if (!this._duskUrgent || !this._duskNum || this._duskNum.destroyed) return;
+      TweenManager.to({
+        target: this._duskNum,
+        props: { alpha: 0.28 },
+        duration: 0.36,
+        ease: Ease.easeInOutQuad,
+        onComplete: () => {
+          if (!this._duskUrgent || !this._duskNum || this._duskNum.destroyed) return;
+          TweenManager.to({
+            target: this._duskNum,
+            props: { alpha: 1 },
+            duration: 0.36,
+            ease: Ease.easeInOutQuad,
+            onComplete: pulse,
+          });
+        },
+      });
+    };
+    pulse();
+  }
+
+  private _clearDusk(): void {
+    if (this._duskNum) {
+      TweenManager.cancelTarget(this._duskNum);
+      TweenManager.cancelTarget(this._duskNum.scale);
+    }
+    this._dusk.removeChildren();
+    this._duskNum = null;
+    this._duskSteps = -1;
+    this._duskUrgent = false;
+  }
+
+  private _roundIconBtn(icon: string, label: string, onTap: () => void, onReady: () => void): PIXI.Container {
+    const size = 104;
+    const root = new PIXI.Container();
+    const plate = new PIXI.Graphics();
+    plate.beginFill(0x2A2018, 0.18);
+    plate.drawCircle(size / 2 + 2, size / 2 + 3, size / 2);
+    plate.endFill();
+    plate.lineStyle(4, 0x2A2018, 1);
+    plate.beginFill(0xC46A3A);
+    plate.drawCircle(size / 2, size / 2, size / 2 - 2);
+    plate.endFill();
+    plate.lineStyle(2, 0xF2C14D, 0.85);
+    plate.drawCircle(size / 2, size / 2, size / 2 - 10);
+    root.addChild(plate);
+
+    whenTextureReady(icon, onReady);
+    const spr = new PIXI.Sprite(gameTexture(icon));
+    if (isTextureReady(spr.texture)) {
+      fitSpriteInBox(spr, 78, 78);
+      spr.anchor.set(0.5);
+      spr.position.set(size / 2, size / 2 - 1);
+      spr.eventMode = 'none';
+      root.addChild(spr);
+    }
+    const tag = makeLabel(label, 20, 0xFFF6E8, {
+      fontFamily: TITLE_FONT,
+      fontWeight: '700',
+      stroke: '#2A2018',
+      strokeThickness: 5,
+    });
+    tag.anchor.set(0.5, 0);
+    tag.position.set(size / 2, size - 4);
+    root.addChild(tag);
+
+    root.eventMode = 'static';
+    root.cursor = 'pointer';
+    root.hitArea = new PIXI.Circle(size / 2, size / 2, size / 2 + 8);
+    bindUiClick(root);
+    root.on('pointertap', onTap);
+    return root;
   }
 
   /** 卡片路线：脚下一排能点，前方两排只看。走左边就够不着最右边。 */
@@ -250,25 +419,6 @@ export class MarketScene implements Scene {
     const h = Game.logicHeight;
     const art = MARKET_ART[run.marketId];
     this._paintScene(sceneBg(run.marketId, run.sceneId) || art.routeBg, 'cover');
-
-    const sceneName = sceneTitle(run.marketId, run.sceneId);
-    const marketName = sceneName || getMarket(run.marketId).name;
-    const seg = run.visited.length ? ` · 走过 ${run.visited.length} 段` : '';
-    const title = makePaperChip(`${marketName}${seg}`, { size: 22 });
-    title.position.set(20, Game.safeTop + 58);
-    this._body.addChild(title);
-
-    const note = makeLabel(run.note, 20, 0xF4EFE6, {
-      wordWrap: true,
-      breakWords: true,
-      wordWrapWidth: w - 80,
-    });
-    const noteBg = new PIXI.Graphics();
-    fillRect(noteBg, 20, Game.safeTop + 106, Math.min(w - 40, note.width + 32), note.height + 20, 0x2A2018, 12);
-    noteBg.alpha = 0.66;
-    note.position.set(36, Game.safeTop + 116);
-    this._body.addChild(noteBg);
-    this._body.addChild(note);
 
     const redraw = () => {
       if (this.container.parent) this._sync(true);
@@ -279,7 +429,7 @@ export class MarketScene implements Scene {
     const view = layoutRouteMap({
       rows: RunManager.routeRows(3),
       viewWidth: w,
-      top: Game.safeTop + 162,
+      top: this._hudFloor() + 8,
       bottom: cardsBottom,
       onPick: (id) => this._walkTo(id),
       showRoot: !blocked,
@@ -304,9 +454,6 @@ export class MarketScene implements Scene {
       this._body.addChild(bypass);
     }
 
-    const tip = makePaperChip('走左边就够不着最右边 · 走进小路会换场景', { size: 17 });
-    tip.position.set(Math.round((w - tip.width) / 2), h - 84);
-    this._body.addChild(tip);
   }
 
   /** 点卡不立刻结算：先演一段往前走，脚下的卡迎面掠过，后排下移接位。 */
@@ -420,7 +567,11 @@ export class MarketScene implements Scene {
   private _afterStep(): void {
     const run = RunManager.run;
     const ev = run?.lastEvent;
-    if (!run || run.ended || !ev || ev.nodeId === this._shownEvent) return;
+    if (!run || run.ended || !ev) return;
+    if (run.mode === 'rummage' || run.mode === 'play') return;
+    // 采集会改 lastEvent，进摊时别把上一颗菜再弹一遍。
+    if (ev.nodeId !== run.atNodeId || ev.kind === 'gather') return;
+    if (ev.nodeId === this._shownEvent) return;
     this._shownEvent = ev.nodeId;
     if (ev.gain) this._popFreebie(ev);
     else if (ev.kind === 'recipe' && KitchenManager.peekRecipeUnlock()) {
@@ -445,7 +596,10 @@ export class MarketScene implements Scene {
     if (!gain) return;
     const path = `subpkg_images/${gain.defId}.png`;
     whenTextureReady(path, () => {
-      if (RunManager.run?.lastEvent?.nodeId === ev.nodeId) this._popFreebie(ev);
+      const now = RunManager.run;
+      if (!now || now.mode === 'rummage') return;
+      if (now.lastEvent?.nodeId !== ev.nodeId || now.lastEvent.gain?.defId !== ev.gain?.defId) return;
+      this._popFreebie(ev);
     });
     const tex = itemTexture(gain.defId);
     if (!isTextureReady(tex)) return;
@@ -543,10 +697,6 @@ export class MarketScene implements Scene {
     const play = run.play;
     if (!play || play.type !== 'gather') {
       this._paintScene(sceneBg(run.marketId, run.sceneId), 'cover');
-      const back = makeHudButton('回路线', 140, 44, 0xEFE6D6, 0x3A3228);
-      back.position.set(16, Game.safeTop + 58);
-      back.on('pointertap', () => RunManager.leavePlay());
-      this._body.addChild(back);
       return;
     }
 
@@ -558,23 +708,6 @@ export class MarketScene implements Scene {
       isTextureFailed(gatherBg) ? sceneBg(run.marketId, run.sceneId) : gatherBg,
       'cover',
     );
-
-    const back = makeHudButton('回路线', 140, 44, 0xEFE6D6, 0x3A3228);
-    back.position.set(16, Game.safeTop + 58);
-    back.on('pointertap', () => RunManager.leavePlay());
-    this._body.addChild(back);
-
-    const node = run.map.nodes[play.nodeId];
-    const name = makePaperChip(node?.title || '可摘', { size: 24 });
-    name.position.set(168, Game.safeTop + 58);
-    this._body.addChild(name);
-
-    const tip = makePaperChip(
-      play.picksLeft > 0 ? `点地上的拿走 · 还能拿 ${play.picksLeft} 份` : '手上拿够了，可以回去',
-      { size: 18 },
-    );
-    tip.position.set(16, Game.safeTop + 110);
-    this._body.addChild(tip);
 
     play.spots.forEach((spot) => {
       if (spot.taken) return;
@@ -615,7 +748,10 @@ export class MarketScene implements Scene {
         }
         const result = RunManager.pickGather(spot.uid);
         const ev = RunManager.run?.lastEvent;
-        if (ev?.gain) this._popFreebie(ev);
+        if (ev?.gain) {
+          this._shownEvent = ev.nodeId;
+          this._popFreebie(ev);
+        }
         if (result === 'need_space') {
           AudioManager.play('ui_deny');
           this._basket.open();
@@ -632,7 +768,6 @@ export class MarketScene implements Scene {
     const enc = nodeEncounter(node);
     const specialty = enc.type === 'rummage' ? enc.specialty : undefined;
     const stallId = (enc.type === 'rummage' && enc.stall) || node.stall;
-    const stall = stallId ? STALLS.find((s) => s.id === stallId) : undefined;
     const spec = specialty ? getSpecialty(specialty) : undefined;
     const preloadIds = spec
       ? [...spec.common, ...spec.rare, ...spec.epic]
@@ -645,22 +780,6 @@ export class MarketScene implements Scene {
     });
     if (stallId === 'fish') gameTexture(GOD_FISH);
     this._paintScene(stallRummageArt(run.marketId, stallId, specialty), 'cover');
-
-    const back = makeHudButton('回路线', 140, 44, 0xEFE6D6, 0x3A3228);
-    back.position.set(16, Game.safeTop + 58);
-    back.on('pointertap', () => RunManager.leaveStall());
-    this._body.addChild(back);
-
-    const name = makePaperChip(
-      rummageTitle(node) || (stallId ? stallDisplayName(run.marketId, stallId) : stall?.name) || node.title || '摊',
-      { size: 24 },
-    );
-    name.position.set(168, Game.safeTop + 58);
-    this._body.addChild(name);
-
-    const tip = makePaperChip('连点遮挡堆抽取 · 点桌上的菜入篮', { size: 18 });
-    tip.position.set(16, Game.safeTop + 110);
-    this._body.addChild(tip);
 
     // 河沿蛋豆摊底图上沿有蛋筐/蛋托，桌上菜要比默认再靠下一截。
     const tableTop = run.marketId === 'heyan' && stallId === 'egg' ? 0.36 : 0.26;
@@ -895,6 +1014,23 @@ export class MarketScene implements Scene {
     this._pileKick = 0;
   }
 
+  /** 进抽堆时清掉上一场捡菜还停在层上的弹出，不打断本摊正在飞的抽取。 */
+  private _clearStalePops(): void {
+    const keep = new Set(
+      [...this._flying.values()].map((flight) => flight.wrap).filter((wrap): wrap is PIXI.Container => !!wrap),
+    );
+    for (const child of [...this._revealLayer.children]) {
+      if (keep.has(child as PIXI.Container)) continue;
+      TweenManager.cancelTarget(child);
+      if (child instanceof PIXI.Container) {
+        TweenManager.cancelTarget(child.scale);
+        child.children.forEach((inner) => TweenManager.cancelTarget(inner));
+      }
+      this._revealLayer.removeChild(child);
+      child.destroy({ children: true });
+    }
+  }
+
   private _paintScene(path: string, mode: 'bottom' | 'cover' = 'bottom'): void {
     this._bg.removeChildren();
     const w = Game.designWidth;
@@ -1117,7 +1253,7 @@ export class MarketScene implements Scene {
     name.anchor.set(0.5);
     name.position.set(0, -108);
     wrap.addChild(name);
-    if (KitchenManager.discoverFood(GOD_PICK.id)) {
+    if (KitchenManager.discoverFood(GOD_PICK.id, undefined, RunManager.run?.marketId)) {
       const badge = makeNewFoodTag(28);
       badge.position.set(0, -228);
       wrap.addChild(badge);

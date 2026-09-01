@@ -251,6 +251,106 @@ export function makeStatPill(opts: {
   return root;
 }
 
+/** 人物等级条占位：头像 + 等级 + 经验。后面要挂资料页就点头像。 */
+export const PLAYER_LEVEL_HUD = {
+  avatar: 88,
+  gap: 10,
+  barW: 148,
+  barH: 26,
+  height: 112,
+} as const;
+
+export function makePlayerLevelHud(opts: {
+  avatar: string;
+  level: number;
+  text: string;
+  fill: number;
+  onReady?: () => void;
+  onTap?: () => void;
+}): PIXI.Container {
+  const { avatar, gap, barW, barH } = PLAYER_LEVEL_HUD;
+  const root = new PIXI.Container();
+  const lift = 12;
+  const cx = avatar / 2;
+  const cy = cx - lift;
+  const r = avatar / 2 - 1;
+
+  const ring = new PIXI.Graphics();
+  ring.lineStyle(3, 0x2A2018, 1);
+  ring.beginFill(0xE8DFD0);
+  ring.drawCircle(cx, cy, r);
+  ring.endFill();
+  root.addChild(ring);
+
+  whenTextureReady(opts.avatar, () => opts.onReady?.());
+  const tex = gameTexture(opts.avatar);
+  if (isTextureReady(tex)) {
+    const mask = new PIXI.Graphics();
+    mask.beginFill(0xffffff);
+    mask.drawCircle(cx, cy, r - 3);
+    mask.endFill();
+    const spr = new PIXI.Sprite(tex);
+    const side = (r - 3) * 2;
+    fitSpriteInBox(spr, side * 1.18, side * 1.18);
+    spr.anchor.set(0.5);
+    spr.position.set(cx, cy);
+    spr.mask = mask;
+    spr.eventMode = 'none';
+    root.addChild(mask, spr);
+  }
+
+  const lvText = makeLabel(`LV.${opts.level}`, 20, 0x2A2018, {
+    fontWeight: '700',
+    stroke: '#F4EFE6',
+    strokeThickness: 4,
+    lineJoin: 'round',
+  });
+  lvText.anchor.set(0.5, 0);
+  lvText.position.set(cx, avatar + 1 - lift);
+  root.addChild(lvText);
+
+  const barX = avatar + gap;
+  const barY = Math.round((avatar - barH) / 2) - 2;
+  const rr = barH / 2;
+  const outer = new PIXI.Graphics();
+  outer.lineStyle(2, 0x8B5A2B, 1);
+  outer.beginFill(0xF4EFE6);
+  outer.drawRoundedRect(barX, barY, barW, barH, rr);
+  outer.endFill();
+  root.addChild(outer);
+  const inset = 3;
+  const inner = new PIXI.Graphics();
+  inner.beginFill(0xFFF8F0);
+  inner.drawRoundedRect(barX + inset, barY + inset, barW - inset * 2, barH - inset * 2, rr - inset);
+  inner.endFill();
+  root.addChild(inner);
+  const ratio = Math.max(0, Math.min(1, opts.fill));
+  const fw = Math.max(8, (barW - inset * 2) * ratio);
+  const fill = new PIXI.Graphics();
+  fill.beginFill(0xC46A3A, 0.9);
+  fill.drawRoundedRect(barX + inset, barY + inset, fw, barH - inset * 2, rr - inset);
+  fill.endFill();
+  root.addChild(fill);
+  const xp = makeLabel(opts.text, 17, 0x2A2018, {
+    fontWeight: '700',
+    stroke: '#FFF8F0',
+    strokeThickness: 3,
+    lineJoin: 'round',
+  });
+  xp.anchor.set(0.5);
+  xp.position.set(barX + barW / 2, barY + barH / 2 + 1);
+  root.addChild(xp);
+
+  root.eventMode = opts.onTap ? 'static' : 'none';
+  if (opts.onTap) {
+    root.cursor = 'pointer';
+    root.hitArea = new PIXI.Rectangle(0, 0, barX + barW, PLAYER_LEVEL_HUD.height);
+    bindUiClick(root);
+    root.on('pointertap', opts.onTap);
+  }
+  return root;
+}
+
 /** 顶栏厨艺：左侧圆章等级，右侧经验条。 */
 export function makeCookSkillPill(opts: {
   level: number;
@@ -337,6 +437,10 @@ export const HUD_ICON = {
   dex: 'subpkg_images/hud_dex.png',
   destBanner: 'subpkg_images/ui_dest_banner.png',
   home: 'subpkg_images/hud_home.png',
+  leave: 'subpkg_images/hud_leave.png',
+  back: 'subpkg_images/hud_back.png',
+  peek: 'subpkg_images/hud_peek.png',
+  player: 'subpkg_images/hud_player.png',
 } as const;
 
 export const UI_BTN = {

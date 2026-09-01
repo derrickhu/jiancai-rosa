@@ -8,8 +8,11 @@ import {
   recipeById,
   recipesGainedByCook,
   recipesGainedByTable,
-  STAMINA_MAX,
+  SHARE_IMAGE_URLS,
+  SHARE_STAMINA_TITLES,
+  STAMINA_SHARE_GAIN,
   addStamina,
+  staminaMax,
   buyFurnUpgrade,
   buyHouseUpgrade,
   cookRecipe,
@@ -30,6 +33,7 @@ import {
   houseLevel,
   ingestExtract,
   noteDex,
+  noteMarketFood,
   discoverFood,
   regenStamina,
   sellItems,
@@ -41,11 +45,27 @@ import {
   canVisitSpecial as saveCanVisitSpecial,
   markSpecialVisit as saveMarkSpecialVisit,
   specialVisitCount as saveSpecialVisitCount,
+  recipeUnlockView,
   type KitchenSave,
   type RecipeId,
 } from '@/sim/kitchen';
+import {
+  NEIGHBOR_COOLDOWN,
+  NEIGHBOR_OFFER_CHANCE,
+  NEIGHBOR_ORDER_MAX,
+  expiredNeighborOrders,
+  liveNeighborOrders,
+  makeNeighborOrder,
+  neighborNpc,
+  neighborOfferReady,
+  neighborOfferRng,
+  neighborOrderBonus,
+  rollNeighborOffer,
+  type NeighborOfferDraft,
+  type NeighborOrder,
+} from '@/sim/neighborOrders';
 import { getSpecialMarket, type SpecialMarketId } from '@/sim/specialMarkets';
-import { foamWetCols, foamWetRows, outingDryCells } from '@/sim/basket';
+import { bagDryCols, bagRows, foamWetCols, foamWetRows } from '@/sim/basket';
 import { furnLabel, houseLabel, type FurnId } from '@/sim/kitchenLayout';
 import type { CardKind } from '@/sim/marketEvents';
 import type { MarketId } from '@/sim/destinations';
@@ -65,10 +85,30 @@ class KitchenManagerClass {
   private _levelUps: CookLevelUp[] = [];
   private _dayKey = todayKey();
   private _dayTimer: ReturnType<typeof setTimeout> | null = null;
+  private _visitOfferDone = false;
+  private _sharePending = false;
+  private _shareAt = 0;
   pendingHaul: ExtractedItem[] | null = null;
+  pendingOffer: NeighborOfferDraft | null = null;
 
   constructor() {
     this._armDayRollover();
+    this._bindShare();
+  }
+
+  private _bindShare(): void {
+    Platform.bindShareMenu(() => this._shareTitle(), () => this._shareImage());
+    Platform.onShow(() => this.claimShareStamina());
+  }
+
+  private _shareTitle(): string {
+    const titles = SHARE_STAMINA_TITLES;
+    return titles[Math.floor(Math.random() * titles.length)] ?? '快来，来菜场捡菜，捡捡捡！';
+  }
+
+  private _shareImage(): string {
+    const images = SHARE_IMAGE_URLS;
+    return images[Math.floor(Math.random() * images.length)] ?? 'boot/share_market_g.jpg';
   }
 
   /** 本地 0 点换日：特殊市场看广告次数当场清零。 */
@@ -118,12 +158,49 @@ class KitchenManagerClass {
     this.emit();
   }
 
-  watchAdStamina(): void {
-    Platform.showRewardedVideo(() => {
-      SaveManager.replace(addStamina(this.save, 1));
-      this.emit();
-      Platform.showToast('体力 +1');
+  /** 没体力时弹转发；朋友圈/会话回来再加体力。微信没有可靠的转发成功回调。 */
+  async offerShareStamina(): Promise<void> {
+    const now = regenNow();
+    if (now.stamina >= staminaMax(now)) {
+      Platform.showToast('体力已经满了');
+      return;
+    }
+    const ok = await Platform.showModal({
+      title: '体力不够了',
+      content: `转发给朋友，回来加 ${STAMINA_SHARE_GAIN} 点体力`,
+      confirmText: '去转发',
+      cancelText: '再等等',
     });
+    if (!ok) return;
+    this._sharePending = true;
+    this._shareAt = Date.now();
+    const shared = Platform.shareAppMessage({
+      title: this._shareTitle(),
+      imageUrl: this._shareImage(),
+    });
+    if (shared) return;
+    if (Platform.isWechat) {
+      this._sharePending = false;
+      Platform.showToast('转发暂时用不了');
+      return;
+    }
+    this.claimShareStamina(true);
+  }
+
+  claimShareStamina(force = false): void {
+    if (!this._sharePending) return;
+    if (!force && Date.now() - this._shareAt < 400) return;
+    this._sharePending = false;
+    const before = regenNow().stamina;
+    if (before >= staminaMax(this.save)) {
+      Platform.showToast('体力已经满了');
+      return;
+    }
+    const save = addStamina(this.save, STAMINA_SHARE_GAIN);
+    SaveManager.replace(save);
+    this.emit();
+    const gained = Math.max(0, save.stamina - before);
+    Platform.showToast(gained > 0 ? `转发成功，体力 +${gained}` : '体力已经满了');
   }
 
   receiveExtract(items: ExtractedItem[]): { needsPick: boolean } {
@@ -255,6 +332,7 @@ class KitchenManagerClass {
   }
 
   cook(recipeId: RecipeId): void {
+    this.sweepNeighborOrders();
     const fromLevel = this.save.level;
     const { save, error, xp, levels } = cookRecipe(this.save, recipeId);
     if (error) {
@@ -264,24 +342,149 @@ class KitchenManagerClass {
     }
     AudioManager.play('cook_sizzle');
     if ((xp ?? 0) > 0) this._cookFx = { xp: xp ?? 0, levels: levels ?? 0 };
-    SaveManager.replace(save);
+    const paid = this._fulfillNeighborOrder(save, recipeId);
+    SaveManager.replace(paid.save);
     this.emit();
     const name = RECIPES.find((r) => r.id === recipeId)?.name ?? '菜';
-    if ((levels ?? 0) > 0) {
-      this.enqueueCookLevelUp(fromLevel, save.level);
+    if (paid.bonus > 0) {
+      AudioManager.play('coin_gain');
+      Platform.showToast(`${paid.npc}要的${paid.dish}好了，多给了 ${paid.bonus} 金`, 'success');
+    } else if ((levels ?? 0) > 0) {
+      this.enqueueCookLevelUp(fromLevel, paid.save.level);
     } else if ((xp ?? 0) > 0) {
       Platform.showToast(`${name} 出锅，+${xp} 经验`, 'success');
     } else {
       Platform.showToast(`${name} 出锅，放进冰箱了`, 'success');
     }
+    if (paid.bonus > 0 && (levels ?? 0) > 0) {
+      this.enqueueCookLevelUp(fromLevel, paid.save.level);
+    }
   }
 
-  discoverFood(defId: string, quality?: Quality): boolean {
-    const next = discoverFood(this.save, defId, quality);
-    if (!next.first) return false;
-    SaveManager.replace(next.save);
+  beginKitchenVisit(): void {
+    this._visitOfferDone = false;
+    this.pendingOffer = null;
+    this.sweepNeighborOrders();
+  }
+
+  liveNeighborOrders(now = Date.now()): NeighborOrder[] {
+    return liveNeighborOrders(this.save.neighborOrders, now);
+  }
+
+  wantedNeighborRecipeIds(): Set<RecipeId> {
+    return new Set(this.liveNeighborOrders().map((o) => o.recipeId));
+  }
+
+  sweepNeighborOrders(toast = true): NeighborOrder[] {
+    const now = Date.now();
+    const expired = expiredNeighborOrders(this.save.neighborOrders, now);
+    if (!expired.length) return [];
+    SaveManager.replace({
+      ...this.save,
+      neighborOrders: liveNeighborOrders(this.save.neighborOrders, now),
+    });
+    this.emit();
+    if (toast) {
+      for (const order of expired) {
+        Platform.showToast(`${neighborNpc(order.npcId).name}不等了`);
+      }
+    }
+    return expired;
+  }
+
+  considerNeighborOffer(): NeighborOfferDraft | null {
+    this.sweepNeighborOrders();
+    if (this.pendingOffer) return this.pendingOffer;
+    if (this._visitOfferDone) return null;
+    const now = Date.now();
+    const hanging = liveNeighborOrders(this.save.neighborOrders, now);
+    if (hanging.length >= NEIGHBOR_ORDER_MAX) return null;
+    if (!neighborOfferReady(this.save.neighborOfferAt, now)) return null;
+    this._visitOfferDone = true;
+    const rng = neighborOfferRng(now);
+    if (rng() >= NEIGHBOR_OFFER_CHANCE) {
+      this._setOfferAt(now + NEIGHBOR_COOLDOWN.miss);
+      return null;
+    }
+    const draft = rollNeighborOffer(recipeUnlockView(this.save), hanging, rng);
+    if (!draft) {
+      this._setOfferAt(now + NEIGHBOR_COOLDOWN.miss);
+      return null;
+    }
+    this.pendingOffer = draft;
+    return draft;
+  }
+
+  acceptNeighborOffer(): boolean {
+    const draft = this.pendingOffer;
+    this.pendingOffer = null;
+    if (!draft) return false;
+    const now = Date.now();
+    const hanging = liveNeighborOrders(this.save.neighborOrders, now);
+    if (hanging.length >= NEIGHBOR_ORDER_MAX) return false;
+    if (hanging.some((o) => o.recipeId === draft.recipeId)) return false;
+    const order = makeNeighborOrder(draft, now);
+    SaveManager.replace({
+      ...this.save,
+      neighborOrders: [...hanging, order],
+      neighborOfferAt: now + NEIGHBOR_COOLDOWN.accept,
+    });
     this.emit();
     return true;
+  }
+
+  refuseNeighborOffer(): void {
+    this.pendingOffer = null;
+    this._setOfferAt(Date.now() + NEIGHBOR_COOLDOWN.refuse);
+  }
+
+  abandonNeighborOrder(id: string): void {
+    const now = Date.now();
+    SaveManager.replace({
+      ...this.save,
+      neighborOrders: liveNeighborOrders(this.save.neighborOrders, now).filter((o) => o.id !== id),
+      neighborOfferAt: now + NEIGHBOR_COOLDOWN.refuse,
+    });
+    this.emit();
+    Platform.showToast('这回不做了');
+  }
+
+  private _setOfferAt(at: number): void {
+    if (this.save.neighborOfferAt === at) return;
+    SaveManager.replace({ ...this.save, neighborOfferAt: at });
+    this.emit();
+  }
+
+  private _fulfillNeighborOrder(
+    save: KitchenSave,
+    recipeId: RecipeId,
+    now = Date.now(),
+  ): { save: KitchenSave; bonus: number; npc: string; dish: string } {
+    const match = liveNeighborOrders(save.neighborOrders, now)
+      .filter((o) => o.recipeId === recipeId)
+      .sort((a, b) => a.expiresAt - b.expiresAt)[0];
+    if (!match) return { save, bonus: 0, npc: '', dish: '' };
+    const bonus = neighborOrderBonus(recipeId);
+    return {
+      save: {
+        ...save,
+        money: save.money + bonus,
+        neighborOrders: liveNeighborOrders(save.neighborOrders, now).filter((o) => o.id !== match.id),
+        neighborOfferAt: Math.max(save.neighborOfferAt, now + NEIGHBOR_COOLDOWN.accept),
+      },
+      bonus,
+      npc: neighborNpc(match.npcId).name,
+      dish: recipeById(recipeId)?.name ?? '菜',
+    };
+  }
+
+  discoverFood(defId: string, quality?: Quality, marketId?: MarketId): boolean {
+    const found = discoverFood(this.save, defId, quality);
+    const save = marketId ? noteMarketFood(found.save, marketId, defId, quality) : found.save;
+    if (save === this.save) return found.first;
+    SaveManager.replace(save);
+    this.emit();
+    return found.first;
   }
 
   findRecipe(id: RecipeId): void {
@@ -375,6 +578,8 @@ class KitchenManagerClass {
     this._unlockQueue = [];
     this._levelUps = [];
     this.pendingHaul = null;
+    this.pendingOffer = null;
+    this._visitOfferDone = false;
     SaveManager.replace(defaultSave());
     this.emit();
     Platform.showToast('已清档，从头玩', 'success');
@@ -397,7 +602,7 @@ class KitchenManagerClass {
       Platform.showToast(`${furnLabel(id, lv)} · 出门湿区 ${foamWetCols(lv)}×${foamWetRows(lv)}`, 'success');
     }
     else if (id === 'basket') {
-      Platform.showToast(`${furnLabel(id, lv)} · 出门干区 ${outingDryCells(lv)} 格`, 'success');
+      Platform.showToast(`${furnLabel(id, lv)} · 出门干区 ${bagDryCols(lv)}×${bagRows(lv)}`, 'success');
     }
     else if (id === 'table') {
       const learned = recipesGainedByTable(fromTable, lv);
@@ -454,7 +659,7 @@ class KitchenManagerClass {
 
   staminaLabel(): string {
     const s = regenNow();
-    return `体力 ${s.stamina}/${STAMINA_MAX}`;
+    return `体力 ${s.stamina}/${staminaMax(s)}`;
   }
 }
 
