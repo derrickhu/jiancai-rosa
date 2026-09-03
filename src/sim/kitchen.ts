@@ -12,6 +12,7 @@ import {
   migrateRecipeId,
   pickRecipeFoods,
   recipeById,
+  recipeCookCount,
   recipeEatStamina,
   recipeUnlockView,
   type RecipeId,
@@ -626,7 +627,54 @@ export function sellItems(save: KitchenSave, uids: string[]): { save: KitchenSav
   return { save: { ...save, fridge: remain, money: save.money + gained }, gained };
 }
 
+/** 这道熟菜还能往冰箱里叠几份。 */
+export function fridgeDishRoom(save: KitchenSave, recipeId: RecipeId): number {
+  const draft: FridgeDraft = {
+    kind: 'dish',
+    defId: recipeId,
+    quality: 'fresh',
+    inspected: true,
+    freshness: 4,
+  };
+  const key = fridgeStackKey(draft);
+  let stack = 0;
+  for (const it of save.fridge) {
+    if (fridgeStackKey(it) === key) stack += Math.max(0, FRIDGE_STACK - fridgeItemQty(it));
+  }
+  return stack + fridgeRoom(save) * FRIDGE_STACK;
+}
+
+/** 材料和冰箱都够的话，一次最多能连做几份。 */
+export function recipeCookMax(save: KitchenSave, recipeId: RecipeId): number {
+  return Math.min(recipeCookCount(recipeUnlockView(save), recipeId), fridgeDishRoom(save, recipeId));
+}
+
 export function cookRecipe(
+  save: KitchenSave,
+  recipeId: RecipeId,
+  times = 1,
+  uids?: string[],
+): { save: KitchenSave; error?: string; xp?: number; levels?: number; cooked?: number } {
+  const want = Math.max(1, Math.floor(times));
+  let next = save;
+  let xp = 0;
+  let levels = 0;
+  let cooked = 0;
+  for (let i = 0; i < want; i++) {
+    const once = cookRecipeOnce(next, recipeId, uids);
+    if (once.error) {
+      if (cooked === 0) return once;
+      break;
+    }
+    next = once.save;
+    xp += once.xp ?? 0;
+    levels += once.levels ?? 0;
+    cooked += 1;
+  }
+  return { save: next, xp, levels, cooked };
+}
+
+function cookRecipeOnce(
   save: KitchenSave,
   recipeId: RecipeId,
   uids?: string[],
@@ -662,8 +710,8 @@ export function cookRecipe(
   const first = !save.recipesCooked.includes(recipeId);
   const recipesCooked = first ? [...save.recipesCooked, recipeId] : save.recipesCooked;
   const gained = recipe.xp + (first ? recipe.firstXp : 0);
-  const next = grantCookXp({ ...save, fridge, recipesCooked }, gained);
-  return { save: next.save, xp: next.gained, levels: next.levels };
+  const granted = grantCookXp({ ...save, fridge, recipesCooked }, gained);
+  return { save: granted.save, xp: granted.gained, levels: granted.levels };
 }
 
 export function upgradeCost(id: FurnId, fromLevel: number): number {

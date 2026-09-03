@@ -258,7 +258,7 @@ export function makeItemInspectCard(opts: {
   }
 
   if (showStepper) {
-    card.addChild(makeStepper(cardW / 2, y + 22, qty, view.maxQty, opts.onQty));
+    card.addChild(makeQtyStepper(cardW / 2, y + 22, qty, view.maxQty, opts.onQty));
     y += 64;
   }
 
@@ -283,7 +283,7 @@ export function makeItemInspectCard(opts: {
   return root;
 }
 
-function makeStepper(
+export function makeQtyStepper(
   cx: number,
   cy: number,
   qty: number,

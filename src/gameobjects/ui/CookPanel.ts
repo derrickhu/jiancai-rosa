@@ -9,6 +9,7 @@ import {
   rarityLabel,
   recipeCanCook,
   recipeCookCount,
+  recipeCookMax,
   recipeNeeds,
   recipeUnlockView,
   recipeXp,
@@ -29,6 +30,7 @@ import {
   inspectFromItem,
   inspectFromRecipe,
   makeItemInspectCard,
+  makeQtyStepper,
   type ItemInspectView,
 } from './ItemInspectCard';
 
@@ -54,6 +56,7 @@ export class CookPanel extends PIXI.Container {
   _isOpen = false;
   private _root = new PIXI.Container();
   private _pick: RecipeId = 'stirfry';
+  private _cookQty = 1;
   private _inspect: ItemInspectView | null = null;
   private _btnSlices = new Map<string, { left: PIXI.Texture; mid: PIXI.Texture; right: PIXI.Texture }>();
   private _scroller: VerticalScroller;
@@ -73,6 +76,7 @@ export class CookPanel extends PIXI.Container {
     this._isOpen = true;
     this.visible = true;
     this._inspect = null;
+    this._cookQty = 1;
     const known = unlockedRecipes(recipeUnlockView(KitchenManager.save));
     if (!known.some((r) => r.id === this._pick)) this._pick = known[0]?.id ?? 'stirfry';
     this._scroller.reset();
@@ -226,6 +230,7 @@ export class CookPanel extends PIXI.Container {
         row.position.set(x + 6, cy);
         row.on('pointertap', () => {
           if (this._scroller.moved) return;
+          if (this._pick !== recipe.id) this._cookQty = 1;
           this._pick = recipe.id;
           this.relayout();
         });
@@ -262,6 +267,9 @@ export class CookPanel extends PIXI.Container {
     if (!recipe) return root;
     this._pick = recipe.id;
     const needs = recipeNeeds(view, recipe.id);
+    const max = recipeCookMax(KitchenManager.save, recipe.id);
+    this._cookQty = Math.max(1, Math.min(this._cookQty, Math.max(1, max)));
+    const qty = max > 0 ? this._cookQty : 1;
     const ready = recipeCanCook(view, recipe.id);
 
     const pad = bw * 0.02;
@@ -341,14 +349,21 @@ export class CookPanel extends PIXI.Container {
     let sx = tx + (tw - rowW) / 2;
     const slotY = nameY + 52 + blurb.height + 16;
     needs.forEach((need) => {
-      root.addChild(this._needSlot(sx, slotY, slot, need.label, need.iconId, need.have, need.need));
+      root.addChild(this._needSlot(sx, slotY, slot, need.label, need.iconId, need.have, need.need * qty));
       sx += slot + gap;
     });
 
     const btnH = 62;
     const stageBottom = bh * (INSET.y + INSET.h);
+    const btnY = stageBottom - btnH - 4;
+    if (max > 0) {
+      root.addChild(makeQtyStepper(cx, btnY - 36, qty, max, (n) => {
+        this._cookQty = n;
+        this.relayout();
+      }));
+    }
     const btn = this._cookAction(tw - 8, btnH, ready);
-    btn.position.set(tx + 4, stageBottom - btnH - 4);
+    btn.position.set(tx + 4, btnY);
     root.addChild(btn);
     return root;
   }
@@ -395,7 +410,7 @@ export class CookPanel extends PIXI.Container {
       root.cursor = 'pointer';
       root.alpha = 1;
       root.on('pointertap', () => {
-        KitchenManager.cook(this._pick);
+        KitchenManager.cook(this._pick, this._cookQty);
         if (this._isOpen) this.relayout();
       });
     } else {

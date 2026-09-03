@@ -14,7 +14,7 @@ import {
   type Rarity,
   type RecipeDef,
 } from '@/sim';
-import { fillRect, makeLabel, makePaperChip } from '@/utils/ui';
+import { fillRect, makeLabel } from '@/utils/ui';
 import { dishTexture, fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from '@/utils/assets';
 import { ensureRecipeUnlockPanel } from './RecipeUnlockPanel';
 
@@ -24,11 +24,6 @@ const TITLE_FONT = 'Songti SC, STSong, PingFang SC, serif';
 const GOLD = 0xE0A100;
 const CREAM = 0xFFF6E8;
 const INK = 0x2A2018;
-const LEVEL_CN = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二', '十三', '十四', '十五'];
-
-function levelName(n: number): string {
-  return `${LEVEL_CN[n] ?? n}级`;
-}
 
 export class CookLevelUpPanel extends PIXI.Container {
   _isOpen = false;
@@ -103,8 +98,9 @@ export class CookLevelUpPanel extends PIXI.Container {
     const cardH = art + 52;
     const gridW = n ? cols * art + (cols - 1) * gap : 0;
     const gridH = n ? Math.ceil(n / cols) * cardH + (Math.ceil(n / cols) - 1) * 12 : 0;
-    const marketSize = markets.length <= 1 ? 220 : 180;
-    const marketH = markets.length ? marketSize + 36 : 0;
+    const thumbW = markets.length <= 1 ? 300 : 220;
+    const thumbH = Math.round(thumbW * 9 / 16);
+    const marketH = markets.length ? thumbH + 76 : 0;
 
     const stack = new PIXI.Container();
     stack.eventMode = 'none';
@@ -113,27 +109,27 @@ export class CookLevelUpPanel extends PIXI.Container {
     let y = 0;
     const titleW = Math.min(w - 20, 640);
     const titleH = Math.round(titleW * (220 / 502));
-    const burst = this._burst(Math.max(420, gridW + 160, marketSize + 120));
+    const burst = this._burst(Math.max(420, gridW + 160, thumbW + 80));
     burst.position.set(0, titleH * 0.58);
     stack.addChild(burst);
 
     const title = this._titleBanner(titleW, titleH);
     title.position.set(-titleW / 2, y);
     stack.addChild(title);
-    y += titleH - 8;
+    y += titleH - 4;
 
     const step = this._lvStep(data);
-    step.position.set(-step.width / 2, y);
-    stack.addChild(step);
-    y += step.height + 18;
+    step.root.position.set(-step.width / 2, y);
+    stack.addChild(step.root);
+    y += step.height + 22;
 
     const hasReward = n > 0 || markets.length > 0;
     let head: PIXI.Container | null = null;
     if (hasReward) {
-      head = makePaperChip('升级奖励', { size: 20, color: 0x8B5A2B });
-      head.position.set(-head.width / 2, y);
+      head = this._rewardHead();
+      head.position.set(0, y);
       stack.addChild(head);
-      y += head.height + 14;
+      y += 34;
     }
 
     if (n) {
@@ -151,8 +147,8 @@ export class CookLevelUpPanel extends PIXI.Container {
       y += gridH + 12;
     }
     if (markets.length) {
-      const row = this._marketRow(markets, marketSize);
-      row.position.set(-row.width / 2, y);
+      const row = this._marketRow(markets, thumbW, thumbH);
+      row.position.set(0, y);
       stack.addChild(row);
       if (celebrate) this._pop(row, 0.2 + n * 0.08);
       y += marketH;
@@ -176,7 +172,7 @@ export class CookLevelUpPanel extends PIXI.Container {
 
     if (celebrate) {
       this._pop(title, 0);
-      this._pop(step, 0.06);
+      this._pop(step.root, 0.06);
       if (head) this._pop(head, 0.1);
       this._spin(burst);
       this._pulse(burst);
@@ -221,50 +217,63 @@ export class CookLevelUpPanel extends PIXI.Container {
     return root;
   }
 
-  private _lvStep(data: CookLevelUp): PIXI.Container {
+  private _lvStep(data: CookLevelUp): { root: PIXI.Container; width: number; height: number } {
     const root = new PIXI.Container();
-    const cap = makeLabel('厨艺', 20, 0xE8D4A8, {
+    const style = {
       fontFamily: TITLE_FONT,
-      fontWeight: '700',
+      fontWeight: '700' as const,
       stroke: '#2A2018',
-      strokeThickness: 4,
-    });
-    const from = this._levelPill(levelName(data.from), 0xF4EDE0, 0x6A5848, 28);
-    const mid = makeLabel('升到', 22, GOLD, {
-      fontFamily: TITLE_FONT,
-      fontWeight: '700',
-      stroke: '#2A2018',
-      strokeThickness: 4,
-    });
-    const to = this._levelPill(levelName(data.to), 0xF2C14D, INK, 36);
-    cap.anchor.set(0, 0.5);
-    mid.anchor.set(0, 0.5);
-    const h = Math.max(from.height, to.height);
-    cap.position.set(0, h / 2);
-    from.position.set(cap.width + 10, (h - from.height) / 2);
-    mid.position.set(from.x + from.width + 12, h / 2);
-    to.position.set(mid.x + mid.width + 12, (h - to.height) / 2);
-    root.addChild(cap, from, mid, to);
+      strokeThickness: 6,
+    };
+    const from = makeLabel(`Lv.${data.from}`, 44, 0xE8D4A8, style);
+    const to = makeLabel(`Lv.${data.to}`, 44, 0xF2C14D, style);
+    const arrowW = 36;
+    const arrowH = 24;
+    const arrow = this._goldArrow(arrowW, arrowH);
+    const gap = 16;
+    const height = Math.max(from.height, to.height);
+    const mid = height / 2;
+    from.anchor.set(0, 0.5);
+    to.anchor.set(0, 0.5);
+    from.alpha = 0.82;
+    from.position.set(0, mid);
+    arrow.position.set(from.width + gap, mid - arrowH / 2);
+    to.position.set(arrow.x + arrowW + gap, mid);
+    const width = to.x + to.width;
+    root.addChild(from, arrow, to);
     root.eventMode = 'none';
-    return root;
+    return { root, width, height };
   }
 
-  private _levelPill(text: string, fill: number, ink: number, size: number): PIXI.Container {
+  private _goldArrow(w: number, h: number): PIXI.Graphics {
+    const g = new PIXI.Graphics();
+    g.lineStyle(4, INK, 1);
+    g.beginFill(0xF2C14D);
+    g.drawPolygon([
+      0, h * 0.30,
+      w * 0.46, h * 0.30,
+      w * 0.46, h * 0.10,
+      w, h * 0.50,
+      w * 0.46, h * 0.90,
+      w * 0.46, h * 0.70,
+      0, h * 0.70,
+    ]);
+    g.endFill();
+    g.eventMode = 'none';
+    return g;
+  }
+
+  private _rewardHead(): PIXI.Container {
     const root = new PIXI.Container();
-    const label = makeLabel(text, size, ink, {
+    const label = makeLabel('升级奖励', 22, GOLD, {
       fontFamily: TITLE_FONT,
       fontWeight: '700',
+      letterSpacing: 8,
+      stroke: '#2A2018',
+      strokeThickness: 5,
     });
-    const w = Math.ceil(label.width + 28);
-    const h = Math.ceil(label.height + 12);
-    const g = new PIXI.Graphics();
-    g.lineStyle(3, INK, 0.82);
-    g.beginFill(fill);
-    g.drawRoundedRect(0, 0, w, h, h / 2);
-    g.endFill();
-    label.anchor.set(0.5);
-    label.position.set(w / 2, h / 2);
-    root.addChild(g, label);
+    label.anchor.set(0.5, 0);
+    root.addChild(label);
     root.eventMode = 'none';
     return root;
   }
@@ -327,24 +336,36 @@ export class CookLevelUpPanel extends PIXI.Container {
     return root;
   }
 
-  private _marketRow(markets: MarketDef[], size: number): PIXI.Container {
+  private _marketRow(markets: MarketDef[], thumbW: number, thumbH: number): PIXI.Container {
     const root = new PIXI.Container();
-    let x = 0;
     const gap = 24;
-    for (const market of markets) {
-      const card = new PIXI.Container();
+    const total = markets.length * thumbW + (markets.length - 1) * gap;
+    markets.forEach((market, i) => {
+      const cx = -total / 2 + i * (thumbW + gap) + thumbW / 2;
       const thumb = new PIXI.Sprite(gameTexture(market.thumb));
       const bind = (): void => {
         if (thumb.destroyed) return;
         thumb.texture = gameTexture(market.thumb);
-        fitSpriteInBox(thumb, size, size);
+        fitSpriteInBox(thumb, thumbW, thumbH);
       };
-      whenTextureReady(market.thumb, bind);
+      whenTextureReady(market.thumb, () => {
+        bind();
+        if (this._isOpen) this.relayout();
+      });
       bind();
       thumb.anchor.set(0.5, 0);
-      thumb.position.set(size / 2, 0);
+      thumb.position.set(cx, 0);
       thumb.eventMode = 'none';
-      card.addChild(thumb);
+      root.addChild(thumb);
+      const tag = makeLabel('解锁新菜场', 26, GOLD, {
+        fontFamily: TITLE_FONT,
+        fontWeight: '700',
+        letterSpacing: 4,
+        stroke: '#2A2018',
+        strokeThickness: 6,
+      });
+      tag.anchor.set(0.5, 0);
+      tag.position.set(cx, thumbH + 10);
       const name = makeLabel(market.name, 22, CREAM, {
         fontFamily: TITLE_FONT,
         fontWeight: '700',
@@ -352,12 +373,9 @@ export class CookLevelUpPanel extends PIXI.Container {
         strokeThickness: 5,
       });
       name.anchor.set(0.5, 0);
-      name.position.set(size / 2, size + 6);
-      card.addChild(name);
-      card.position.set(x, 0);
-      root.addChild(card);
-      x += size + gap;
-    }
+      name.position.set(cx, thumbH + 44);
+      root.addChild(tag, name);
+    });
     root.eventMode = 'none';
     return root;
   }
@@ -441,6 +459,12 @@ export class CookLevelUpPanel extends PIXI.Container {
 
   private _pop(target: PIXI.Container, delay: number): void {
     this._fx.push(target);
+    const box = target.getLocalBounds();
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    target.pivot.set(cx, cy);
+    target.position.x += cx;
+    target.position.y += cy;
     target.alpha = 0;
     target.scale.set(0.72);
     TweenManager.to({

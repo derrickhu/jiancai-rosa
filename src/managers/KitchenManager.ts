@@ -331,10 +331,10 @@ class KitchenManagerClass {
     }
   }
 
-  cook(recipeId: RecipeId): void {
+  cook(recipeId: RecipeId, times = 1): void {
     this.sweepNeighborOrders();
     const fromLevel = this.save.level;
-    const { save, error, xp, levels } = cookRecipe(this.save, recipeId);
+    const { save, error, xp, levels, cooked } = cookRecipe(this.save, recipeId, times);
     if (error) {
       AudioManager.play('ui_deny');
       Platform.showToast(error);
@@ -346,15 +346,16 @@ class KitchenManagerClass {
     SaveManager.replace(paid.save);
     this.emit();
     const name = RECIPES.find((r) => r.id === recipeId)?.name ?? '菜';
+    const batch = (cooked ?? 1) > 1 ? ` ×${cooked}` : '';
     if (paid.bonus > 0) {
       AudioManager.play('coin_gain');
       Platform.showToast(`${paid.npc}要的${paid.dish}好了，多给了 ${paid.bonus} 金`, 'success');
     } else if ((levels ?? 0) > 0) {
       this.enqueueCookLevelUp(fromLevel, paid.save.level);
     } else if ((xp ?? 0) > 0) {
-      Platform.showToast(`${name} 出锅，+${xp} 经验`, 'success');
+      Platform.showToast(`${name}${batch} 出锅，+${xp} 经验`, 'success');
     } else {
-      Platform.showToast(`${name} 出锅，放进冰箱了`, 'success');
+      Platform.showToast(`${name}${batch} 出锅，放进冰箱了`, 'success');
     }
     if (paid.bonus > 0 && (levels ?? 0) > 0) {
       this.enqueueCookLevelUp(fromLevel, paid.save.level);
