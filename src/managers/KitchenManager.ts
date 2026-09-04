@@ -15,6 +15,7 @@ import {
   staminaMax,
   buyFurnUpgrade,
   buyHouseUpgrade,
+  applyNeighborReward,
   cookRecipe,
   eatDish,
   sellFridgeQty,
@@ -349,7 +350,13 @@ class KitchenManagerClass {
     const batch = (cooked ?? 1) > 1 ? ` ×${cooked}` : '';
     if (paid.bonus > 0) {
       AudioManager.play('coin_gain');
-      Platform.showToast(`${paid.npc}要的${paid.dish}好了，多给了 ${paid.bonus} 金`, 'success');
+      let msg = `${paid.npc}要的${paid.dish}好了，多给了 ${paid.bonus} 金`;
+      if (paid.foodFolded && paid.foodName) {
+        msg += `。冰箱满了，${paid.foodName}折成 ${paid.foldGold} 金`;
+      } else if (paid.foodName) {
+        msg += `，还塞来一份${paid.foodName}`;
+      }
+      Platform.showToast(msg, 'success');
     } else if ((levels ?? 0) > 0) {
       this.enqueueCookLevelUp(fromLevel, paid.save.level);
     } else if ((xp ?? 0) > 0) {
@@ -407,7 +414,11 @@ class KitchenManagerClass {
       this._setOfferAt(now + NEIGHBOR_COOLDOWN.miss);
       return null;
     }
-    const draft = rollNeighborOffer(recipeUnlockView(this.save), hanging, rng);
+    const draft = rollNeighborOffer({
+      ...recipeUnlockView(this.save),
+      dexSeen: this.save.dexSeen,
+      dexInspected: this.save.dexInspected,
+    }, hanging, rng);
     if (!draft) {
       this._setOfferAt(now + NEIGHBOR_COOLDOWN.miss);
       return null;
@@ -460,22 +471,33 @@ class KitchenManagerClass {
     save: KitchenSave,
     recipeId: RecipeId,
     now = Date.now(),
-  ): { save: KitchenSave; bonus: number; npc: string; dish: string } {
+  ): {
+    save: KitchenSave;
+    bonus: number;
+    npc: string;
+    dish: string;
+    foodName?: string;
+    foodFolded: boolean;
+    foldGold: number;
+  } {
     const match = liveNeighborOrders(save.neighborOrders, now)
       .filter((o) => o.recipeId === recipeId)
       .sort((a, b) => a.expiresAt - b.expiresAt)[0];
-    if (!match) return { save, bonus: 0, npc: '', dish: '' };
-    const bonus = neighborOrderBonus(recipeId);
+    if (!match) return { save, bonus: 0, npc: '', dish: '', foodFolded: false, foldGold: 0 };
+    const reward = match.reward ?? { gold: neighborOrderBonus(recipeId) };
+    const granted = applyNeighborReward(save, reward);
     return {
       save: {
-        ...save,
-        money: save.money + bonus,
-        neighborOrders: liveNeighborOrders(save.neighborOrders, now).filter((o) => o.id !== match.id),
-        neighborOfferAt: Math.max(save.neighborOfferAt, now + NEIGHBOR_COOLDOWN.accept),
+        ...granted.save,
+        neighborOrders: liveNeighborOrders(granted.save.neighborOrders, now).filter((o) => o.id !== match.id),
+        neighborOfferAt: Math.max(granted.save.neighborOfferAt, now + NEIGHBOR_COOLDOWN.accept),
       },
-      bonus,
+      bonus: granted.gold,
       npc: neighborNpc(match.npcId).name,
       dish: recipeById(recipeId)?.name ?? '菜',
+      foodName: granted.foodName,
+      foodFolded: granted.foodFolded,
+      foldGold: granted.foldGold,
     };
   }
 

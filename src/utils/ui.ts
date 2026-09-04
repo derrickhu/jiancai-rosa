@@ -2,7 +2,7 @@ import * as PIXI from 'pixi.js';
 import { AudioManager } from '@/core/AudioManager';
 import { Ease, TweenManager } from '@/core/TweenManager';
 import { RARITY_STYLE, type Rarity } from '@/sim/rarity';
-import { fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from './assets';
+import { fitSpriteInBox, gameTexture, imgPath, isTextureReady, itemTexture, whenTextureReady } from './assets';
 
 export const FONT = 'PingFang SC, sans-serif';
 
@@ -695,6 +695,61 @@ export function makePaperChip(
   label.anchor.set(0.5);
   label.position.set(w / 2, h / 2);
   root.addChild(label);
+  root.eventMode = 'none';
+  return root;
+}
+
+/** 任务式奖励条：金币 / 食材直接出图，不套白底。接单和点菜列表共用。 */
+export function makeRewardStrip(
+  chips: Array<{ icon?: string; itemId?: string; label: string }>,
+  onReady?: () => void,
+  lead = '',
+): PIXI.Container {
+  const root = new PIXI.Container();
+  let x = 0;
+  const h = 44;
+  if (lead) {
+    const tag = makeLabel(lead, 20, 0xC9B8A4);
+    tag.anchor.set(0, 0.5);
+    tag.position.set(0, h / 2);
+    root.addChild(tag);
+    x = Math.ceil(tag.width) + 12;
+  }
+  for (const chip of chips) {
+    const gold = Boolean(chip.icon);
+    const label = makeLabel(chip.label, 22, gold ? 0xF2C14D : 0xF4EFE6, { fontWeight: '700' });
+    const iconSize = gold ? 36 : 40;
+    const hasIcon = Boolean(chip.icon || chip.itemId);
+    const cell = new PIXI.Container();
+    let cx = 0;
+    if (chip.icon) {
+      whenTextureReady(chip.icon, () => onReady?.());
+      const tex = gameTexture(chip.icon);
+      if (isTextureReady(tex)) {
+        const sp = new PIXI.Sprite(tex);
+        fitSpriteInBox(sp, iconSize, iconSize);
+        sp.anchor.set(0, 0.5);
+        sp.position.set(0, h / 2);
+        cell.addChild(sp);
+        cx = iconSize + 6;
+      }
+    } else if (chip.itemId) {
+      const path = imgPath(`${chip.itemId}.png`);
+      whenTextureReady(path, () => onReady?.());
+      const sp = new PIXI.Sprite(itemTexture(chip.itemId));
+      fitSpriteInBox(sp, iconSize, iconSize);
+      sp.anchor.set(0, 0.5);
+      sp.position.set(0, h / 2);
+      cell.addChild(sp);
+      cx = iconSize + 6;
+    }
+    label.anchor.set(0, 0.5);
+    label.position.set(hasIcon ? cx : 0, h / 2);
+    cell.addChild(label);
+    cell.position.x = x;
+    root.addChild(cell);
+    x += Math.ceil((hasIcon ? cx : 0) + label.width) + 16;
+  }
   root.eventMode = 'none';
   return root;
 }

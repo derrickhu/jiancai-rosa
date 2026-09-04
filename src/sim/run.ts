@@ -50,6 +50,11 @@ export interface RunEventLog {
   speaker?: string;
   portrait?: string | null;
   choices?: Array<{ label: string; steps?: number }>;
+  /** 街坊点菜等：做成后给的金币 / 食材，画在对话按钮上方。 */
+  rewards?: {
+    gold?: number;
+    foods?: Array<{ defId: string; qty: number }>;
+  };
 }
 
 export interface GatherSpot {

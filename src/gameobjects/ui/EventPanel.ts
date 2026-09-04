@@ -2,9 +2,9 @@ import * as PIXI from 'pixi.js';
 import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
-import { eventVoice, type RunEventLog } from '@/sim';
+import { eventVoice, neighborRewardChips, type RunEventLog } from '@/sim';
 import { fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from '@/utils/assets';
-import { fillRect, makeLabel, makePaperChip, makeSlicedButton } from '@/utils/ui';
+import { fillRect, makeLabel, makePaperChip, makeRewardStrip, makeSlicedButton } from '@/utils/ui';
 
 /**
  * 走过事件卡之后的那一下：半身像 + 一句人话。
@@ -73,7 +73,9 @@ export class EventPanel extends PIXI.Container {
     });
     const textPad = speaker ? 46 : 40;
     const choiceH = choices.length ? choices.length * 64 + 8 : 56;
-    const boxH = textPad + Math.ceil(text.height) + 28 + choiceH + 20;
+    const rewardChips = rewardChipsOf(log);
+    const rewardH = rewardChips.length ? 56 : 0;
+    const boxH = textPad + Math.ceil(text.height) + 28 + rewardH + choiceH + 20;
     const y = Math.round(h - boxH - 150);
 
     if (portrait) {
@@ -107,6 +109,14 @@ export class EventPanel extends PIXI.Container {
 
     text.position.set(x + 38, y + textPad);
     this._root.addChild(text);
+
+    if (rewardChips.length) {
+      const strip = makeRewardStrip(rewardChips, () => {
+        if (this._isOpen) this.relayout();
+      }, '做成给');
+      strip.position.set(x + 38, y + textPad + Math.ceil(text.height) + 12);
+      this._root.addChild(strip);
+    }
 
     if (choices.length) {
       choices.forEach((choice, i) => {
@@ -148,4 +158,13 @@ export class EventPanel extends PIXI.Container {
     btn.on('pointertap', () => this.close());
     this._root.addChild(btn);
   }
+}
+
+function rewardChipsOf(log: RunEventLog): Array<{ icon?: string; itemId?: string; label: string }> {
+  const rewards = log.rewards;
+  if (!rewards) return [];
+  return neighborRewardChips({
+    gold: rewards.gold ?? 0,
+    food: rewards.foods?.[0],
+  });
 }

@@ -1,9 +1,9 @@
-import { displayName, getItem, GOD_PICK, sellPrice, type Quality } from './items';
+import { displayName, getItem, GOD_PICK, initialFreshness, sellPrice, type Quality } from './items';
 import { migrateSeenMarketFoods, marketFoodKey } from './marketExploration';
 import type { MarketId } from './destinations';
 import { VEHICLES, migrateVehicles, ownsVehicle, vehicleById, vehicleIndex, vehicleOffer, type VehicleId } from './vehicles';
 import { nextUid, type ExtractedItem } from './run';
-import { migrateNeighborOrders, type NeighborOrder } from './neighborOrders';
+import { isNeighborRewardFood, migrateNeighborOrders, type NeighborOrder, type NeighborReward } from './neighborOrders';
 import {
   RECIPES,
   TABLE_UNLOCKS,
@@ -505,6 +505,45 @@ export function regenStamina(save: KitchenSave, now = Date.now()): KitchenSave {
 
 export function decayFridge(save: KitchenSave, now = Date.now()): KitchenSave {
   return { ...save, lastSeenAt: now };
+}
+
+/** 街坊交菜：金币入账；说好的食材塞冰箱，满了就按普通价折金。 */
+export function applyNeighborReward(save: KitchenSave, reward: NeighborReward): {
+  save: KitchenSave;
+  gold: number;
+  foodName?: string;
+  foodFolded: boolean;
+  foldGold: number;
+} {
+  let next: KitchenSave = { ...save, money: save.money + reward.gold };
+  let foodName: string | undefined;
+  let foodFolded = false;
+  let foldGold = 0;
+  const food = reward.food;
+  if (food && isNeighborRewardFood(food.defId)) {
+    const qty = Math.max(1, Math.floor(food.qty || 1));
+    foodName = getItem(food.defId).name;
+    const draft: FridgeDraft = {
+      defId: food.defId,
+      quality: 'common',
+      inspected: true,
+      freshness: initialFreshness('common'),
+      qty,
+    };
+    if (fridgeCanFit(next, [draft])) {
+      const fridge = putIntoFridge(next.fridge, {
+        uid: nextUid('f'),
+        kind: 'food',
+        ...draft,
+      });
+      next = discoverFood({ ...next, fridge }, food.defId).save;
+    } else {
+      foldGold = sellPrice(food.defId, 'common', true) * qty;
+      next = { ...next, money: next.money + foldGold };
+      foodFolded = true;
+    }
+  }
+  return { save: next, gold: reward.gold, foodName, foodFolded, foldGold };
 }
 
 /** 第一次见到这味可用食材：写进图鉴并返回 true。坏了的不算见过。 */
