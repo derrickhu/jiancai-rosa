@@ -1,3 +1,15 @@
+import {
+  applyEatEffects,
+  clearOutingBuff,
+  consumeCookXpBuff,
+  kitchenCookXpMul,
+  kitchenSellMul,
+  migrateKitchenBuff,
+  migrateOutingBuff,
+  recipeEatStaminaGain,
+  type KitchenBuff,
+  type OutingBuff,
+} from './dishEffects';
 import { displayName, getItem, GOD_PICK, initialFreshness, sellPrice, type Quality } from './items';
 import { migrateSeenMarketFoods, marketFoodKey } from './marketExploration';
 import type { MarketId } from './destinations';
@@ -13,7 +25,6 @@ import {
   pickRecipeFoods,
   recipeById,
   recipeCookCount,
-  recipeEatStamina,
   recipeUnlockView,
   type RecipeId,
 } from './recipes';
@@ -36,7 +47,6 @@ export {
   remainingMarketRecipes,
   isRecipeId,
   recipeById,
-  recipeEatStamina,
   recipeSellPrice,
   listedRecipes,
   HIDDEN_RECIPE_IDS,
@@ -149,13 +159,16 @@ export function fridgeStackKey(it: FridgeDraft): string {
   return `${kind}|${it.defId}`;
 }
 
-export function fridgeItemUnitPrice(it: FridgeItem): number {
-  if (fridgeKind(it) === 'dish') return Math.max(0, it.value ?? 0);
-  return sellPrice(it.defId, it.quality, it.inspected, it.freshness);
+export function fridgeItemUnitPrice(it: FridgeItem, save?: Pick<KitchenSave, 'kitchenBuff'>, now = Date.now()): number {
+  const base = fridgeKind(it) === 'dish'
+    ? Math.max(0, it.value ?? 0)
+    : sellPrice(it.defId, it.quality, it.inspected, it.freshness);
+  if (!save || base <= 0) return base;
+  return Math.round(base * kitchenSellMul(save, now));
 }
 
-export function fridgeItemPrice(it: FridgeItem): number {
-  return fridgeItemUnitPrice(it) * fridgeItemQty(it);
+export function fridgeItemPrice(it: FridgeItem, save?: Pick<KitchenSave, 'kitchenBuff'>, now = Date.now()): number {
+  return fridgeItemUnitPrice(it, save, now) * fridgeItemQty(it);
 }
 
 export function fridgeItemBlurb(it: FridgeItem): string {
@@ -207,6 +220,10 @@ export interface KitchenSave {
   neighborOrders: NeighborOrder[];
   /** 下次最早能再弹点菜的时间。 */
   neighborOfferAt: number;
+  /** 下一趟菜场，收工清。 */
+  outingBuff?: OutingBuff;
+  /** 厨房限时：售价或下一锅经验。后吃替换。 */
+  kitchenBuff?: KitchenBuff;
 }
 
 function migrateSpecialVisits(raw: unknown): Record<string, { date: string; count: number }> {
@@ -282,6 +299,8 @@ export function defaultSave(now = Date.now()): KitchenSave {
     specialVisits: {},
     neighborOrders: [],
     neighborOfferAt: 0,
+    outingBuff: undefined,
+    kitchenBuff: undefined,
   };
 }
 
@@ -314,6 +333,8 @@ export function normalizeSave(raw: Partial<KitchenSave> | null, now = Date.now()
       && Number.isFinite((raw as KitchenSave).neighborOfferAt)
       ? Math.max(0, Math.floor((raw as KitchenSave).neighborOfferAt))
       : 0,
+    outingBuff: migrateOutingBuff((raw as KitchenSave).outingBuff),
+    kitchenBuff: migrateKitchenBuff((raw as KitchenSave).kitchenBuff),
   };
   next.basketLevel = next.furnLevels.basket;
   next.fridgeExtra = next.furnLevels.fridge > 0 || next.furnLevels.foam > 0;
@@ -352,7 +373,9 @@ function migrateFridgeItems(raw: unknown): FridgeItem[] {
       qty: fridgeItemQty(row),
     };
   });
-  return compactFridge(mapped.filter((it): it is FridgeItem => !!it && (it.kind === 'dish' || it.quality !== 'rotten')));
+  return compactFridge(
+    mapped.filter((it) => !!it && (it.kind === 'dish' || it.quality !== 'rotten')) as FridgeItem[],
+  );
 }
 
 function migrateHouseLevel(raw: Partial<KitchenSave>): number {
@@ -590,11 +613,11 @@ export function ingestExtract(save: KitchenSave, items: ExtractedItem[], now = D
     qty: 1,
   }));
   const next = noteDex(save, keep);
-  return {
+  return clearOutingBuff({
     ...next,
     fridge: compactFridge(incoming.reduce((fridge, it) => putIntoFridge(fridge, it), next.fridge)),
     dailyGodPickDate: keep.some((it) => it.defId === 'wild_yellowfish') ? todayKey(now) : save.dailyGodPickDate,
-  };
+  });
 }
 
 export function eatDish(
@@ -602,7 +625,7 @@ export function eatDish(
   uid: string,
   qty = 1,
   now = Date.now(),
-): { save: KitchenSave; error?: string; stamina?: number; name?: string } {
+): { save: KitchenSave; error?: string; stamina?: number; name?: string; toast?: string; nudgeOffer?: boolean } {
   const item = save.fridge.find((it) => it.uid === uid);
   if (!item) return { save, error: '冰箱里没有这道菜' };
   if (fridgeKind(item) !== 'dish') return { save, error: '生食不能这么吃' };
@@ -611,24 +634,27 @@ export function eatDish(
   if (!recipe) return { save, error: '未知菜谱' };
   const next = regenStamina(save, now);
   const cap = staminaMax(next);
-  if (next.stamina >= cap) return { save: next, error: '体力满了，先出门或卖掉' };
-  const gainEach = recipeEatStamina(recipe);
+  const staminaEach = recipeEatStaminaGain(recipe.id);
+  const have = fridgeItemQty(item);
+  const want = Math.min(have, Math.max(1, Math.floor(qty)));
   const room = cap - next.stamina;
-  const want = Math.min(fridgeItemQty(item), Math.max(1, Math.floor(qty)));
-  const portions = Math.min(want, Math.max(0, Math.floor(room / Math.max(1, gainEach))));
-  if (portions <= 0) return { save: next, error: '体力满了，先出门或卖掉' };
-  const fridge = consumeFridgeQty(next.fridge, new Map([[uid, portions]]));
-  const gained = portions * gainEach;
-  const stamina = Math.min(cap, next.stamina + gained);
+  const portions = staminaEach > 0
+    ? Math.min(want, Math.max(0, Math.floor(room / staminaEach)))
+    : 1;
+  if (staminaEach > 0 && portions <= 0) {
+    return { save: next, error: '体力满了，换盘有出门用的' };
+  }
+  const applied = applyEatEffects(next, recipe.id, portions, cap, now);
+  if (applied.error) return { save: applied.save, error: applied.error, name: recipe.name };
   return {
     save: {
-      ...next,
-      fridge,
-      stamina,
-      staminaAt: stamina >= cap ? now : next.staminaAt,
+      ...applied.save,
+      fridge: consumeFridgeQty(applied.save.fridge, new Map([[uid, portions]])),
     },
-    stamina: gained,
+    stamina: applied.stamina,
     name: recipe.name,
+    toast: applied.toast,
+    nudgeOffer: applied.nudgeOffer,
   };
 }
 
@@ -639,7 +665,7 @@ export function sellFridgeQty(
 ): { save: KitchenSave; gained: number; error?: string } {
   const item = save.fridge.find((it) => it.uid === uid);
   if (!item) return { save, gained: 0, error: '冰箱里没有这件' };
-  const unit = fridgeItemUnitPrice(item);
+  const unit = fridgeItemUnitPrice(item, save);
   if (unit <= 0) return { save, gained: 0, error: '这些卖不掉' };
   const n = Math.min(fridgeItemQty(item), Math.max(1, Math.floor(qty)));
   const gained = unit * n;
@@ -661,7 +687,7 @@ export function sellItems(save: KitchenSave, uids: string[]): { save: KitchenSav
       remain.push(it);
       continue;
     }
-    gained += fridgeItemPrice(it);
+    gained += fridgeItemPrice(it, save);
   }
   return { save: { ...save, fridge: remain, money: save.money + gained }, gained };
 }
@@ -748,9 +774,9 @@ function cookRecipeOnce(
   if (fridge.length > fridgeCap(save)) return { save, error: '冰箱满了，腾一格再做菜' };
   const first = !save.recipesCooked.includes(recipeId);
   const recipesCooked = first ? [...save.recipesCooked, recipeId] : save.recipesCooked;
-  const gained = recipe.xp + (first ? recipe.firstXp : 0);
+  const gained = Math.round((recipe.xp + (first ? recipe.firstXp : 0)) * kitchenCookXpMul(save));
   const granted = grantCookXp({ ...save, fridge, recipesCooked }, gained);
-  return { save: granted.save, xp: granted.gained, levels: granted.levels };
+  return { save: consumeCookXpBuff(granted.save), xp: granted.gained, levels: granted.levels };
 }
 
 export function upgradeCost(id: FurnId, fromLevel: number): number {

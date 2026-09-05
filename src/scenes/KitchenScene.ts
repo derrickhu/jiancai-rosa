@@ -45,6 +45,11 @@ import {
   foamWetCols,
   foamWetRows,
   tableUnlockNext,
+  computeFridgeSlip,
+  computeKitchenSlip,
+  kitchenBuffLine,
+  kitchenSlipMissToast,
+  outingBuffLine,
   layoutFor,
   saveGmLayout,
   clampHouseLevel,
@@ -64,6 +69,7 @@ type UpgradePick = FurnId | 'house';
 
 const DRAG_SLOP = 14;
 const HOUSE_UPGRADE_SHIFT_X = 50;
+const KITCHEN_SLIP = 'subpkg_kitchen/ui_kitchen_slip.png';
 
 export class KitchenScene implements Scene {
   readonly name = 'kitchen';
@@ -92,6 +98,7 @@ export class KitchenScene implements Scene {
         if (this.container.parent) this.relayout();
       }, 1500) as unknown as number;
     }
+    if (KitchenManager.consumeNudgeOffer()) this._queueNeighborOffer();
     this.relayout();
   };
   private _worldSize = { w: 750, h: 1334 };
@@ -263,6 +270,8 @@ export class KitchenScene implements Scene {
           : mapNorm(fit, spot.nx, spot.ny, spot.nw, spot.nh);
         this._world.addChild(this._hotspot(spot.id, spot.label, rect));
       }
+      this._drawKitchenSlip();
+      this._drawFridgeSlip();
       for (const id of FURN_IDS) {
         const badge = this._upgradeBadge(id, this._furnSpriteRect(id));
         if (badge) this._world.addChild(badge);
@@ -492,6 +501,14 @@ export class KitchenScene implements Scene {
     });
     sta.position.set(resX + 172, pillY);
     this._ui.addChild(sta);
+
+    const outing = outingBuffLine(save);
+    const kitchen = kitchenBuffLine(save);
+    if (outing || kitchen) {
+      const buff = makeLabel([outing, kitchen].filter(Boolean).join('  ·  '), 18, 0xF6EDE0, { fontWeight: '700' });
+      buff.position.set(resX, pillY + 48);
+      this._ui.addChild(buff);
+    }
 
     if (this._xpPop && Date.now() < this._xpPop.until) {
       const pop = makeLabel(this._xpPop.text, 22, 0xF2C14D, { fontWeight: '700' });
@@ -845,6 +862,132 @@ export class KitchenScene implements Scene {
       ...(foam ? [{ ...foam, id: 'foam' as const, label: furnLabel('foam', this._viewLevel('foam')) }] : []),
       ...(table ? [{ ...table, id: 'board' as const, label: '烹饪' }] : []),
     ];
+  }
+
+  private _drawKitchenSlip(): void {
+    const slip = computeKitchenSlip(KitchenManager.save);
+    const lines: Array<{ text: string; color: number; onTap: () => void }> = [];
+    if (slip.can) {
+      const can = slip.can;
+      lines.push({
+        text: `能做 · ${can.name}`,
+        color: 0x2A2018,
+        onTap: () => this._cook.open(can.recipeId),
+      });
+    }
+    if (slip.miss) {
+      const miss = slip.miss;
+      lines.push({
+        text: `还差 · ${miss.itemName}`,
+        color: 0xC46A3A,
+        onTap: () => {
+          this._cook.open(miss.recipeId);
+          Platform.showToast(kitchenSlipMissToast(miss));
+        },
+      });
+    }
+    if (!lines.length) return;
+    const pot = this._cookHitRect();
+    this._mountOilSlip(pot.x + pot.w * 0.34, pot.y, pot.w * 0.84, 276, 208, lines, -0.06);
+  }
+
+  private _drawFridgeSlip(): void {
+    const rows = computeFridgeSlip(KitchenManager.save);
+    if (!rows.length) return;
+    const door = this._furnSpriteRect('fridge');
+    const lv = this._viewLevel('fridge');
+    const maxW = lv <= 2 ? 108 : lv <= 5 ? 132 : 156;
+    const minW = lv <= 2 ? 88 : 104;
+    const wantW = door.w * (lv <= 2 ? 0.52 : 0.40);
+    const noteW = Math.round(Math.min(maxW, Math.max(minW, wantW)));
+    const tex = gameTexture(KITCHEN_SLIP);
+    const ratio = isTextureReady(tex) && tex.width > 0 ? tex.height / tex.width : 457 / 720;
+    const noteH = Math.round(noteW * ratio);
+    this._mountOilSlip(
+      door.x + door.w * 0.58,
+      door.y - noteH * 0.18,
+      noteW,
+      noteW,
+      noteW,
+      rows.map((row) => ({
+        text: row.text,
+        color: row.tone === 'full' ? 0xC46A3A : 0x2A2018,
+        onTap: () => this._fridge.open(row.tab),
+      })),
+      0,
+      lv <= 2 ? 13 : 15,
+    );
+  }
+
+  private _mountOilSlip(
+    x: number,
+    y: number,
+    wantW: number,
+    maxW: number,
+    minW: number,
+    lines: Array<{ text: string; color: number; onTap: () => void }>,
+    lift = 0,
+    fontSize = 16,
+  ): void {
+    whenTextureReady(KITCHEN_SLIP, () => {
+      if (this.container.parent) this.relayout();
+    });
+    const tex = gameTexture(KITCHEN_SLIP);
+    const noteW = Math.round(Math.min(maxW, Math.max(minW, wantW)));
+    const ratio = isTextureReady(tex) && tex.width > 0 ? tex.height / tex.width : 457 / 720;
+    const noteH = Math.round(noteW * ratio);
+    const root = new PIXI.Container();
+    root.position.set(x, y + noteH * lift);
+    if (isTextureReady(tex)) {
+      const paper = new PIXI.Sprite(tex);
+      paper.width = noteW;
+      paper.height = noteH;
+      paper.eventMode = 'none';
+      root.addChild(paper);
+    } else {
+      const paper = new PIXI.Graphics();
+      paper.beginFill(0xF6E4B8, 0.96);
+      paper.lineStyle(2, 0xC46A3A, 0.85);
+      paper.drawRoundedRect(0, 0, noteW, noteH, 8);
+      paper.endFill();
+      paper.eventMode = 'none';
+      root.addChild(paper);
+    }
+    const textX = noteW * 0.13;
+    const textW = noteW * 0.74;
+    const textTop = noteH * 0.34;
+    const textH = noteH * 0.46;
+    const lineH = Math.max(fontSize + 4, textH / Math.max(1, lines.length));
+    let cy = textTop + (textH - lineH * lines.length) / 2;
+    for (const line of lines) {
+      const row = makeLabel(line.text, fontSize, line.color, { fontWeight: '700' });
+      row.position.set(textX, cy + (lineH - row.height) / 2);
+      row.eventMode = 'none';
+      if (row.width > textW) row.scale.set(textW / row.width);
+      const hit = new PIXI.Graphics();
+      hit.beginFill(0xffffff, 0.001);
+      hit.drawRect(textX - 4, cy, textW + 8, lineH);
+      hit.endFill();
+      hit.eventMode = 'static';
+      hit.cursor = 'pointer';
+      hit.on('pointertap', (e) => {
+        e.stopPropagation();
+        if (this._dragMoved) return;
+        line.onTap();
+      });
+      root.addChild(row, hit);
+      cy += lineH;
+    }
+    root.eventMode = 'static';
+    root.hitArea = new PIXI.Rectangle(0, 0, noteW, noteH);
+    root.cursor = 'pointer';
+    root.on('pointerdown', (e) => e.stopPropagation());
+    root.on('pointertap', (e) => {
+      e.stopPropagation();
+      if (this._dragMoved) return;
+      lines[lines.length - 1]?.onTap();
+    });
+    this._world.addChild(root);
   }
 
   /** 只点锅/灶，不要整张桌子布局框里的空地。 */

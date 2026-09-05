@@ -14,6 +14,18 @@ export interface BasketItem {
   broken?: boolean;
 }
 
+export interface BasketPocket {
+  x: number;
+  y: number;
+}
+
+export interface BasketExtras {
+  extraDryCells?: number;
+  extraWetCells?: number;
+  extraDryRows?: number;
+  extraWetRows?: number;
+}
+
 export interface BasketState {
   cols: number;
   rows: number;
@@ -23,6 +35,10 @@ export interface BasketState {
   insulatedBottom: boolean;
   /** 顶上一行广告解锁，只当次有效，干湿都能放。 */
   flexUnlocked: boolean;
+  /** 吃菜当次旁挂的干格，不改家具。 */
+  pocketDry?: BasketPocket;
+  /** 吃菜当次旁挂的湿格，不改家具。 */
+  pocketWet?: BasketPocket;
   items: BasketItem[];
 }
 
@@ -68,19 +84,31 @@ export function outingWetCells(foamLevel: number): number {
   return foamWetCols(foamLevel) * foamWetRows(foamLevel);
 }
 
-export function createBasket(basketLevel: number, foamLevel = 0): BasketState {
+export function createBasket(basketLevel: number, foamLevel = 0, extras: BasketExtras = {}): BasketState {
   const dryCols = bagDryCols(basketLevel);
-  const dryRows = bagRows(basketLevel);
+  const dryRows = bagRows(basketLevel) + Math.max(0, extras.extraDryRows ?? 0);
   const wetCols = foamWetCols(foamLevel);
-  const wetRows = foamWetRows(foamLevel);
+  const wetRows = foamWetRows(foamLevel) + Math.max(0, extras.extraWetRows ?? 0);
+  const hangDry = (extras.extraDryCells ?? 0) > 0;
+  const hangWet = (extras.extraWetCells ?? 0) > 0;
+  const hang = hangDry || hangWet;
+  const cols = wetCols + dryCols + (hang ? 1 : 0);
+  const pocketX = wetCols + dryCols;
+  const pocketDry = hangDry ? { x: pocketX, y: BASKET_FLEX_ROWS } : undefined;
+  const pocketWet = hangWet
+    ? { x: pocketX, y: BASKET_FLEX_ROWS + (hangDry ? 1 : 0) }
+    : undefined;
+  const pocketBottom = pocketWet ? pocketWet.y + 1 : pocketDry ? pocketDry.y + 1 : 0;
   return {
-    cols: wetCols + dryCols,
-    rows: BASKET_FLEX_ROWS + Math.max(wetRows, dryRows),
+    cols,
+    rows: Math.max(BASKET_FLEX_ROWS + Math.max(wetRows, dryRows), pocketBottom),
     wetCols,
     wetRows,
     dryRows,
     insulatedBottom: clampBagLevel(basketLevel) >= 3,
     flexUnlocked: false,
+    pocketDry,
+    pocketWet,
     items: [],
   };
 }
@@ -93,14 +121,19 @@ export function unlockBasketFlex(state: BasketState): BasketState {
 /** 分区从上往下长。矮的那一侧下方不画、也不能放。顶行解锁前是空的。 */
 export function basketCellKind(state: BasketState, x: number, y: number): BasketCellKind {
   if (x < 0 || y < 0 || x >= state.cols || y >= state.rows) return 'none';
+  if (state.pocketDry && x === state.pocketDry.x && y === state.pocketDry.y) return 'dry';
+  if (state.pocketWet && x === state.pocketWet.x && y === state.pocketWet.y) return 'wet';
   if (y < BASKET_FLEX_ROWS) return state.flexUnlocked ? 'flex' : 'none';
   const localY = y - BASKET_FLEX_ROWS;
   if (x < state.wetCols && localY < state.wetRows) return 'wet';
-  if (x >= state.wetCols && localY < state.dryRows) return 'dry';
+  const hang = !!(state.pocketDry || state.pocketWet);
+  const dryCols = state.cols - state.wetCols - (hang ? 1 : 0);
+  if (x >= state.wetCols && x < state.wetCols + dryCols && localY < state.dryRows) return 'dry';
   return 'none';
 }
 
 function isFoamWetCell(state: BasketState, x: number, y: number): boolean {
+  if (state.pocketWet && x === state.pocketWet.x && y === state.pocketWet.y) return true;
   if (x < 0 || x >= state.wetCols) return false;
   const localY = y - BASKET_FLEX_ROWS;
   return localY >= 0 && localY < state.wetRows;

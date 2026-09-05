@@ -135,6 +135,7 @@ export function layerCount(marketId: MarketId): number {
 export function buildMarketMap(marketId: MarketId, seed: number, opts?: {
   allowRecipe?: boolean;
   forceRecipe?: boolean;
+  stallBias?: StallId;
 }): MarketMap {
   const plan = MARKET_PLAN[marketId];
   const rng = mulberry32(seed);
@@ -172,7 +173,7 @@ export function buildMarketMap(marketId: MarketId, seed: number, opts?: {
     kinds.push(row);
   }
 
-  const stallCycle = stallRotation(rng, marketId);
+  const stallCycle = stallRotation(rng, marketId, opts?.stallBias);
   let cursor = 0;
   const nodes: Record<string, MapNode> = {};
   const layers: string[][] = [];
@@ -250,8 +251,10 @@ function pickStallLayers(rng: Rng, want: number, steps: number, total: number): 
 }
 
 /** 四类摊轮转，保证一局里各类都露过面。 */
-function stallRotation(rng: Rng, marketId: MarketId): StallId[] {
-  const weights = STALL_WEIGHTS[marketId];
+function stallRotation(rng: Rng, marketId: MarketId, bias?: StallId): StallId[] {
+  const weights = STALL_WEIGHTS[marketId].map(([id, w]) => (
+    [id, id === bias ? w * 2.4 : w] as [StallId, number]
+  ));
   const base = rngShuffle(rng, stallsForMarket(marketId));
   const extra: StallId[] = [];
   for (let i = 0; i < 6; i++) extra.push(rngWeighted(rng, weights));

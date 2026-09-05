@@ -458,6 +458,11 @@ function pickBiased(
  * 摊上抽一件。先掷稀有度，再在该档里按「菜谱要不要」加权挑一件——
  * 这样摊上的货跟得上手里的菜谱，同时始终留着一条撞见蓝货的窄缝。
  */
+export interface RollLuck {
+  rare?: number;
+  epic?: number;
+}
+
 export function rollMarketItem(
   marketId: MarketId,
   stall: StallId,
@@ -465,14 +470,15 @@ export function rollMarketItem(
   rng: Rng,
   wanted?: ReadonlySet<string>,
   boosted?: ReadonlySet<string>,
+  luck?: RollLuck,
 ): ItemDef {
   const p = MARKET_POOLS[marketId][stall];
   if (!p) return rngPick(rng, itemsForStall(stall));
 
   const lv = Math.max(0, cookLevel - 1);
   const legendary = LEGENDARY_CHANCE[marketId] + lv * LEGENDARY_PER_LEVEL;
-  const epic = EPIC_CHANCE[marketId] + lv * EPIC_PER_LEVEL;
-  const rare = RARE_CHANCE[marketId] + lv * RARE_PER_LEVEL;
+  const epic = EPIC_CHANCE[marketId] + lv * EPIC_PER_LEVEL + Math.max(0, luck?.epic ?? 0);
+  const rare = RARE_CHANCE[marketId] + lv * RARE_PER_LEVEL + Math.max(0, luck?.rare ?? 0);
   const roll = rng();
 
   let ids: string[] = p.common;

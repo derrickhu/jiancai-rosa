@@ -13,6 +13,8 @@ export * from './encounters';
 export * from './marketMap';
 export * from './run';
 export * from './kitchen';
+export * from './dishEffects';
+export * from './kitchenSlip';
 export * from './neighborOrders';
 export * from './kitchenLayout';
 export * from './dex';

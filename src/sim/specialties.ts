@@ -75,13 +75,18 @@ export function getSpecialty(id: string): SpecialtyDef | undefined {
   return SPECIALTIES[id];
 }
 
-export function rollSpecialtyItem(id: string, rng: Rng, cookLevel = 1): ItemDef {
+export function rollSpecialtyItem(
+  id: string,
+  rng: Rng,
+  cookLevel = 1,
+  luck?: { rare?: number; epic?: number },
+): ItemDef {
   const spec = SPECIALTIES[id];
   if (!spec) return getItem('mushroom');
   const lv = Math.max(0, cookLevel - 1);
   const legendary = spec.legendaryChance ?? 0;
-  const epic = spec.epicChance ?? 0.04 + lv * 0.004;
-  const rare = spec.rareChance ?? 0.22 + lv * 0.01;
+  const epic = (spec.epicChance ?? 0.04 + lv * 0.004) + Math.max(0, luck?.epic ?? 0);
+  const rare = (spec.rareChance ?? 0.22 + lv * 0.01) + Math.max(0, luck?.rare ?? 0);
   const roll = rng();
   let ids = spec.common;
   if ((spec.legendary?.length ?? 0) && roll < legendary) ids = spec.legendary ?? spec.common;

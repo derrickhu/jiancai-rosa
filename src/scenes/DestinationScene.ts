@@ -24,6 +24,7 @@ import {
   type VehicleId,
   explorePercent,
   marketExploration,
+  outingBuffLine,
 } from '@/sim';
 import { AudioManager } from '@/core/AudioManager';
 import { HUD_ICON, PLAYER_LEVEL_HUD, bindUiClick, fillRect, makeLabel, makeMuteButton, makePlayerLevelHud, makeSlicedButton, makeStatPill } from '@/utils/ui';
@@ -156,11 +157,18 @@ export class DestinationScene implements Scene {
     staPill.position.set(resX + 172, pillY);
     this._ui.addChild(staPill);
 
+    const outing = outingBuffLine(KitchenManager.save);
+    if (outing) {
+      const line = makeLabel(outing, 20, 0xFFF3C4, { fontWeight: '700' });
+      line.position.set(12, pillsY + PLAYER_LEVEL_HUD.height - 2);
+      this._ui.addChild(line);
+    }
+
     const mute = makeMuteButton(44);
     mute.position.set(w - 64, pillY);
     this._ui.addChild(mute);
 
-    const listTop = pillsY + PLAYER_LEVEL_HUD.height + 8;
+    const listTop = pillsY + PLAYER_LEVEL_HUD.height + (outing ? 28 : 8);
     const bottomPad = Math.max(
       HOME_BOTTOM,
       (Number.isFinite(Game.safeBottom) ? Game.safeBottom : 0) + 24,

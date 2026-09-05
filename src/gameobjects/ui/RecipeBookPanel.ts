@@ -3,7 +3,7 @@ import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { KitchenManager } from '@/managers/KitchenManager';
-import { listedRecipes, recipeUnlockView, unlockedRecipes } from '@/sim';
+import { listedRecipes, recipeEatLabel, recipeUnlockView, unlockedRecipes } from '@/sim';
 import { fillRect, makeButton, makeLabel } from '@/utils/ui';
 import { VerticalScroller } from '@/utils/scroll';
 
@@ -78,7 +78,10 @@ export class RecipeBookPanel extends PIXI.Container {
       const desc = makeLabel(r.desc, 20, 0xC9B8A4);
       desc.position.set(54, y + 32);
       list.addChild(desc);
-      y += 80;
+      const eat = makeLabel(recipeEatLabel(r.id), 18, 0xC8E6A0);
+      eat.position.set(54, y + 56);
+      list.addChild(eat);
+      y += 96;
     }
     list.y = listTop;
     const maxScroll = Math.max(0, y - listH);

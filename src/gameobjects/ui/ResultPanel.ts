@@ -530,7 +530,7 @@ export class ResultPanel extends PIXI.Container {
       list.addChild(this._pickRow({
         key: `f:${it.uid}`,
         name: qty > 1 ? `${fridgeItemName(it)} ×${qty}` : fridgeItemName(it),
-        sell: fridgeItemPrice(it),
+        sell: fridgeItemPrice(it, KitchenManager.save),
         defId: it.defId,
         dish: fridgeKind(it) === 'dish',
         rotten: it.quality === 'rotten',
@@ -655,7 +655,7 @@ export class ResultPanel extends PIXI.Container {
       } else if (key.startsWith('f:')) {
         const uid = key.slice(2);
         const it = KitchenManager.save.fridge.find((row) => row.uid === uid);
-        if (it) gold += fridgeItemPrice(it);
+        if (it) gold += fridgeItemPrice(it, KitchenManager.save);
       }
     }
     return gold;

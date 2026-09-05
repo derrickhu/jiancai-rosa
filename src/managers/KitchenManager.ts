@@ -87,6 +87,7 @@ class KitchenManagerClass {
   private _dayKey = todayKey();
   private _dayTimer: ReturnType<typeof setTimeout> | null = null;
   private _visitOfferDone = false;
+  private _nudgeOffer = false;
   private _sharePending = false;
   private _shareAt = 0;
   pendingHaul: ExtractedItem[] | null = null;
@@ -287,16 +288,27 @@ class KitchenManagerClass {
   }
 
   eat(uid: string, qty = 1): boolean {
-    const { save, error, stamina, name } = eatDish(this.save, uid, qty);
+    const { save, error, toast, nudgeOffer } = eatDish(this.save, uid, qty);
     if (error) {
       AudioManager.play('ui_deny');
       Platform.showToast(error);
       return false;
     }
+    if (nudgeOffer) {
+      this._visitOfferDone = false;
+      this.pendingOffer = null;
+      this._nudgeOffer = true;
+    }
     SaveManager.replace(save);
     this.emit();
     AudioManager.play('eat');
-    Platform.showToast(`吃了${name}，体力 +${stamina ?? 1}`, 'success');
+    Platform.showToast(toast ?? `吃了这道菜`, 'success');
+    return true;
+  }
+
+  consumeNudgeOffer(): boolean {
+    if (!this._nudgeOffer) return false;
+    this._nudgeOffer = false;
     return true;
   }
 

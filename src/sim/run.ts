@@ -6,6 +6,7 @@ import {
   sellPrice,
   stallsForMarket,
   type Quality,
+  type RollLuck,
   type StallId,
 } from './items';
 import type { MarketId } from './destinations';
@@ -100,6 +101,8 @@ export interface RunState {
   freePass: boolean;
   /** 街坊人情拖住的摊，老板装箱慢 */
   slowNodes: string[];
+  /** 吃菜：进场费倍率。1 原价，0.5 半价，0 免费。 */
+  feeMul: number;
   ended: boolean;
   extract?: ExtractResult;
   /** 路线页那行事件回执 */
@@ -153,13 +156,19 @@ export function createRun(opts: {
   wanted?: ReadonlySet<string>;
   /** 街坊点的菜还缺的料，再叠一层权重。 */
   boosted?: ReadonlySet<string>;
+  extraSteps?: number;
+  luck?: RollLuck;
+  feeMul?: number;
+  stallBias?: StallId;
 }): RunState {
   const marketId = opts.marketId ?? 'xiangko';
   const seed = opts.seed ?? newSeed();
   const cookLevel = opts.cookLevel ?? 1;
+  const luck = opts.luck;
   const map = buildMarketMap(marketId, seed, {
     allowRecipe: opts.allowRecipe !== false,
     forceRecipe: !!opts.forceRecipe,
+    stallBias: opts.stallBias,
   });
   const plan = MARKET_PLAN[marketId];
   // 单独一条 rng：改品质规则不该把地图布局也换掉
@@ -178,8 +187,8 @@ export function createRun(opts: {
     const list: PileItem[] = [];
     for (let i = 0; i < n; i++) {
       const def = spec
-        ? rollSpecialtyItem(spec.id, rng, cookLevel)
-        : rollMarketItem(marketId, node.stall ?? 'egg', cookLevel, rng, opts.wanted, opts.boosted);
+        ? rollSpecialtyItem(spec.id, rng, cookLevel, luck)
+        : rollMarketItem(marketId, node.stall ?? 'egg', cookLevel, rng, opts.wanted, opts.boosted, luck);
       list.push({
         uid: nextUid('p'),
         defId: def.id,
@@ -212,8 +221,8 @@ export function createRun(opts: {
     marketId,
     mode: 'map',
     map,
-    stepsMax: plan.steps,
-    stepsLeft: plan.steps,
+    stepsMax: plan.steps + Math.max(0, opts.extraSteps ?? 0),
+    stepsLeft: plan.steps + Math.max(0, opts.extraSteps ?? 0),
     atNodeId: null,
     options: map.layers[0].slice(),
     visited: [],
@@ -224,6 +233,7 @@ export function createRun(opts: {
     paid: [],
     freePass: false,
     slowNodes: [],
+    feeMul: opts.feeMul === 0 ? 0 : Math.max(0, opts.feeMul ?? 1),
     ended: false,
     extract: undefined,
     note: '天还没黑，挑条路走。',
@@ -245,11 +255,14 @@ export function nodeFee(state: RunState, node: MapNode): number {
   if (state.freePass) return 0;
   if (state.paid.length === 0) return 0;
   const enc = nodeEncounter(node);
-  return rummageEntryFee(state.marketId, {
+  const fee = rummageEntryFee(state.marketId, {
     kind: node.kind,
     stall: (enc.type === 'rummage' && enc.stall) || node.stall,
     specialty: enc.type === 'rummage' ? enc.specialty : undefined,
   });
+  if (state.feeMul === 0) return 0;
+  if (state.feeMul < 1) return Math.max(1, Math.ceil(fee * state.feeMul));
+  return fee;
 }
 
 /** 天色不够、钱不够、厨艺不够都拦在这。看得见进不去，别把卡藏起来。 */
@@ -309,10 +322,11 @@ export function rollFreebie(
   cookLevel = 1,
   wanted?: ReadonlySet<string>,
   boosted?: ReadonlySet<string>,
+  luck?: RollLuck,
 ): { defId: string; quality: Quality } {
   const local = FREEBIE_STALLS.filter((s) => stallsForMarket(marketId).includes(s));
   const stall = rngPick(rng, local.length ? local : stallsForMarket(marketId));
-  const def = rollMarketItem(marketId, stall, cookLevel, rng, wanted, boosted);
+  const def = rollMarketItem(marketId, stall, cookLevel, rng, wanted, boosted, luck);
   return { defId: def.id, quality: rng() < 0.7 ? 'common' : 'fresh' };
 }
 

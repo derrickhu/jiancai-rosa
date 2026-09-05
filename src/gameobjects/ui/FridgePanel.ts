@@ -8,6 +8,7 @@ import {
   fridgeItemQty,
   fridgeKind,
   fridgeQtySum,
+  kitchenBuffLine,
   itemRarity,
   recipeRarity,
   type FridgeItem,
@@ -145,7 +146,7 @@ export class FridgePanel extends PIXI.Container {
     const gap = 14;
     const chipW = (cw - gap) / 2;
 
-    shell.addChild(this._title(midX, hy + hh * 0.24, used, cap));
+    shell.addChild(this._title(midX, hy + hh * 0.24, used, cap, kitchenBuffLine(save)));
     const tabY = hy + hh - 64;
     shell.addChild(this._tabBtn('食材', 'food', cx, tabY, chipW, foodCount));
     shell.addChild(this._tabBtn('饭菜', 'dish', cx + chipW + gap, tabY, chipW, dishCount));
@@ -279,7 +280,7 @@ export class FridgePanel extends PIXI.Container {
     host.addChild(g);
   }
 
-  private _title(cx: number, cy: number, used: number, cap: number): PIXI.Container {
+  private _title(cx: number, cy: number, used: number, cap: number, buff?: string | null): PIXI.Container {
     const root = new PIXI.Container();
     const name = new PIXI.Text('冰  箱', {
       fontFamily: TITLE_FONT,
@@ -312,6 +313,12 @@ export class FridgePanel extends PIXI.Container {
     count.position.set(0, name.height * 0.5 + count.height * 0.5 + 1);
     root.position.set(cx, cy);
     root.addChild(name, count);
+    if (buff) {
+      const line = makeLabel(buff, 16, TERRACOTTA, { fontWeight: '700' });
+      line.anchor.set(0.5);
+      line.position.set(0, count.y + 22);
+      root.addChild(line);
+    }
     return root;
   }
 

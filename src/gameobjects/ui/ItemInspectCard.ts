@@ -1,5 +1,6 @@
 import * as PIXI from 'pixi.js';
 import { Game } from '@/core/Game';
+import { KitchenManager } from '@/managers/KitchenManager';
 import {
   RARITY_STYLE,
   displayName,
@@ -13,7 +14,7 @@ import {
   itemRarity,
   rarityLabel,
   recipeById,
-  recipeEatStamina,
+  recipeEatLabel,
   recipeRarity,
   recipeSellPrice,
   sellPrice,
@@ -53,7 +54,7 @@ export interface ItemInspectView {
   rarity: Rarity;
   unitPrice: number;
   maxQty: number;
-  eatStamina?: number;
+  eatLabel?: string;
   /** 占格、干湿等，跟在品质后面。 */
   note?: string;
 }
@@ -68,9 +69,9 @@ export function inspectFromFridge(it: FridgeItem): ItemInspectView {
     defId: it.defId,
     quality: it.quality,
     rarity: dish ? recipeRarity(it.defId as RecipeId) : itemRarity(it.defId),
-    unitPrice: fridgeItemUnitPrice(it),
+    unitPrice: fridgeItemUnitPrice(it, KitchenManager.save),
     maxQty: fridgeItemQty(it),
-    eatStamina: recipe ? recipeEatStamina(recipe) : undefined,
+    eatLabel: recipe ? recipeEatLabel(recipe.id) : undefined,
   };
 }
 
@@ -86,7 +87,7 @@ export function inspectFromRecipe(id: RecipeId): ItemInspectView | null {
     rarity: recipe.rarity,
     unitPrice: recipeSellPrice(id),
     maxQty: 1,
-    eatStamina: recipeEatStamina(recipe),
+    eatLabel: recipeEatLabel(id),
   };
 }
 
@@ -144,7 +145,7 @@ export function makeItemInspectCard(opts: {
   dim.on('pointertap', opts.onClose);
   root.addChild(dim);
 
-  const canEat = view.kind === 'dish' && (view.eatStamina ?? 0) > 0;
+  const canEat = view.kind === 'dish' && !!view.eatLabel;
   const showStepper = opts.actions && view.maxQty > 1;
   const cardW = Math.min(520, w - 64);
   const cardH = opts.actions ? (showStepper || canEat ? 428 : 388) : 320;
@@ -248,7 +249,7 @@ export function makeItemInspectCard(opts: {
 
   let y = 136 + Math.min(88, blurb.height) + 16;
   if (canEat) {
-    const eat = makeLabel(`食用  体力+${view.eatStamina}`, 24, INDIGO, {
+    const eat = makeLabel(view.eatLabel ?? '吃', 24, INDIGO, {
       fontFamily: 'Kaiti SC, STKaiti, Songti SC, STSong, serif',
       fontWeight: '700',
     });

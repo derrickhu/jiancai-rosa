@@ -54,6 +54,7 @@ import {
   type RunState,
   liveNeighborOrders,
   orderIngredientIds,
+  outingRunMods,
 } from '@/sim';
 import { KitchenManager } from './KitchenManager';
 import type { MarketId } from '@/sim';
@@ -93,6 +94,7 @@ class RunManagerClass {
     if (!KitchenManager.startRun()) return false;
     const seed = newSeed();
     this._rng = mulberry32((seed ^ 0x5BF03635) >>> 0);
+    const outing = outingRunMods(KitchenManager.save);
     this.run = createRun({
       allowGodPick: KitchenManager.allowGodPickToday(),
       marketId,
@@ -103,11 +105,16 @@ class RunManagerClass {
         === MARKET_RECIPE_POOL[marketId].length,
       wanted: this._wanted(),
       boosted: this._boosted(),
+      extraSteps: outing.extraSteps,
+      luck: { rare: outing.luckRare, epic: outing.luckEpic },
+      feeMul: outing.feeMul,
+      stallBias: outing.stallBias,
     });
     if (hasGodPick(this.run)) KitchenManager.markGodPickToday();
     this.basket = createBasket(
       furnLevel(KitchenManager.save, 'basket'),
       furnLevel(KitchenManager.save, 'foam'),
+      outing,
     );
     this.pendingLoot = [];
     this.emit();
@@ -424,12 +431,14 @@ class RunManagerClass {
   }
 
   private _takeFreebie(state: RunState, node: MapNode): RunState {
+    const outing = outingRunMods(KitchenManager.save);
     const { defId, quality } = rollFreebie(
       this._rng,
       state.marketId,
       cookLevel(KitchenManager.save),
       this._wanted(),
       this._boosted(),
+      { rare: outing.luckRare, epic: outing.luckEpic },
     );
     return this._placeFood(state, node.id, node.kind, defId, quality, '摊主收筐时漏下的，还新鲜着，捡回去。');
   }

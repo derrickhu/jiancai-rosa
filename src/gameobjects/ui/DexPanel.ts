@@ -17,6 +17,8 @@ import {
   type DexTab,
   type KitchenSave,
   type Rarity,
+  isRecipeId,
+  recipeEatLabel,
 } from '@/sim';
 import { drawRarityFrame, fillRect, makeDexName, makeLabel, makeSlicedButton, makeStrokeLabel } from '@/utils/ui';
 import {
@@ -523,7 +525,10 @@ export class DexPanel extends PIXI.Container {
       card.hitArea = new PIXI.Rectangle(0, 0, cellW, cellH);
       card.on('pointertap', () => {
         if (this._dragMoved || !it.unlocked) return;
-        this._inspect = { title: it.name, blurb: it.blurb };
+        this._inspect = {
+          title: it.name,
+          blurb: it.dish && isRecipeId(it.id) ? `${it.blurb}  ${recipeEatLabel(it.id)}` : it.blurb,
+        };
         this.relayout();
       });
       list.addChild(card);

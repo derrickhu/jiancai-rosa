@@ -14,6 +14,9 @@ import {
   recipeUnlockView,
   recipeXp,
   unlockedRecipes,
+  computeKitchenSlip,
+  kitchenSlipPins,
+  recipeEatLabel,
   type RecipeId,
 } from '@/sim';
 import { FONT, bindUiClick, drawRarityFrame, fillRect, makeCornerMark, makeLabel } from '@/utils/ui';
@@ -71,14 +74,15 @@ export class CookPanel extends PIXI.Container {
     this._scroller = new VerticalScroller(this, { visible: () => this._isOpen });
   }
 
-  open(): void {
+  open(recipeId?: RecipeId): void {
     if (!this._isOpen) AudioManager.play('cook_done');
     this._isOpen = true;
     this.visible = true;
     this._inspect = null;
     this._cookQty = 1;
     const known = unlockedRecipes(recipeUnlockView(KitchenManager.save));
-    if (!known.some((r) => r.id === this._pick)) this._pick = known[0]?.id ?? 'stirfry';
+    if (recipeId && known.some((r) => r.id === recipeId)) this._pick = recipeId;
+    else if (!known.some((r) => r.id === this._pick)) this._pick = known[0]?.id ?? 'stirfry';
     this._scroller.reset();
     this._scroller.enable();
     this.relayout();
@@ -197,6 +201,13 @@ export class CookPanel extends PIXI.Container {
     const width = bw * INSET.w * LEFT_W;
     const view = recipeUnlockView(KitchenManager.save);
     const known = unlockedRecipes(view);
+    const slip = computeKitchenSlip(KitchenManager.save);
+    const pinnedIds = [
+      ...KitchenManager.wantedNeighborRecipeIds(),
+      ...kitchenSlipPins(slip),
+    ].filter((id, i, all) => known.some((r) => r.id === id) && all.indexOf(id) === i);
+    const pinned = pinnedIds.map((id) => known.find((r) => r.id === id)!);
+    const rest = known.filter((r) => !pinnedIds.includes(r.id));
     const head = makeLabel(`菜谱  ${known.length}`, 26, INK, { fontWeight: '700' });
     head.position.set(x + 8, y + 2);
     root.addChild(head);
@@ -204,39 +215,47 @@ export class CookPanel extends PIXI.Container {
     const listTop = y + 38;
     const listH = bh * (INSET.y + INSET.h) - listTop - 8;
     const list = new PIXI.Container();
-    const groups = [...new Set(known.map((r) => r.group))];
+    const groups = [...new Set(rest.map((r) => r.group))];
     let cy = 0;
     const rowW = width - 12;
+    const addRow = (recipe: (typeof known)[number]) => {
+      const on = this._pick === recipe.id;
+      const row = this._chip(recipe.name, rowW, 44, on ? 'on' : 'off');
+      const tab = new PIXI.Graphics();
+      tab.beginFill(RARITY_STYLE[recipe.rarity].frame, 1);
+      tab.drawRoundedRect(7, 11, 6, 22, 3);
+      tab.endFill();
+      tab.eventMode = 'none';
+      row.addChild(tab);
+      const can = recipeCookCount(view, recipe.id);
+      const waiting = KitchenManager.wantedNeighborRecipeIds().has(recipe.id);
+      row.alpha = can > 0 || on ? 1 : 0.75;
+      if (can > 0) row.addChild(this._readyBadge(rowW, can));
+      if (waiting) row.addChild(this._waitBadge(can > 0 ? rowW - 62 : rowW - 30));
+      row.position.set(x + 6, cy);
+      row.on('pointertap', () => {
+        if (this._scroller.moved) return;
+        if (this._pick !== recipe.id) this._cookQty = 1;
+        this._pick = recipe.id;
+        this.relayout();
+      });
+      list.addChild(row);
+      cy += 52;
+    };
+    if (pinned.length) {
+      const tag = makeLabel('先做', 18, TERRACOTTA, { fontWeight: '700' });
+      tag.position.set(x + 10, cy);
+      list.addChild(tag);
+      cy += 28;
+      for (const recipe of pinned) addRow(recipe);
+      cy += 10;
+    }
     for (const group of groups) {
       const tag = makeLabel(group, 18, TERRACOTTA, { fontWeight: '700' });
       tag.position.set(x + 10, cy);
       list.addChild(tag);
       cy += 28;
-      for (const recipe of known.filter((r) => r.group === group)) {
-        const on = this._pick === recipe.id;
-        const row = this._chip(recipe.name, rowW, 44, on ? 'on' : 'off');
-        // 行首一道色条，翻列表时不用点开就知道这本值不值得攒材料
-        const tab = new PIXI.Graphics();
-        tab.beginFill(RARITY_STYLE[recipe.rarity].frame, 1);
-        tab.drawRoundedRect(7, 11, 6, 22, 3);
-        tab.endFill();
-        tab.eventMode = 'none';
-        row.addChild(tab);
-        const can = recipeCookCount(view, recipe.id);
-        const waiting = KitchenManager.wantedNeighborRecipeIds().has(recipe.id);
-        row.alpha = can > 0 || on ? 1 : 0.75;
-        if (can > 0) row.addChild(this._readyBadge(rowW, can));
-        if (waiting) row.addChild(this._waitBadge(can > 0 ? rowW - 62 : rowW - 30));
-        row.position.set(x + 6, cy);
-        row.on('pointertap', () => {
-          if (this._scroller.moved) return;
-          if (this._pick !== recipe.id) this._cookQty = 1;
-          this._pick = recipe.id;
-          this.relayout();
-        });
-        list.addChild(row);
-        cy += 52;
-      }
+      for (const recipe of rest.filter((r) => r.group === group)) addRow(recipe);
       cy += 10;
     }
     const maxScroll = Math.max(0, cy - listH);
@@ -326,6 +345,11 @@ export class CookPanel extends PIXI.Container {
     xpLabel.anchor.set(0.5);
     xpLabel.position.set(cx, nameY + (waiting ? 50 : 30));
     root.addChild(xpLabel);
+    const eatY = nameY + (waiting ? 72 : 52);
+    const eat = makeLabel(recipeEatLabel(recipe.id), 18, 0x3D6A82, { fontWeight: '700' });
+    eat.anchor.set(0.5);
+    eat.position.set(cx, eatY);
+    root.addChild(eat);
 
     const tx = dx;
     const tw = dw;
@@ -339,7 +363,7 @@ export class CookPanel extends PIXI.Container {
       wordWrapWidth: Math.max(80, tw - 12),
       lineHeight: 30,
     });
-    blurb.position.set(tx + 6, nameY + (waiting ? 72 : 52));
+    blurb.position.set(tx + 6, eatY + 22);
     blurb.eventMode = 'none';
     root.addChild(blurb);
 
@@ -347,7 +371,7 @@ export class CookPanel extends PIXI.Container {
     const gap = 14;
     const rowW = needs.length * slot + (needs.length - 1) * gap;
     let sx = tx + (tw - rowW) / 2;
-    const slotY = nameY + 52 + blurb.height + 16;
+    const slotY = eatY + 22 + blurb.height + 16;
     needs.forEach((need) => {
       root.addChild(this._needSlot(sx, slotY, slot, need.label, need.iconId, need.have, need.need * qty));
       sx += slot + gap;

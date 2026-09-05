@@ -41,6 +41,7 @@
 | `ui_event_talk_prompt.txt` | 事件对话壳体（挂牌木框奶油纸，两侧灯笼） | 16:9 |
 | `stall_rummage_*_prompt.txt` | 巷口四摊翻堆底 | 9:16 |
 | `stall_pile_*_prompt.txt` | 巷口四摊遮挡堆（点堆抽取） | 1:1 |
+| `stall_pile_heyan_meat_prompt.txt` | 河沿肉摊遮挡堆（浅色油纸，避免黑布被抠穿） | 1:1 |
 | `stall_scenes_later_markets.txt` | 后四场按市场×摊位的翻堆底 / 遮挡堆 / 肉摊卡 | 9:16 / 1:1 / 3:4 |
 | `shanwu_encounter_art_prompt.txt` | 山坞支线：小路/山洞底图、卡面、菌摊、石壁采集 | 9:16 / 3:4 |
 | `heyan_encounter_art_prompt.txt` | 河沿支线：船坞底、藕摊/刘伯/河滩卡、采集底 | 9:16 / 3:4 |

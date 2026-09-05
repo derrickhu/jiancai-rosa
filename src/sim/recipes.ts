@@ -39,7 +39,7 @@ export interface RecipeDef {
   firstXp: number;
   /** 可重复的材料清单：出现两次就是要两份。 */
   needs: string[];
-  /** 吃一口的效果。不填按体力 +1。出门 buff 以后往这里加。 */
+  /** @deprecated 吃法改走 dishEffects.RECIPE_EAT，不再写在这。 */
   eat?: { stamina?: number };
   match: (items: RecipeFood[]) => boolean;
   cook: (items: RecipeFood[]) => number;
@@ -320,9 +320,10 @@ export function recipeById(id: RecipeId): RecipeDef | undefined {
   return RECIPES.find((r) => r.id === id);
 }
 
+/** 只给体力类效果用。其它吃法返回 0，但菜仍然能吃。 */
 export function recipeEatStamina(recipe: RecipeDef): number {
-  const n = recipe.eat?.stamina;
-  return typeof n === 'number' && n > 0 ? Math.floor(n) : 1;
+  if (recipe.eat?.stamina && recipe.eat.stamina > 0) return Math.floor(recipe.eat.stamina);
+  return 0;
 }
 
 export function recipeSellPrice(id: RecipeId): number {
