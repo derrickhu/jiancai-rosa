@@ -1,4 +1,6 @@
 import { scopeStorageKey, getScopedGameKey } from '@/config/gameKeyScope';
+import type { RewardedAdScene } from '@/config/AdsConfig';
+import { playRewardedAd } from '@/services/RewardedAdService';
 import {
   detectMinigamePlatform,
   getNativePlatformApi,
@@ -233,6 +235,10 @@ class PlatformServiceClass {
     });
   }
 
+  get isDevtools(): boolean {
+    return this._isDevtools();
+  }
+
   private _isDevtools(): boolean {
     if (!this.isMinigame) return false;
     try {
@@ -390,10 +396,25 @@ class PlatformServiceClass {
     });
   }
 
-  /** MVP 先直接发奖励；接广告后接到这里。 */
-  showRewardedVideo(onReward: () => void): void {
-    this.showToast('广告位稍后接入', 'none');
-    onReward();
+  /** 看完激励视频才发奖。浏览器 / 模拟器没有广告 SDK 时直接发，方便本地试。 */
+  showRewardedVideo(scene: RewardedAdScene, onReward: () => void, onSettle?: () => void): void {
+    if (this.isDevtools || !this.api?.createRewardedVideoAd) {
+      onReward();
+      onSettle?.();
+      return;
+    }
+    void playRewardedAd(scene).then((result) => {
+      try {
+        if (result === 'completed') {
+          onReward();
+          return;
+        }
+        if (result === 'skipped') this.showToast('看完才能领');
+        else this.showToast('广告暂时播不了');
+      } finally {
+        onSettle?.();
+      }
+    });
   }
 
   getFileSystemManager(): any {

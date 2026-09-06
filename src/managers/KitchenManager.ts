@@ -2,6 +2,7 @@ import { AudioManager } from '@/core/AudioManager';
 import { EventBus } from '@/core/EventBus';
 import { Platform } from '@/core/PlatformService';
 import { EV } from '@/config/events';
+import { warmupRewardedAds } from '@/services/RewardedAdService';
 import { SaveManager } from './SaveManager';
 import {
   RECIPES,
@@ -10,7 +11,7 @@ import {
   recipesGainedByTable,
   SHARE_IMAGE_URLS,
   SHARE_STAMINA_TITLES,
-  STAMINA_SHARE_GAIN,
+  STAMINA_AD_GAIN,
   GAME_CLUB_DAILY_COINS,
   addStamina,
   canClaimGameClubReward,
@@ -92,19 +93,17 @@ class KitchenManagerClass {
   private _dayTimer: ReturnType<typeof setTimeout> | null = null;
   private _visitOfferDone = false;
   private _nudgeOffer = false;
-  private _sharePending = false;
-  private _shareAt = 0;
   pendingHaul: ExtractedItem[] | null = null;
   pendingOffer: NeighborOfferDraft | null = null;
 
   constructor() {
     this._armDayRollover();
     this._bindShare();
+    warmupRewardedAds();
   }
 
   private _bindShare(): void {
     Platform.bindShareMenu(() => this._shareTitle(), () => this._shareImage());
-    Platform.onShow(() => this.claimShareStamina());
   }
 
   private _shareTitle(): string {
@@ -164,7 +163,7 @@ class KitchenManagerClass {
     this.emit();
   }
 
-  /** 没体力时弹转发；朋友圈/会话回来再加体力。微信没有可靠的转发成功回调。 */
+  /** 没体力时看激励视频加体力。 */
   async offerShareStamina(): Promise<void> {
     const now = regenNow();
     if (now.stamina >= staminaMax(now)) {
@@ -173,40 +172,23 @@ class KitchenManagerClass {
     }
     const ok = await Platform.showModal({
       title: '体力不够了',
-      content: `转发给朋友，回来加 ${STAMINA_SHARE_GAIN} 点体力`,
-      confirmText: '去转发',
+      content: `看一段广告，回来加 ${STAMINA_AD_GAIN} 点体力`,
+      confirmText: '看广告',
       cancelText: '再等等',
     });
     if (!ok) return;
-    this._sharePending = true;
-    this._shareAt = Date.now();
-    const shared = Platform.shareAppMessage({
-      title: this._shareTitle(),
-      imageUrl: this._shareImage(),
+    Platform.showRewardedVideo('stamina', () => {
+      const before = regenNow().stamina;
+      if (before >= staminaMax(this.save)) {
+        Platform.showToast('体力已经满了');
+        return;
+      }
+      const save = addStamina(this.save, STAMINA_AD_GAIN);
+      SaveManager.replace(save);
+      this.emit();
+      const gained = Math.max(0, save.stamina - before);
+      Platform.showToast(gained > 0 ? `体力 +${gained}` : '体力已经满了');
     });
-    if (shared) return;
-    if (Platform.isWechat) {
-      this._sharePending = false;
-      Platform.showToast('转发暂时用不了');
-      return;
-    }
-    this.claimShareStamina(true);
-  }
-
-  claimShareStamina(force = false): void {
-    if (!this._sharePending) return;
-    if (!force && Date.now() - this._shareAt < 400) return;
-    this._sharePending = false;
-    const before = regenNow().stamina;
-    if (before >= staminaMax(this.save)) {
-      Platform.showToast('体力已经满了');
-      return;
-    }
-    const save = addStamina(this.save, STAMINA_SHARE_GAIN);
-    SaveManager.replace(save);
-    this.emit();
-    const gained = Math.max(0, save.stamina - before);
-    Platform.showToast(gained > 0 ? `转发成功，体力 +${gained}` : '体力已经满了');
   }
 
   receiveExtract(items: ExtractedItem[]): { needsPick: boolean } {

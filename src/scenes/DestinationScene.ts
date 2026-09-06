@@ -789,7 +789,7 @@ export class DestinationScene implements Scene {
       return;
     }
     if (OutingCurtain.busy) return;
-    Platform.showRewardedVideo(() => {
+    Platform.showRewardedVideo('special', () => {
       if (!KitchenManager.canVisitSpecial(market.id)) {
         Platform.showToast('今天次数用完了，0点重置');
         return;

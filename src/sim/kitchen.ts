@@ -72,8 +72,8 @@ import {
 /** 1 级满体力。每升一级上限再加 STAMINA_PER_LEVEL。 */
 export const STAMINA_MAX = 10;
 export const STAMINA_PER_LEVEL = 1;
+/** 看激励视频恢复的体力。 */
 export const STAMINA_AD_GAIN = 5;
-/** 转发朋友圈/会话回来加的体力。先不接广告。 */
 export const STAMINA_SHARE_GAIN = 5;
 export const SHARE_STAMINA_TITLES = [
   '快来，来菜场捡菜，捡捡捡！',

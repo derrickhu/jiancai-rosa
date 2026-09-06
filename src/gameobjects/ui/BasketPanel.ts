@@ -494,11 +494,12 @@ export class BasketPanel extends PIXI.Container {
   private _watchFlexAd(): void {
     if (this._unlocking || RunManager.basket.flexUnlocked) return;
     this._unlocking = true;
-    Platform.showRewardedVideo(() => {
-      this._unlocking = false;
+    Platform.showRewardedVideo('basket', () => {
       if (!RunManager.unlockBasketFlex()) return;
       AudioManager.play('ui_open');
       Platform.showToast('多了一行，干湿都能放，回家就没了', 'success');
+    }, () => {
+      this._unlocking = false;
     });
   }
 
