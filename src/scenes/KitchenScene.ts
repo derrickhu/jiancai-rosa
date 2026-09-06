@@ -10,6 +10,7 @@ import { FridgePanel } from '@/gameobjects/ui/FridgePanel';
 import { CookPanel } from '@/gameobjects/ui/CookPanel';
 import { OrderPanel } from '@/gameobjects/ui/OrderPanel';
 import { EventPanel } from '@/gameobjects/ui/EventPanel';
+import { GameClubPanel } from '@/gameobjects/ui/GameClubPanel';
 import { UpgradePanel } from '@/gameobjects/ui/UpgradePanel';
 import { ensureRecipeUnlockPanel } from '@/gameobjects/ui/RecipeUnlockPanel';
 import { ensureCookLevelUpPanel } from '@/gameobjects/ui/CookLevelUpPanel';
@@ -83,6 +84,7 @@ export class KitchenScene implements Scene {
   private _dex = new DexPanel();
   private _orders = new OrderPanel();
   private _event = new EventPanel();
+  private _gameClub = new GameClubPanel();
   private _upgrade = new UpgradePanel();
   private _offerTimer = 0;
   private _onChange = () => {
@@ -184,6 +186,7 @@ export class KitchenScene implements Scene {
       || this._dex.visible
       || this._orders._isOpen
       || this._event._isOpen
+      || this._gameClub._isOpen
       || ensureRecipeUnlockPanel()._isOpen
       || ensureCookLevelUpPanel()._isOpen;
   }
@@ -207,6 +210,7 @@ export class KitchenScene implements Scene {
     this._dex.close(true);
     this._orders.close(true);
     this._event.close(true);
+    this._gameClub.close(true);
     this._upgrade.close(true);
     this._upgradePick = null;
     this._xpPop = null;
@@ -521,6 +525,8 @@ export class KitchenScene implements Scene {
     let slot = dexY;
     this._drawDexHud(redraw, slot);
     slot += STEP;
+    this._drawGameClubHud(redraw, slot);
+    slot += STEP;
     if (KitchenManager.liveNeighborOrders().length) {
       this._drawOrderHud(redraw, slot);
       slot += STEP;
@@ -626,6 +632,44 @@ export class KitchenScene implements Scene {
   private _clearOfferTimer(): void {
     if (this._offerTimer) globalThis.clearTimeout?.(this._offerTimer);
     this._offerTimer = 0;
+  }
+
+  private _drawGameClubHud(redraw: () => void, y: number): void {
+    const path = HUD_ICON.gameClub;
+    whenTextureReady(path, redraw);
+    const size = 86;
+    const root = new PIXI.Container();
+    const tex = gameTexture(path);
+    if (isTextureReady(tex)) {
+      const spr = new PIXI.Sprite(tex);
+      fitSpriteInBox(spr, size, size);
+      spr.anchor.set(0.5);
+      spr.position.set(size / 2, size / 2);
+      spr.eventMode = 'none';
+      root.addChild(spr);
+    } else {
+      const g = new PIXI.Graphics();
+      fillRect(g, 4, 4, size - 8, size - 8, 0xC46A3A, 18);
+      root.addChild(g);
+    }
+    const chip = new PIXI.Graphics();
+    fillRect(chip, 2, size - 2, size - 4, 26, 0xFFF8F0, 12);
+    chip.alpha = 0.92;
+    const label = makeLabel('游戏圈', 16, 0x2A2018, { fontWeight: '700' });
+    label.anchor.set(0.5, 0);
+    label.position.set(size / 2, size);
+    root.addChild(chip, label);
+    root.position.set(10, y);
+    root.eventMode = 'static';
+    root.cursor = 'pointer';
+    root.hitArea = new PIXI.Rectangle(0, 0, size, size + 28);
+    const stop = (e: PIXI.FederatedPointerEvent) => e.stopPropagation();
+    root.on('pointerdown', stop);
+    root.on('pointertap', (e) => {
+      e.stopPropagation();
+      this._gameClub.open();
+    });
+    this._ui.addChild(root);
   }
 
   private _drawDexHud(redraw: () => void, y: number): void {
@@ -803,6 +847,7 @@ export class KitchenScene implements Scene {
     this._dex.close(true);
     this._orders.close(true);
     this._event.close(true);
+    this._gameClub.close(true);
     this._upgrade.close(true);
     this._upgradePick = null;
     ensureRecipeUnlockPanel().close();
@@ -888,7 +933,19 @@ export class KitchenScene implements Scene {
     }
     if (!lines.length) return;
     const pot = this._cookHitRect();
-    this._mountOilSlip(pot.x + pot.w * 0.34, pot.y, pot.w * 0.84, 276, 208, lines, -0.06);
+    const lv = this._viewLevel('table');
+    const maxW = lv <= 4 ? 118 : 132;
+    const minW = 92;
+    this._mountOilSlip(
+      pot.x + pot.w * 0.30,
+      pot.y + pot.h * 0.04,
+      pot.w * 0.38,
+      maxW,
+      minW,
+      lines,
+      -0.16,
+      14,
+    );
   }
 
   private _drawFridgeSlip(): void {

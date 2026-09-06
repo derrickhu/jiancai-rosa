@@ -1,0 +1,18 @@
+Cozy casual mobile-game cartoon matching the attached kitchen paper reference. Clean medium-thick dark-brown outlines (#2A2018), soft flat cel shading, simple readable shapes, warm wood and paper colors. Same outline weight and simplicity as the reference.
+
+FORBIDDEN: photorealism, cinematic concept art, painterly realism, photography, lens flare, volumetric fog, god-rays, hyper-detailed wood pores, muddy blur, 3D render, neon, pixel art.
+
+NO TEXT, no labels, no numbers, no captions, no watermark, no UI chrome, no buttons, no icons with writing, no people faces except a simple vegetable mascot, no Chinese characters, no shop-sign lettering.
+
+A single vertical 3:4 GAME NOTICE BOARD used as an empty popup shell, isolated on a flat solid WHITE background. Front view, centered, filling most of the frame. Leave a little white margin.
+
+Composition like a market notice:
+- Thick walnut wood frame with rounded corners and a small hanging rope loop at the top center.
+- Inside: warm cream oil-paper face, empty and smooth so code can draw words on top.
+- TOP 16%: an empty wooden title plaque / paper banner, blank, reserved for a title.
+- TOP-RIGHT of the frame: a small empty terracotta circle reserved for a close mark. No X drawn.
+- MIDDLE-UPPER 38%: LEFT half a cute round Napa-cabbage mascot (winking, tiny leaf sprout, cozy, no horror). RIGHT half a large empty cream speech-card / paper area, completely blank.
+- MIDDLE-LOWER 18%: an empty tan paper task strip, flat and blank, reserved for a daily-task row.
+- BOTTOM 20%: empty cream footer band, reserved for one wide button. No button drawn.
+
+The board is the page. Isolated object, lots of white around it, no kitchen, no floor. Full frame.

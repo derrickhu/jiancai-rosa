@@ -7,6 +7,7 @@ const {
   getTtlSec,
   getPlatformCredential,
 } = require('./config');
+const { upsertWxSession } = require('./game-club');
 
 const SUPPORTED_PLATFORMS = new Set(['wx', 'dy', 'tap', 'anon']);
 
@@ -26,8 +27,11 @@ async function handleLogin(req) {
   }
 
   let platformUid = '';
+  let wxSessionKey = '';
   if (platform === 'wx') {
-    platformUid = await wxCode2Openid(body.code);
+    const wxSession = await wxCode2Session(body.code);
+    platformUid = wxSession.openid;
+    wxSessionKey = wxSession.session_key || '';
   } else if (platform === 'dy') {
     platformUid = await ttCode2Openid(body.code);
   } else if (platform === 'tap') {
@@ -44,6 +48,9 @@ async function handleLogin(req) {
   }
 
   const userId = `${platform}:${platformUid}`;
+  if (platform === 'wx' && wxSessionKey) {
+    await upsertWxSession(userId, wxSessionKey);
+  }
   const ttlSec = getTtlSec();
   const gameKey = getGameKey();
   const now = Math.floor(Date.now() / 1000);
@@ -88,7 +95,7 @@ function requireUser(req) {
   return { userId, platform: payload.plt || userId.split(':')[0] };
 }
 
-async function wxCode2Openid(code) {
+async function wxCode2Session(code) {
   const appid = getPlatformCredential('wx', 'APPID');
   const secret = getPlatformCredential('wx', 'SECRET');
   if (!appid || !secret) {
@@ -100,7 +107,10 @@ async function wxCode2Openid(code) {
   if (!data || !data.openid) {
     throw httpError(401, 'WX_LOGIN_FAIL', `wx code2session 失败: ${JSON.stringify(data || {})}`);
   }
-  return data.openid;
+  return {
+    openid: data.openid,
+    session_key: typeof data.session_key === 'string' ? data.session_key : '',
+  };
 }
 
 async function ttCode2Openid(code) {

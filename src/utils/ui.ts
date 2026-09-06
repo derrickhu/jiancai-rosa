@@ -435,6 +435,7 @@ export const HUD_ICON = {
   fridge: 'subpkg_images/hud_fridge.png',
   basket: 'subpkg_images/hud_basket.png',
   dex: 'subpkg_images/hud_dex.png',
+  gameClub: 'subpkg_images/hud_gameclub.png',
   destBanner: 'subpkg_images/ui_dest_banner.png',
   home: 'subpkg_images/hud_home.png',
   leave: 'subpkg_images/hud_leave.png',

@@ -61,6 +61,8 @@
 | `ui_cook_panel_prompt.txt` | 烹饪页砧板+空白油纸（与图鉴红本区分） | 9:16 |
 | `kitchen_dex_book_prompt.txt` | 旧：厨房左墙悬挂图鉴书（已改 HUD 图标） | 1:1 |
 | `hud_dex_prompt.txt` | 厨房左侧 HUD 图鉴图标（陶土书+奶油方块） | 1:1 |
+| `hud_gameclub_prompt.txt` | 厨房左侧 HUD 游戏圈图标（木告示牌，无白菜） | 1:1 |
+| `ui_gameclub_panel_prompt.txt` | 游戏圈福利弹层空壳（木框油纸、白菜吉祥物） | 3:4 |
 | `dex_cat_icons_prompt.txt` | 图鉴分类方块 5×2（食材五类+菜品五组） | 1:1 |
 | `dex_cat_fruit_prompt.txt` | 水果分类方块：西瓜+桃，不要西红柿 | 1:1 |
 | `ui_dex_panel_prompt.txt` | 图鉴笔记本壳，空白纸面叠字 | 9:16 |

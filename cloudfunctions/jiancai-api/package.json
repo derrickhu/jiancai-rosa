@@ -1,7 +1,7 @@
 {
   "name": "jiancai-api",
   "version": "1.0.0",
-  "description": "捡菜市集统一 HTTP 后端：login + save/pull + save/push",
+  "description": "捡菜市集统一 HTTP 后端：login + save + game-club decrypt",
   "main": "index.js",
   "engines": {
     "node": ">=16"

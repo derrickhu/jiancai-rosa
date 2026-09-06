@@ -19,6 +19,7 @@ export const BACKEND_PATH_PREFIX = `/${GAME_KEY}-api`;
 export const BACKEND_LOGIN_PATH = `${BACKEND_PATH_PREFIX}/login`;
 export const BACKEND_PULL_PATH = `${BACKEND_PATH_PREFIX}/save/pull`;
 export const BACKEND_PUSH_PATH = `${BACKEND_PATH_PREFIX}/save/push`;
+export const BACKEND_GAME_CLUB_DECRYPT_PATH = `${BACKEND_PATH_PREFIX}/game-club/decrypt`;
 export const BACKEND_HEALTH_PATH = `${BACKEND_PATH_PREFIX}/health`;
 
 /** 请求超时（毫秒） */

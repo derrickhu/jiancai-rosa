@@ -11,7 +11,11 @@ import {
   SHARE_IMAGE_URLS,
   SHARE_STAMINA_TITLES,
   STAMINA_SHARE_GAIN,
+  GAME_CLUB_DAILY_COINS,
   addStamina,
+  canClaimGameClubReward,
+  claimGameClubReward,
+  hasClaimedGameClubToday as saveClaimedGameClubToday,
   staminaMax,
   buyFurnUpgrade,
   buyHouseUpgrade,
@@ -272,6 +276,28 @@ class KitchenManagerClass {
     if (next === this.save) return;
     SaveManager.replace(next);
     this.emit();
+  }
+
+  hasClaimedGameClubToday(): boolean {
+    return saveClaimedGameClubToday(this.save);
+  }
+
+  canClaimGameClub(postCount: number): boolean {
+    return canClaimGameClubReward(this.save, postCount);
+  }
+
+  claimGameClubDaily(postCount: number): boolean {
+    const { save, coins, error } = claimGameClubReward(this.save, postCount);
+    if (error) {
+      AudioManager.play('ui_deny');
+      Platform.showToast(error);
+      return false;
+    }
+    SaveManager.replace(save);
+    this.emit();
+    AudioManager.play('coin_gain');
+    Platform.showToast(`领取成功 +${coins} 金币`, 'success');
+    return coins === GAME_CLUB_DAILY_COINS;
   }
 
   trySpend(amount: number): boolean {

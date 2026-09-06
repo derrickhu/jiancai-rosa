@@ -39,13 +39,21 @@ class OverlayManagerClass {
   closeAllPanels(): void {
     if (!this._container) return;
     for (const child of this._container.children) {
-      if (child.visible && typeof (child as any).close === 'function') {
-        TweenManager.cancelTarget(child);
-        child.visible = false;
-        child.alpha = 1;
-        if (typeof (child as any)._isOpen !== 'undefined') {
-          (child as any)._isOpen = false;
+      if (!child.visible) continue;
+      TweenManager.cancelTarget(child);
+      const panel = child as unknown as { close?: (silent?: boolean) => void; _isOpen?: boolean };
+      if (typeof panel.close === 'function') {
+        try {
+          panel.close(true);
+          continue;
+        } catch (e) {
+          console.warn('[OverlayManager] close 失败', e);
         }
+      }
+      child.visible = false;
+      child.alpha = 1;
+      if (typeof panel._isOpen !== 'undefined') {
+        panel._isOpen = false;
       }
     }
   }

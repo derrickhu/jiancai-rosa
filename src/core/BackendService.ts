@@ -9,6 +9,7 @@
 import {
   BACKEND_ANON_ID_KEY,
   BACKEND_BASE_URL,
+  BACKEND_GAME_CLUB_DECRYPT_PATH,
   BACKEND_LOGIN_PATH,
   BACKEND_PULL_PATH,
   BACKEND_PUSH_PATH,
@@ -43,6 +44,15 @@ export interface BackendPushResult {
   savedAt: number;
   mode: 'insert' | 'update';
   sizeBytes: number;
+}
+
+export interface GameClubDataItem {
+  dataType: number | { type?: number };
+  value?: number | string;
+}
+
+export interface GameClubDecryptedData {
+  dataList: GameClubDataItem[];
 }
 
 interface StoredToken {
@@ -112,6 +122,10 @@ class BackendServiceClass {
 
   async pushSave(snapshot: BackendPushPayload): Promise<BackendPushResult> {
     return this._callWithAuth<BackendPushResult>(BACKEND_PUSH_PATH, snapshot);
+  }
+
+  decryptGameClubData(payload: { encryptedData: string; iv: string }): Promise<GameClubDecryptedData> {
+    return this._callWithAuth<GameClubDecryptedData>(BACKEND_GAME_CLUB_DECRYPT_PATH, payload);
   }
 
   /** 清空本地 token（排障用），不影响本地存档 */

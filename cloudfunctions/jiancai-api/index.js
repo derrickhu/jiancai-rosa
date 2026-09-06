@@ -5,6 +5,7 @@
  *   /login        登录：wx/dy code2session / anon，签发 JWT
  *   /save/pull    拉取当前用户存档
  *   /save/push    上传当前用户存档（Upsert，updatedAt 防回写）
+ *   /game-club/decrypt  解密 wx.getGameClubData（需登录）
  *   /health       健康检查（无鉴权）
  *
  * 环境变量（CloudBase 控制台 → 云函数 → 环境变量）：
@@ -18,6 +19,7 @@
 
 const { handleLogin } = require('./lib/auth');
 const { handlePull, handlePush } = require('./lib/save');
+const { handleDecrypt } = require('./lib/game-club');
 const { respond, parseEvent, preflight } = require('./lib/http');
 
 const ROUTES = {
@@ -26,6 +28,7 @@ const ROUTES = {
   'POST /login': handleLogin,
   'POST /save/pull': handlePull,
   'POST /save/push': handlePush,
+  'POST /game-club/decrypt': handleDecrypt,
 };
 
 exports.main = async (event, context) => {

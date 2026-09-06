@@ -85,6 +85,8 @@ export const SHARE_IMAGE_URLS = [
   'boot/share_market_k.jpg',
 ];
 export const STAMINA_REGEN_MS = 30 * 60 * 1000;
+/** 游戏圈每日发帖领金币。 */
+export const GAME_CLUB_DAILY_COINS = 50;
 
 /** 当前厨艺对应的体力上限。1 级 10 点，之后每级 +1。 */
 export function staminaMax(save: Pick<KitchenSave, 'level'> | number): number {
@@ -224,6 +226,8 @@ export interface KitchenSave {
   outingBuff?: OutingBuff;
   /** 厨房限时：售价或下一锅经验。后吃替换。 */
   kitchenBuff?: KitchenBuff;
+  /** 游戏圈每日发帖奖励已领的日期，跟 todayKey 对齐。 */
+  gameClubRewardDate: string;
 }
 
 function migrateSpecialVisits(raw: unknown): Record<string, { date: string; count: number }> {
@@ -266,6 +270,31 @@ export function todayKey(now = Date.now()): string {
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
 }
 
+export function hasClaimedGameClubToday(save: KitchenSave, now = Date.now()): boolean {
+  return save.gameClubRewardDate === todayKey(now);
+}
+
+export function canClaimGameClubReward(save: KitchenSave, postCount: number, now = Date.now()): boolean {
+  return postCount >= 1 && !hasClaimedGameClubToday(save, now);
+}
+
+export function claimGameClubReward(
+  save: KitchenSave,
+  postCount: number,
+  now = Date.now(),
+): { save: KitchenSave; coins: number; error?: string } {
+  if (postCount < 1) return { save, coins: 0, error: '请先在游戏圈发帖' };
+  if (hasClaimedGameClubToday(save, now)) return { save, coins: 0, error: '今日奖励已领取' };
+  return {
+    save: {
+      ...save,
+      money: save.money + GAME_CLUB_DAILY_COINS,
+      gameClubRewardDate: todayKey(now),
+    },
+    coins: GAME_CLUB_DAILY_COINS,
+  };
+}
+
 /** 距下一本地 0 点的毫秒。页面开着跨日也能把特殊市场次数清掉。 */
 export function msUntilLocalMidnight(now = Date.now()): number {
   const d = new Date(now);
@@ -301,6 +330,7 @@ export function defaultSave(now = Date.now()): KitchenSave {
     neighborOfferAt: 0,
     outingBuff: undefined,
     kitchenBuff: undefined,
+    gameClubRewardDate: '',
   };
 }
 
@@ -335,6 +365,9 @@ export function normalizeSave(raw: Partial<KitchenSave> | null, now = Date.now()
       : 0,
     outingBuff: migrateOutingBuff((raw as KitchenSave).outingBuff),
     kitchenBuff: migrateKitchenBuff((raw as KitchenSave).kitchenBuff),
+    gameClubRewardDate: typeof (raw as KitchenSave).gameClubRewardDate === 'string'
+      ? (raw as KitchenSave).gameClubRewardDate
+      : '',
   };
   next.basketLevel = next.furnLevels.basket;
   next.fridgeExtra = next.furnLevels.fridge > 0 || next.furnLevels.foam > 0;

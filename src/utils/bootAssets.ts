@@ -9,6 +9,8 @@ export function kitchenBootPaths(save: KitchenSave): string[] {
     'subpkg_images/hud_coin.png',
     'subpkg_images/hud_stamina.png',
     'subpkg_images/hud_dex.png',
+    'subpkg_images/hud_gameclub.png',
+    'subpkg_kitchen/ui_gameclub_panel.png',
     'subpkg_images/hud_player.png',
     'subpkg_kitchen/ui_recipe_paper.png',
     'subpkg_kitchen/ui_kitchen_slip.png',
