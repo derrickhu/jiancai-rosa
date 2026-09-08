@@ -228,6 +228,8 @@ export interface KitchenSave {
   kitchenBuff?: KitchenBuff;
   /** 游戏圈每日发帖奖励已领的日期，跟 todayKey 对齐。 */
   gameClubRewardDate: string;
+  /** 新手指引步骤。新号 0；老档缺字段时 normalize 写成 99，不重播。 */
+  tutorialStep: number;
 }
 
 function migrateSpecialVisits(raw: unknown): Record<string, { date: string; count: number }> {
@@ -305,7 +307,7 @@ export function msUntilLocalMidnight(now = Date.now()): number {
 export function defaultSave(now = Date.now()): KitchenSave {
   return {
     version: 1,
-    money: 0,
+    money: 10,
     stamina: STAMINA_MAX,
     staminaAt: now,
     fridge: [],
@@ -331,6 +333,7 @@ export function defaultSave(now = Date.now()): KitchenSave {
     outingBuff: undefined,
     kitchenBuff: undefined,
     gameClubRewardDate: '',
+    tutorialStep: 0,
   };
 }
 
@@ -368,6 +371,10 @@ export function normalizeSave(raw: Partial<KitchenSave> | null, now = Date.now()
     gameClubRewardDate: typeof (raw as KitchenSave).gameClubRewardDate === 'string'
       ? (raw as KitchenSave).gameClubRewardDate
       : '',
+    tutorialStep: typeof (raw as KitchenSave).tutorialStep === 'number'
+      && Number.isFinite((raw as KitchenSave).tutorialStep)
+      ? Math.floor((raw as KitchenSave).tutorialStep)
+      : 99,
   };
   next.basketLevel = next.furnLevels.basket;
   next.fridgeExtra = next.furnLevels.fridge > 0 || next.furnLevels.foam > 0;

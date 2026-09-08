@@ -22,6 +22,9 @@ import {
 import { HUD_ICON, fillRect, makeLabel, makeSlicedButton } from '@/utils/ui';
 import { VerticalScroller } from '@/utils/scroll';
 import { dishTexture, fitSpriteInBox, gameTexture, isTextureReady, itemLookTexture, whenTextureReady } from '@/utils/assets';
+import { TutorialManager, TutorialStep } from '@/managers/TutorialManager';
+import { TutorialOverlay } from './TutorialOverlay';
+import { TutorialGuard } from '@/systems/TutorialGuard';
 
 const KIND_TEXT = {
   safe: '挑完回家',
@@ -80,9 +83,26 @@ export class ResultPanel extends PIXI.Container {
     AudioManager.play(result.kind === 'safe' ? 'result_safe' : 'result_dusk');
     this.relayout(result);
     OverlayManager.bringToFront();
+    TutorialOverlay.register('result', () => this.tutorialBodyRect());
+    TutorialOverlay.refresh();
+  }
+
+  tutorialBodyRect(): { x: number; y: number; w: number; h: number; r?: number } | null {
+    if (!this._isOpen || !TutorialManager.isStep(TutorialStep.WAIT_RESULT)) return null;
+    const w = Game.designWidth;
+    const h = Game.logicHeight;
+    return {
+      x: 24,
+      y: Game.safeTop + 40,
+      w: w - 48,
+      h: h - Game.safeTop - 80,
+      r: 24,
+    };
   }
 
   close(): void {
+    if (!this._isOpen) return;
+    if (TutorialGuard.block('closeResult')) return;
     if (KitchenManager.pendingHaul?.length) {
       Platform.showToast(`再卖掉 ${KitchenManager.unpackNeed() - this._picked()} 件才能装下`);
       return;
@@ -93,6 +113,8 @@ export class ResultPanel extends PIXI.Container {
     this._sell.clear();
     this._stopPops();
     this._scroller.disable();
+    TutorialOverlay.unregister('result');
+    TutorialManager.advanceIf(TutorialStep.WAIT_RESULT);
     RunManager.clear();
     SceneManager.switchTo('kitchen');
   }

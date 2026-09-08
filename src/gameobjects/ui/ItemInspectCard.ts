@@ -132,6 +132,7 @@ export function makeItemInspectCard(opts: {
   onSell?: () => void;
   onEat?: () => void;
   onReady?: () => void;
+  onSellBtn?: (btn: PIXI.Container) => void;
 }): PIXI.Container {
   const view = opts.view;
   const qty = Math.max(1, Math.min(view.maxQty, Math.floor(opts.qty)));
@@ -274,6 +275,7 @@ export function makeItemInspectCard(opts: {
     if (unit <= 0) return;
     opts.onSell?.();
   });
+  opts.onSellBtn?.(sell);
   card.addChild(sell);
   if (canEat) {
     const eatBtn = makeChip('吃掉', half, 48, 'primary');

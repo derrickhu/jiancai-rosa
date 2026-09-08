@@ -244,6 +244,44 @@ export function createRun(opts: {
   };
 }
 
+/** 教学局：脚下第一排保底有翻摊，货箱最前是干净菜苔。 */
+export function seedTutorialOuting(state: RunState): string {
+  const nodeId = ensureTutorialFrontRummage(state);
+  const pile = state.piles[nodeId] ?? [];
+  const hit = pile.findIndex((it) => it.defId === 'caitai' && it.quality !== 'rotten');
+  if (hit > 0) {
+    const [item] = pile.splice(hit, 1);
+    pile.unshift(item);
+  } else if (hit < 0) {
+    pile.unshift({
+      uid: nextUid('p'),
+      defId: 'caitai',
+      quality: 'fresh',
+      revealed: false,
+      inspected: false,
+      washed: false,
+      drawn: false,
+    });
+  }
+  state.piles[nodeId] = pile;
+  return nodeId;
+}
+
+function ensureTutorialFrontRummage(state: RunState): string {
+  const existing = state.options.find((id) => isRummageNode(state.map.nodes[id]));
+  if (existing) return existing;
+  const id = state.options[0];
+  if (!id || !state.map.nodes[id]) return state.options[0] ?? '';
+  const node = state.map.nodes[id];
+  node.kind = 'stall';
+  node.stall = 'leaf';
+  node.fee = 0;
+  node.cookNeed = 0;
+  node.encounter = { type: 'rummage', stall: 'leaf' };
+  if (!state.piles[id]) state.piles[id] = [];
+  return id;
+}
+
 export function hasGodPick(state: RunState): boolean {
   return Object.values(state.piles).some((list) => list.some((it) => it.defId === GOD_PICK.id));
 }

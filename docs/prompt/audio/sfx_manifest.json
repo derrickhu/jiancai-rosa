@@ -193,6 +193,30 @@
       "duration": 4.1,
       "output": "../../../../game_assets/jiancai-rosa/audio/final/result_dusk.mp3",
       "notes": "天黑收摊：与 result_safe 同一首菜猪通关短句"
+    },
+    {
+      "name": "tutorial_pop",
+      "text": "short dry oil-paper unfurling rustle then a soft wooden pin tap, two sounds, close, 0.28 seconds, no voice, no music, no reverb",
+      "duration": 0.28,
+      "prompt_influence": 0.55,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/tutorial_pop.mp3",
+      "notes": "引导气泡弹出"
+    },
+    {
+      "name": "tutorial_hint",
+      "text": "soft wooden ding and a light paper tap, gentle attention chime, mid tone, dry, 0.32 seconds, no voice, no music, no reverb hall",
+      "duration": 0.32,
+      "prompt_influence": 0.55,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/tutorial_hint.mp3",
+      "notes": "引导手指出现"
+    },
+    {
+      "name": "tutorial_ok",
+      "text": "warm ceramic bowl tap then a short soft brass ding, success confirm, dry kitchen, 0.38 seconds, no voice, no music, no reverb",
+      "duration": 0.38,
+      "prompt_influence": 0.55,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/tutorial_ok.mp3",
+      "notes": "引导步骤完成"
     }
   ]
 }

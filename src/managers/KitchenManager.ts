@@ -608,6 +608,11 @@ class KitchenManagerClass {
     Platform.showToast(`体力 ${save.stamina}`);
   }
 
+  setTutorialStep(step: number): void {
+    if (this.save.tutorialStep === step) return;
+    SaveManager.replace({ ...this.save, tutorialStep: step });
+  }
+
   gmAddMoney(n = 100): void {
     const money = this.save.money + n;
     SaveManager.replace({ ...this.save, money });

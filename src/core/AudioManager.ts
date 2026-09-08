@@ -35,6 +35,9 @@ export const SFX_IDS = [
   'event_pop',
   'result_safe',
   'result_dusk',
+  'tutorial_pop',
+  'tutorial_hint',
+  'tutorial_ok',
 ] as const;
 
 export type SfxId = typeof SFX_IDS[number];
@@ -111,6 +114,9 @@ class AudioManagerClass {
   private readonly webSfxPool = new Map<string, HTMLAudioElement>();
 
   sfxPath(id: SfxId): string {
+    if (id === 'tutorial_pop' || id === 'tutorial_hint' || id === 'tutorial_ok') {
+      return `subpkg_kitchen/${id}.mp3`;
+    }
     return `${AUDIO_DIR}/${id}.mp3`;
   }
 

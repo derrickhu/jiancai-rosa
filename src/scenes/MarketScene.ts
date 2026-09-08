@@ -35,6 +35,10 @@ import { TweenManager, Ease } from '@/core/TweenManager';
 import { applyFit, fitCover, fitSpriteInBox, fitWidthBottom, gameTexture, isTextureFailed, isTextureReady, itemLookTexture, itemTexture, whenTextureReady } from '@/utils/assets';
 import type { Scene } from '@/core/SceneManager';
 import type { ExtractResult } from '@/sim';
+import { isRummageNode } from '@/sim';
+import { TutorialManager, TutorialStep } from '@/managers/TutorialManager';
+import { TutorialOverlay, stageRectOf } from '@/gameobjects/ui/TutorialOverlay';
+import { TutorialGuard } from '@/systems/TutorialGuard';
 
 const REVEAL_FACE = 188;
 const REVEAL_POP = 0.14;
@@ -54,7 +58,11 @@ export class MarketScene implements Scene {
   private _basket = new BasketPanel();
   private _result = new ResultPanel();
   private _onRun = () => this._sync();
-  private _onExtract = (result: ExtractResult) => this._result.open(result);
+  private _onExtract = (result: ExtractResult) => {
+    this._result.open(result);
+    TutorialManager.advanceIf(TutorialStep.GO_HOME);
+    TutorialOverlay.refresh();
+  };
   private _bodyKey = '';
   private _duskNum: PIXI.Text | null = null;
   private _duskSteps = -1;
@@ -77,6 +85,11 @@ export class MarketScene implements Scene {
   private _crateMax: Record<string, number> = {};
   /** 桌上已摆过的菜钉住坐标，后抽的只往空位放，不把先抽的挤走。 */
   private _tablePins = new Map<string, Map<string, { rx: number; ry: number; w: number; h: number }>>();
+  private _tutCard: PIXI.Container | null = null;
+  private _tutPile: PIXI.Container | null = null;
+  private _tutToken: PIXI.Container | null = null;
+  private _leaveBtn: PIXI.Container | null = null;
+  private _basketPeekTimer = 0;
 
   constructor() {
     this.container.addChild(this._bg);
@@ -99,8 +112,9 @@ export class MarketScene implements Scene {
     this._body.alpha = 1;
     this._shownEvent = RunManager.run?.lastEvent?.nodeId ?? '';
     AudioManager.playMarketBgm(RunManager.run?.marketId ?? 'xiangko');
+    TutorialOverlay.register('market', () => this.tutorialRect());
     this._sync(true);
-    ensureRecipeUnlockPanel().present();
+    if (!TutorialManager.isActive) ensureRecipeUnlockPanel().present();
   }
 
   onExit(): void {
@@ -115,10 +129,24 @@ export class MarketScene implements Scene {
     this._clearDusk();
     this._basket.close(true);
     this._event.close(true);
+    if (this._basketPeekTimer) globalThis.clearTimeout?.(this._basketPeekTimer);
+    TutorialOverlay.unregister('market');
   }
 
   relayout(): void {
     this._sync(true);
+  }
+
+  tutorialRect(): { x: number; y: number; w: number; h: number; r?: number } | null {
+    if (!TutorialManager.isActive) return null;
+    const step = TutorialManager.currentStep;
+    if (step === TutorialStep.CLICK_CARD) return stageRectOf(this._tutCard, 6);
+    if (step === TutorialStep.CLICK_PILE) return stageRectOf(this._tutPile, 8);
+    if (step === TutorialStep.TAKE_LOOT) return stageRectOf(this._tutToken, 8);
+    if (step === TutorialStep.OPEN_BASKET) return stageRectOf(this._basketBtn, 6);
+    if (step === TutorialStep.GO_HOME) return stageRectOf(this._leaveBtn, 6);
+    if (step === TutorialStep.WAIT_RESULT) return this._result.tutorialBodyRect();
+    return null;
   }
 
   private _sync(force = false): void {
@@ -153,6 +181,7 @@ export class MarketScene implements Scene {
       else if (run.mode === 'play') this._drawPlay(Game.designWidth, Game.logicHeight);
       else this._drawRummage(Game.designWidth, Game.logicHeight);
     }
+    TutorialOverlay.refresh();
   }
 
   private _pileKey(): string {
@@ -233,7 +262,17 @@ export class MarketScene implements Scene {
     this._basketBtn.cursor = 'pointer';
     this._basketBtn.hitArea = new PIXI.Rectangle(0, 0, bagW, 44);
     this._basketBtn.position.set(rowX + coinW + gap, pillY);
-    this._basketBtn.on('pointertap', () => this._basket.open());
+    this._basketBtn.on('pointertap', () => {
+      if (TutorialGuard.block('openBasket')) return;
+      this._basket.open();
+      if (TutorialManager.isStep(TutorialStep.OPEN_BASKET)) {
+        if (this._basketPeekTimer) globalThis.clearTimeout?.(this._basketPeekTimer);
+        this._basketPeekTimer = globalThis.setTimeout(() => {
+          this._basket.close(true);
+          TutorialManager.advanceTo(TutorialStep.GO_HOME);
+        }, 800) as unknown as number;
+      }
+    });
     this._res.addChild(this._basketBtn);
 
     const side = 104;
@@ -248,8 +287,13 @@ export class MarketScene implements Scene {
       back.position.set(16, y);
       this._res.addChild(back);
     }
-    const leave = this._roundIconBtn(HUD_ICON.leave, '回家', () => RunManager.extract(true), redraw);
+    const leave = this._roundIconBtn(HUD_ICON.leave, '回家', () => {
+      if (TutorialGuard.block('extract')) return;
+      RunManager.extract(true);
+      TutorialManager.advanceIf(TutorialStep.GO_HOME);
+    }, redraw);
     leave.position.set(w - 16 - side, y);
+    this._leaveBtn = leave;
     this._res.addChild(leave);
   }
 
@@ -440,6 +484,11 @@ export class MarketScene implements Scene {
     });
     this._mapView = view;
     this._body.addChild(view.root);
+    const want = TutorialManager.allowedCardId;
+    const front = view.rows[0] ?? [];
+    const cell = front.find((c) => c.option.node.id === want)
+      ?? front.find((c) => isRummageNode(c.option.node) && !c.option.blocked);
+    this._tutCard = cell?.card ?? null;
 
     if (blocked) {
       const bypass = makeSlicedButton({
@@ -458,11 +507,20 @@ export class MarketScene implements Scene {
 
   /** 点卡不立刻结算：先演一段往前走，脚下的卡迎面掠过，后排下移接位。 */
   private _walkTo(nodeId: string): void {
+    if (TutorialManager.isActive && TutorialManager.isStep(TutorialStep.CLICK_CARD)) {
+      if (nodeId !== TutorialManager.allowedCardId) {
+        TutorialGuard.block('walkOtherCard');
+        return;
+      }
+    } else if (TutorialGuard.block('walkCard')) {
+      return;
+    }
     if (this._walking) return;
     const run = RunManager.run;
     const view = this._mapView;
     if (!run || !view?.rows.length) {
       RunManager.enterNode(nodeId);
+      this._onTutorialEntered(nodeId);
       return;
     }
     const picked = view.rows[0].find((c) => c.option.node.id === nodeId);
@@ -472,12 +530,22 @@ export class MarketScene implements Scene {
     }
     this._walkForward(picked.option.node.next, picked, () => {
       RunManager.enterNode(nodeId);
+      this._onTutorialEntered(nodeId);
       this._afterStep();
     });
   }
 
+  private _onTutorialEntered(nodeId: string): void {
+    const node = RunManager.run?.map.nodes[nodeId];
+    if (node && isRummageNode(node)) TutorialManager.advanceIf(TutorialStep.CLICK_CARD);
+  }
+
   /** 绕过去也是走一步：新的一排就是当前所有卡的下一层，动画照用。 */
   private _walkBypass(): void {
+    if (TutorialManager.isActive) {
+      TutorialGuard.block('walkOtherCard');
+      return;
+    }
     if (this._walking) return;
     const run = RunManager.run;
     const view = this._mapView;
@@ -790,11 +858,16 @@ export class MarketScene implements Scene {
       h: 280,
     };
     this._stackPos = { x: Math.round(w * 0.5), y: Math.round(h * 0.60) };
-    this._body.addChild(this._stallPile(nodeId, stallId, this._stackPos.x, this._stackPos.y, specialty));
+    this._tutCard = null;
+    this._tutToken = null;
+    const pile = this._stallPile(nodeId, stallId, this._stackPos.x, this._stackPos.y, specialty);
+    this._tutPile = pile;
+    this._body.addChild(pile);
 
     const placed = this._packPile(nodeId, RunManager.currentPile(), table);
     placed.forEach((slot) => {
       const token = this._pileToken(slot.item, slot.x, slot.y, slot.w, slot.h);
+      if (slot.item.defId === 'caitai' || !this._tutToken) this._tutToken = token;
       const flight = this._flying.get(slot.item.uid);
       if (flight) {
         token.alpha = 0;
@@ -870,17 +943,21 @@ export class MarketScene implements Scene {
   }
 
   private _drawOne(): void {
+    if (TutorialGuard.block('drawPile')) return;
     const crate = RunManager.crateLeft();
     if (!crate.length) {
       RunManager.drawFromCrate();
       return;
     }
-    const pick = crate[Math.floor(Math.random() * crate.length)];
+    const pick = TutorialManager.isStep(TutorialStep.CLICK_PILE)
+      ? crate.find((it) => it.defId === 'caitai') ?? crate[0]
+      : crate[Math.floor(Math.random() * crate.length)];
     if (this._flying.has(pick.uid)) return;
     AudioManager.play('rummage');
     this._flying.set(pick.uid, { playing: false, wrap: null, token: null });
     this._pileKick += 1;
     RunManager.drawFromCrate(pick.uid);
+    TutorialManager.advanceIf(TutorialStep.CLICK_PILE);
   }
 
   private _playDrawReveal(
@@ -1160,6 +1237,14 @@ export class MarketScene implements Scene {
   private _takeItem(uid: string): void {
     const item = this._findPile(uid);
     if (!item) return;
+    if (TutorialManager.isActive && TutorialManager.isStep(TutorialStep.TAKE_LOOT)) {
+      if (item.defId !== 'caitai') {
+        TutorialGuard.block('takeLoot');
+        return;
+      }
+    } else if (TutorialGuard.block('takeLoot')) {
+      return;
+    }
     if (item.defId === GOD_PICK.id && !item.inspected) {
       this._playGodPick(uid);
       return;
@@ -1178,6 +1263,7 @@ export class MarketScene implements Scene {
     if (item.quality === 'god' || item.defId === GOD_PICK.id) AudioManager.playGain();
     else AudioManager.play('basket_place');
     RunManager.take(uid);
+    if (RunManager.basket.items.length) TutorialManager.advanceIf(TutorialStep.TAKE_LOOT);
   }
 
   private _playGodPick(uid: string): void {

@@ -5,6 +5,7 @@ import {
   cardBlock,
   createBasket,
   createRun,
+  seedTutorialOuting,
   displayName,
   decideExtract,
   freebieToBasketDraft,
@@ -57,6 +58,7 @@ import {
   outingRunMods,
 } from '@/sim';
 import { KitchenManager } from './KitchenManager';
+import { TutorialManager } from './TutorialManager';
 import type { MarketId } from '@/sim';
 import { Platform } from '@/core/PlatformService';
 
@@ -110,6 +112,9 @@ class RunManagerClass {
       feeMul: outing.feeMul,
       stallBias: outing.stallBias,
     });
+    if (TutorialManager.needsOutingSeed() && this.run) {
+      TutorialManager.setAllowedCardId(seedTutorialOuting(this.run));
+    }
     if (hasGodPick(this.run)) KitchenManager.markGodPickToday();
     this.basket = createBasket(
       furnLevel(KitchenManager.save, 'basket'),

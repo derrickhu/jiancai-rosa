@@ -34,6 +34,9 @@ import { OutingCurtain } from '@/gameobjects/ui/OutingCurtain';
 import { MarketLootPanel } from '@/gameobjects/ui/MarketLootPanel';
 import { marketBootPaths, specialBootPaths } from '@/utils/outingAssets';
 import { SpecialMarketScene } from '@/scenes/SpecialMarketScene';
+import { TutorialManager, TutorialStep } from '@/managers/TutorialManager';
+import { TutorialOverlay, stageRectOf } from '@/gameobjects/ui/TutorialOverlay';
+import { TutorialGuard } from '@/systems/TutorialGuard';
 
 const DEST_BG = 'subpkg_images/dest_street_bg.jpg';
 /** 走路一屏正好四张。更高的屏卡不再拉高，多出来的空落在列表里。 */
@@ -68,6 +71,7 @@ export class DestinationScene implements Scene {
   private _scroller: VerticalScroller;
   private _browse: VehicleId = 'walk';
   private _loot = new MarketLootPanel();
+  private _xiangkoGo: PIXI.Container | null = null;
 
   constructor() {
     this.container.eventMode = 'static';
@@ -83,6 +87,7 @@ export class DestinationScene implements Scene {
     this._scroller.enable();
     EventBus.on(EV.kitchenChanged, this._onKitchen);
     AudioManager.playBgm('outing');
+    TutorialOverlay.register('dest', () => this.tutorialRect());
     this.relayout();
   }
 
@@ -90,13 +95,20 @@ export class DestinationScene implements Scene {
     EventBus.off(EV.kitchenChanged, this._onKitchen);
     this._scroller.disable();
     this._loot.close(true);
+    TutorialOverlay.unregister('dest');
   }
 
   private _onKitchen = (): void => {
     if (this.container.parent) this.relayout();
   };
 
+  tutorialRect(): { x: number; y: number; w: number; h: number; r?: number } | null {
+    if (!TutorialManager.isStep(TutorialStep.PICK_XIANGKO)) return null;
+    return stageRectOf(this._xiangkoGo, 8);
+  }
+
   relayout(): void {
+    this._xiangkoGo = null;
     this._ui.removeChildren();
     const w = Game.designWidth;
     const h = Game.logicHeight;
@@ -224,6 +236,7 @@ export class DestinationScene implements Scene {
 
     this._ui.addChild(this._vehicleDock(24, dockY, w - 48, VEHICLE_H + DOCK_TITLE_H, redraw));
     this._ui.addChild(this._homeBtn((w - 280) / 2, homeY, 280, HOME_H, redraw));
+    TutorialOverlay.refresh();
   }
 
   private _drawTitle(w: number, top: number, onReady: () => void): void {
@@ -326,7 +339,7 @@ export class DestinationScene implements Scene {
     if (unlocked) {
       const goW = 158;
       const gap = 10;
-      root.addChild(this._departBtn(
+      const go = this._departBtn(
         textX,
         btnY,
         goW,
@@ -334,7 +347,9 @@ export class DestinationScene implements Scene {
         market.staminaCost,
         save.stamina < market.staminaCost,
         () => this._depart(market),
-      ));
+      );
+      root.addChild(go);
+      if (market.id === 'xiangko') this._xiangkoGo = go;
       root.addChild(this._exploreMeter(textX + goW + gap, btnY, btnH, market.id));
     } else {
       const label = routed ? `厨艺 ${market.unlockLevel} 解锁` : `先买${needRide.name}`;
@@ -593,6 +608,7 @@ export class DestinationScene implements Scene {
   }
 
   private _switchVehicle(dir: -1 | 1): void {
+    if (TutorialGuard.block('switchVehicle')) return;
     this._browse = neighborVehicle(this._browse, dir);
     if (ownsVehicle(KitchenManager.save, this._browse)) {
       KitchenManager.setVehicle(this._browse);
@@ -693,6 +709,7 @@ export class DestinationScene implements Scene {
     btn.position.set(x, y);
     btn.on('pointertap', (e) => {
       e.stopPropagation();
+      if (TutorialGuard.block('goHomeDest')) return;
       SceneManager.switchTo('kitchen');
     });
     root.addChild(btn);
@@ -742,6 +759,11 @@ export class DestinationScene implements Scene {
   }
 
   private _depart(market: MarketDef): void {
+    if (TutorialManager.isActive && market.id !== 'xiangko') {
+      TutorialGuard.block('departOther');
+      return;
+    }
+    if (TutorialGuard.block(market.id === 'xiangko' ? 'departXiangko' : 'departOther')) return;
     if (!ownsRouteToMarket(KitchenManager.save, market.id)) {
       const ride = vehicleForMarket(market.id);
       AudioManager.play('ui_deny');
@@ -765,6 +787,7 @@ export class DestinationScene implements Scene {
     }
     if (OutingCurtain.busy) return;
     if (!RunManager.start(market.id)) return;
+    TutorialManager.advanceIf(TutorialStep.PICK_XIANGKO);
     OutingCurtain.play({
       paths: marketBootPaths(market.id, RunManager.run ?? undefined),
       then: () => SceneManager.switchTo('market'),
@@ -772,6 +795,7 @@ export class DestinationScene implements Scene {
   }
 
   private _enterSpecial(market: SpecialMarketDef): void {
+    if (TutorialGuard.block('specialMarket')) return;
     if (!ownsVehicle(KitchenManager.save, market.vehicle)) {
       const ride = vehicleById(market.vehicle);
       AudioManager.play('ui_deny');

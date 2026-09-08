@@ -17,6 +17,11 @@ export function kitchenBootPaths(save: KitchenSave): string[] {
     'subpkg_kitchen/ui_cook_level_title.png',
     'subpkg_kitchen/ui_result_burst.png',
     'subpkg_kitchen/ui_result_card.png',
+    'subpkg_kitchen/tutorial_hand.png',
+    'subpkg_kitchen/tutorial_cabbage.png',
+    'subpkg_kitchen/tutorial_paper.png',
+    'subpkg_kitchen/tutorial_intro_1.jpg',
+    'subpkg_kitchen/tutorial_intro_2.jpg',
     OUTING_CURTAIN,
   ];
   for (const id of FURN_IDS) {

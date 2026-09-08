@@ -4,6 +4,7 @@ import { TweenManager } from './TweenManager';
 
 class OverlayManagerClass {
   private _container: PIXI.Container | null = null;
+  private _afterBringToFront: (() => void) | null = null;
 
   constructor() {
     Game.onViewportChange(() => this.relayoutVisiblePanels());
@@ -19,12 +20,17 @@ class OverlayManagerClass {
     return this._container;
   }
 
+  onBroughtToFront(fn: (() => void) | null): void {
+    this._afterBringToFront = fn;
+  }
+
   bringToFront(): void {
     if (this._container && this._container.parent) {
       const parent = this._container.parent;
       parent.removeChild(this._container);
       parent.addChild(this._container);
     }
+    this._afterBringToFront?.();
   }
 
   resetTransform(): void {

@@ -5,4 +5,6 @@ export const EV = {
   runChanged: 'run:changed',
   runExtracted: 'run:extracted',
   basketChanged: 'basket:changed',
+  tutorialStepChanged: 'tutorial:stepChanged',
+  tutorialCompleted: 'tutorial:completed',
 } as const;

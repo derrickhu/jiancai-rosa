@@ -64,6 +64,9 @@ import { applyFit, fitSpriteInBox, fitWidthBottom, gameTexture, isTextureFailed,
 import { OutingCurtain } from '@/gameobjects/ui/OutingCurtain';
 import { destinationBootPaths } from '@/utils/outingAssets';
 import { RunManager } from '@/managers/RunManager';
+import { TutorialManager, TutorialStep } from '@/managers/TutorialManager';
+import { TutorialOverlay, worldRectToStage } from '@/gameobjects/ui/TutorialOverlay';
+import { TutorialGuard } from '@/systems/TutorialGuard';
 
 type HotspotId = 'door' | 'basket' | 'fridge' | 'foam' | 'board';
 type UpgradePick = FurnId | 'house';
@@ -117,6 +120,7 @@ export class KitchenScene implements Scene {
   private _furnRoots = new Map<FurnId, PIXI.Container>();
   private _upgradePick: UpgradePick | null = null;
   private _xpPop: { text: string; until: number } | null = null;
+  private _spotRects = new Map<HotspotId, { x: number; y: number; w: number; h: number }>();
   private _xpPopTimer = 0;
   private _wipeArmed = 0;
   private _onDown = (e: PIXI.FederatedPointerEvent) => {
@@ -170,12 +174,17 @@ export class KitchenScene implements Scene {
     } else {
       this.container.on('globalpointermove', this._onMove);
     }
+    TutorialManager.start();
+    TutorialOverlay.mount();
+    TutorialOverlay.register('kitchen', () => this.tutorialRect());
     this.relayout();
     AudioManager.playBgm('kitchen');
-    ensureCookLevelUpPanel().present();
-    ensureRecipeUnlockPanel().present();
-    KitchenManager.beginKitchenVisit();
-    this._queueNeighborOffer();
+    if (!TutorialManager.isActive) {
+      ensureCookLevelUpPanel().present();
+      ensureRecipeUnlockPanel().present();
+      KitchenManager.beginKitchenVisit();
+      this._queueNeighborOffer();
+    }
   }
 
   private _overlayBlocking(): boolean {
@@ -215,6 +224,7 @@ export class KitchenScene implements Scene {
     this._upgradePick = null;
     this._xpPop = null;
     globalThis.clearTimeout?.(this._xpPopTimer);
+    TutorialOverlay.unregister('kitchen');
   }
 
   relayout(): void {
@@ -247,6 +257,7 @@ export class KitchenScene implements Scene {
     const fit = { x: 0, y: h - worldH, scale, srcW, srcH };
     this._fit = fit;
     this._furnRoots.clear();
+    this._spotRects.clear();
 
     const fallback = new PIXI.Graphics();
     fillRect(fallback, 0, 0, worldW, worldH, 0xF3E2C6);
@@ -276,17 +287,35 @@ export class KitchenScene implements Scene {
       }
       this._drawKitchenSlip();
       this._drawFridgeSlip();
-      for (const id of FURN_IDS) {
-        const badge = this._upgradeBadge(id, this._furnSpriteRect(id));
-        if (badge) this._world.addChild(badge);
+      if (!TutorialManager.isActive) {
+        for (const id of FURN_IDS) {
+          const badge = this._upgradeBadge(id, this._furnSpriteRect(id));
+          if (badge) this._world.addChild(badge);
+        }
+        const houseBadge = this._houseUpgradeBadge();
+        if (houseBadge) this._world.addChild(houseBadge);
       }
-      const houseBadge = this._houseUpgradeBadge();
-      if (houseBadge) this._world.addChild(houseBadge);
     }
 
     this._applyPan();
     this._drawHud(w);
     if (!this._gm && this._upgradePick) this._drawUpgradeCard(this._upgradePick);
+    TutorialOverlay.refresh();
+  }
+
+  tutorialRect(): { x: number; y: number; w: number; h: number; r?: number } | null {
+    if (!TutorialManager.isActive) return null;
+    const step = TutorialManager.currentStep;
+    if (step === TutorialStep.GO_OUT) {
+      return worldRectToStage(this._world, this._spotRects.get('door') ?? { x: 20, y: 220, w: 160, h: 280 }, 12);
+    }
+    if (step === TutorialStep.COOK_TABLE) {
+      return worldRectToStage(this._world, this._spotRects.get('board') ?? this._cookHitRect(), 10);
+    }
+    if (step === TutorialStep.OPEN_FRIDGE) {
+      return worldRectToStage(this._world, this._spotRects.get('fridge') ?? this._furnSpriteRect('fridge'), 8);
+    }
+    return null;
   }
 
   private _wxPoint(res: { touches?: Array<{ clientX?: number; clientY?: number; x?: number; y?: number }> }): { x: number; y: number } | null {
@@ -1323,6 +1352,7 @@ export class KitchenScene implements Scene {
     root.eventMode = 'static';
     root.cursor = 'pointer';
     root.hitArea = new PIXI.Rectangle(0, 0, rect.w, rect.h);
+    this._spotRects.set(id, rect);
     root.on('pointertap', () => {
       if (this._dragMoved) return;
       this._onSpot(id);
@@ -1332,18 +1362,24 @@ export class KitchenScene implements Scene {
 
   private _onSpot(id: HotspotId): void {
     if (id === 'door') {
+      if (TutorialGuard.block('door')) return;
       this.goMarket();
       return;
     }
     if (id === 'fridge') {
-      this._fridge.open();
+      if (TutorialGuard.block('openFridge')) return;
+      this._fridge.open(TutorialManager.at(TutorialStep.OPEN_FRIDGE, TutorialStep.INSPECT_DISH, TutorialStep.SELL_DISH) ? 'dish' : undefined);
+      TutorialManager.advanceIf(TutorialStep.OPEN_FRIDGE);
       return;
     }
     if (id === 'board') {
-      this._cook.open();
+      if (TutorialGuard.block('openCook')) return;
+      this._cook.open(TutorialManager.at(TutorialStep.COOK_TABLE, TutorialStep.COOK_DISH) ? 'stirfry' : undefined);
+      TutorialManager.advanceIf(TutorialStep.COOK_TABLE);
       return;
     }
     if (id === 'basket' || id === 'foam') {
+      if (TutorialGuard.block('upgrade')) return;
       this._upgradePick = id;
       this.relayout();
     }
@@ -1357,6 +1393,7 @@ export class KitchenScene implements Scene {
     }
     if (OutingCurtain.busy) return;
     AudioManager.play('outing');
+    TutorialManager.advanceIf(TutorialStep.GO_OUT);
     OutingCurtain.play({
       paths: destinationBootPaths(),
       then: () => SceneManager.switchTo('destinations'),

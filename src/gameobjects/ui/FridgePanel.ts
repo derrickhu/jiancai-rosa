@@ -27,6 +27,9 @@ import {
   whenTextureReady,
 } from '@/utils/assets';
 import { inspectFromFridge, makeItemInspectCard } from './ItemInspectCard';
+import { TutorialManager, TutorialStep } from '@/managers/TutorialManager';
+import { TutorialOverlay, stageRectOf } from './TutorialOverlay';
+import { TutorialGuard } from '@/systems/TutorialGuard';
 
 const BG = 'subpkg_kitchen/ui_fridge_panel.png';
 
@@ -58,6 +61,8 @@ export class FridgePanel extends PIXI.Container {
   private _tab: FridgeKind = 'food';
   private _root = new PIXI.Container();
   private _inspectUid: string | null = null;
+  private _tutSlot: PIXI.Container | null = null;
+  private _sellBtn: PIXI.Container | null = null;
   private _inspectQty = 1;
   private _btnSlices = new Map<string, { left: PIXI.Texture; mid: PIXI.Texture; right: PIXI.Texture }>();
   private _scroller: VerticalScroller;
@@ -92,16 +97,28 @@ export class FridgePanel extends PIXI.Container {
     this._inspectQty = 1;
     this.relayout();
     OverlayManager.bringToFront();
+    if (this._isOpen) TutorialOverlay.register('fridge', () => this.tutorialRect());
   }
 
   close(silent = false): void {
+    if (!silent && TutorialGuard.block('closeFridge')) return;
     if (this._isOpen && !silent) AudioManager.play('ui_close');
     this._isOpen = false;
     this.visible = false;
     this._scroller.disable();
+    TutorialOverlay.unregister('fridge');
+  }
+
+  tutorialRect(): { x: number; y: number; w: number; h: number; r?: number } | null {
+    if (!this._isOpen || !TutorialManager.isActive) return null;
+    if (TutorialManager.isStep(TutorialStep.INSPECT_DISH)) return stageRectOf(this._tutSlot, 6);
+    if (TutorialManager.isStep(TutorialStep.SELL_DISH)) return stageRectOf(this._sellBtn, 6);
+    return null;
   }
 
   relayout(): void {
+    this._tutSlot = null;
+    this._sellBtn = null;
     this._root.removeChildren();
     this.prune();
     const w = Game.designWidth;
@@ -111,7 +128,10 @@ export class FridgePanel extends PIXI.Container {
     fillRect(dim, 0, 0, w, h, 0x000000);
     dim.alpha = 0.46;
     dim.eventMode = 'static';
-    dim.on('pointertap', () => this.close());
+    dim.on('pointertap', () => {
+      if (TutorialGuard.block('closeFridge')) return;
+      this.close();
+    });
     this._root.addChild(dim);
 
     const save = KitchenManager.save;
@@ -201,7 +221,10 @@ export class FridgePanel extends PIXI.Container {
     const closeW = Math.min(220, cw * 0.55);
     const close = this._chip('关门', closeW, btnH, 'wood');
     close.position.set(midX - closeW / 2, btnY);
-    close.on('pointertap', () => this.close());
+    close.on('pointertap', () => {
+      if (TutorialGuard.block('closeFridge')) return;
+      this.close();
+    });
     shell.addChild(close);
 
     const inspecting = KitchenManager.save.fridge.find((it) => it.uid === this._inspectUid);
@@ -217,29 +240,37 @@ export class FridgePanel extends PIXI.Container {
           this.relayout();
         },
         onClose: () => {
+          if (TutorialGuard.block('closeFridge')) return;
           this._inspectUid = null;
           this._inspectQty = 1;
           this.relayout();
         },
         onSell: () => {
+          if (TutorialGuard.block('sellDish')) return;
           if (!KitchenManager.sellQty(inspecting.uid, this._inspectQty)) return;
+          TutorialManager.onSold(inspecting.uid);
           this._inspectUid = null;
           this._inspectQty = 1;
           this.relayout();
           this.onChange?.();
         },
         onEat: () => {
+          if (TutorialGuard.block('eatDish')) return;
           if (!KitchenManager.eat(inspecting.uid, this._inspectQty)) return;
           this._inspectUid = null;
           this._inspectQty = 1;
           this.relayout();
           this.onChange?.();
         },
+        onSellBtn: (btn) => {
+          this._sellBtn = btn;
+        },
         onReady: () => {
           if (this._isOpen) this.relayout();
         },
       }));
     }
+    TutorialOverlay.refresh();
   }
 
   private _fridgeBox(screenW: number, screenH: number): { x: number; y: number; w: number; h: number } {
@@ -410,6 +441,10 @@ export class FridgePanel extends PIXI.Container {
     const root = this._chip(`${label}  ${count}`, width, 40, on ? 'on' : 'off');
     root.position.set(x, y);
     root.on('pointertap', () => {
+      if (TutorialManager.isActive && tab !== 'dish') {
+        TutorialGuard.block('fridgeTab');
+        return;
+      }
       this._tab = tab;
       this._scroller.reset();
       this._inspectUid = null;
@@ -465,10 +500,24 @@ export class FridgePanel extends PIXI.Container {
     root.hitArea = new PIXI.Rectangle(x, y, size, size);
     root.on('pointertap', () => {
       if (this._scroller.moved) return;
+      if (TutorialManager.isActive) {
+        const want = TutorialManager.dishUid;
+        if (want && it.uid !== want) {
+          TutorialGuard.block('inspectDish');
+          return;
+        }
+        if (it.kind !== 'dish' || it.defId !== 'stirfry') {
+          TutorialGuard.block('inspectDish');
+          return;
+        }
+      }
+      if (TutorialGuard.block('inspectDish')) return;
       this._inspectUid = it.uid;
       this._inspectQty = 1;
+      TutorialManager.advanceIf(TutorialStep.INSPECT_DISH);
       this.relayout();
     });
+    if (it.kind === 'dish' && it.defId === 'stirfry') this._tutSlot = root;
     return root;
   }
 }

@@ -36,6 +36,9 @@ import {
   makeQtyStepper,
   type ItemInspectView,
 } from './ItemInspectCard';
+import { TutorialManager, TutorialStep } from '@/managers/TutorialManager';
+import { TutorialOverlay, stageRectOf } from './TutorialOverlay';
+import { TutorialGuard } from '@/systems/TutorialGuard';
 
 const BG = 'subpkg_kitchen/ui_cook_panel.png';
 const INK = 0x2A2018;
@@ -63,6 +66,7 @@ export class CookPanel extends PIXI.Container {
   private _inspect: ItemInspectView | null = null;
   private _btnSlices = new Map<string, { left: PIXI.Texture; mid: PIXI.Texture; right: PIXI.Texture }>();
   private _scroller: VerticalScroller;
+  private _cookBtn: PIXI.Container | null = null;
 
   constructor() {
     super();
@@ -87,16 +91,25 @@ export class CookPanel extends PIXI.Container {
     this._scroller.enable();
     this.relayout();
     OverlayManager.bringToFront();
+    if (this._isOpen) TutorialOverlay.register('cook', () => this.tutorialCookRect());
   }
 
   close(silent = false): void {
+    if (!silent && TutorialGuard.block('closeCook')) return;
     if (this._isOpen && !silent) AudioManager.play('ui_close');
     this._isOpen = false;
     this.visible = false;
     this._scroller.disable();
+    TutorialOverlay.unregister('cook');
+  }
+
+  tutorialCookRect(): { x: number; y: number; w: number; h: number; r?: number } | null {
+    if (!TutorialManager.isStep(TutorialStep.COOK_DISH) || !this._isOpen) return null;
+    return stageRectOf(this._cookBtn, 6);
   }
 
   relayout(): void {
+    this._cookBtn = null;
     this._root.removeChildren();
     const w = Game.designWidth;
     const h = Game.logicHeight;
@@ -105,7 +118,10 @@ export class CookPanel extends PIXI.Container {
     fillRect(dim, 0, 0, w, h, 0x000000);
     dim.alpha = 0.46;
     dim.eventMode = 'static';
-    dim.on('pointertap', () => this.close());
+    dim.on('pointertap', () => {
+      if (TutorialGuard.block('closeCook')) return;
+      this.close();
+    });
     this._root.addChild(dim);
 
     const box = this._boardBox(w, h);
@@ -136,6 +152,7 @@ export class CookPanel extends PIXI.Container {
         },
       }));
     }
+    TutorialOverlay.refresh();
   }
 
   private _boardBox(screenW: number, screenH: number): { x: number; y: number; w: number; h: number } {
@@ -235,6 +252,10 @@ export class CookPanel extends PIXI.Container {
       row.position.set(x + 6, cy);
       row.on('pointertap', () => {
         if (this._scroller.moved) return;
+        if (TutorialManager.isActive && recipe.id !== 'stirfry') {
+          TutorialGuard.block('pickRecipe');
+          return;
+        }
         if (this._pick !== recipe.id) this._cookQty = 1;
         this._pick = recipe.id;
         this.relayout();
@@ -388,6 +409,7 @@ export class CookPanel extends PIXI.Container {
     }
     const btn = this._cookAction(tw - 8, btnH, ready);
     btn.position.set(tx + 4, btnY);
+    this._cookBtn = btn;
     root.addChild(btn);
     return root;
   }
@@ -434,7 +456,18 @@ export class CookPanel extends PIXI.Container {
       root.cursor = 'pointer';
       root.alpha = 1;
       root.on('pointertap', () => {
+        if (TutorialManager.isActive && this._pick !== 'stirfry') {
+          TutorialGuard.block('cook');
+          return;
+        }
+        if (TutorialGuard.block('cook')) return;
+        const step = TutorialManager.currentStep;
         KitchenManager.cook(this._pick, this._cookQty);
+        TutorialManager.onCooked(this._pick);
+        if (TutorialManager.currentStep !== step) {
+          this.close(true);
+          return;
+        }
         if (this._isOpen) this.relayout();
       });
     } else {
