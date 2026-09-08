@@ -21,9 +21,13 @@ import {
   type Rarity,
 } from '@/sim';
 import { inspectFromFood, makeItemInspectCard } from './ItemInspectCard';
+import { TutorialOverlay, worldRectToStage, type SpotlightRect } from './TutorialOverlay';
+import { TutorialManager, TutorialStep } from '@/managers/TutorialManager';
+import { TutorialGuard } from '@/systems/TutorialGuard';
 import { drawRarityFrame, fillRect, makeLabel, makeSlicedButton } from '@/utils/ui';
 import { VerticalScroller } from '@/utils/scroll';
-import { fitSpriteInBox, gameTexture, isTextureReady, itemTexture, whenTextureReady } from '@/utils/assets';
+import { fitSpriteInBox, gameTexture, isTextureReady, itemTexture, watchTextures } from '@/utils/assets';
+import { basketPanelPaths } from '@/utils/panelAssets';
 
 const BG = 'subpkg_kitchen/ui_basket_panel.png';
 const TITLE_FONT = 'Songti SC, STSong, PingFang SC, serif';
@@ -51,10 +55,12 @@ export class BasketPanel extends PIXI.Container {
   private _float = new PIXI.Container();
   private _unsub: (() => void) | null = null;
   private _grid = { x: 0, y: 0, cell: 56, cols: 6, rows: 5 };
+  private _closeBtn: PIXI.Container | null = null;
   private _stageRect = { x: 0, y: 0, w: 0, h: 0 };
   private _scroller: VerticalScroller;
   private _stageScroller: VerticalScroller;
   private _unlocking = false;
+  private _paintQueued = false;
   private _drag: {
     uid: string;
     from: DragFrom;
@@ -119,11 +125,17 @@ export class BasketPanel extends PIXI.Container {
     EventBus.on(EV.basketChanged, handler);
     this._unsub = () => EventBus.off(EV.basketChanged, handler);
     OverlayManager.bringToFront();
+    TutorialOverlay.register('basket', () => this.tutorialRect());
+    this._warm();
   }
 
   close(silent = false): void {
+    if (!silent && TutorialGuard.block('closeBasket')) return;
     if (this._isOpen && !silent) AudioManager.play('ui_close');
+    if (!silent) TutorialManager.advanceIf(TutorialStep.CLOSE_BASKET);
+    TutorialOverlay.unregister('basket');
     this._isOpen = false;
+    TutorialOverlay.refresh();
     this.visible = false;
     this.placingUid = null;
     this._inspectUid = null;
@@ -142,7 +154,71 @@ export class BasketPanel extends PIXI.Container {
     try { Platform.api?.offTouchCancel?.(this._onWxEnd); } catch (_) {}
   }
 
+  tutorialRect(): SpotlightRect | null {
+    if (!this._isOpen || !TutorialManager.isActive) return null;
+    if (TutorialManager.isStep(TutorialStep.BASKET_DRY)) return this._zoneRect('dry');
+    if (TutorialManager.isStep(TutorialStep.BASKET_WET)) return this._zoneRect('wet');
+    if (TutorialManager.isStep(TutorialStep.CLOSE_BASKET)) return worldRectToStage(this, this._closeLocal(), 6);
+    return null;
+  }
+
+  private _closeLocal(): { x: number; y: number; w: number; h: number } {
+    if (this._closeBtn && !this._closeBtn.destroyed) {
+      const b = this._closeBtn.getBounds();
+      const tl = this.toLocal({ x: b.x, y: b.y });
+      return { x: tl.x, y: tl.y, w: b.width, h: b.height };
+    }
+    return { x: 0, y: 0, w: 0, h: 0 };
+  }
+
+  private _zoneRect(kind: 'dry' | 'wet'): SpotlightRect | null {
+    const basket = RunManager.basket;
+    let minX = 99;
+    let minY = 99;
+    let maxX = -1;
+    let maxY = -1;
+    for (let y = 0; y < basket.rows; y++) {
+      for (let x = 0; x < basket.cols; x++) {
+        if (basketCellKind(basket, x, y) !== kind) continue;
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
+    }
+    if (maxX < 0) return null;
+    const { x, cell } = this._grid;
+    return worldRectToStage(this, {
+      x: x + minX * cell,
+      y: this._gridTop() + minY * cell,
+      w: (maxX - minX + 1) * cell,
+      h: (maxY - minY + 1) * cell,
+    }, 8);
+  }
+
+  private _warm(): void {
+    const ids = [
+      ...RunManager.basket.items.map((it) => it.defId),
+      ...RunManager.stagingItems().map((it) => it.defId),
+    ];
+    watchTextures(basketPanelPaths(ids), this._scheduleRelayout);
+  }
+
+  private _scheduleRelayout = (): void => {
+    if (!this._isOpen || this._drag || this._paintQueued) return;
+    this._paintQueued = true;
+    const later = typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame
+      : (cb: () => void) => setTimeout(cb, 0);
+    later(() => {
+      this._paintQueued = false;
+      if (this._isOpen && !this._drag) this.relayout();
+    });
+  };
+
   relayout(): void {
+    this._warm();
+    this._closeBtn = null;
     this._root.removeChildren();
     if (!this._drag) this._float.removeChildren();
     const w = Game.designWidth;
@@ -238,6 +314,7 @@ export class BasketPanel extends PIXI.Container {
     });
     close.position.set(bx + (btnW + gap) * 2, btnY);
     close.on('pointertap', () => this.close());
+    this._closeBtn = close;
     shell.addChild(close);
 
     const inspecting = this._inspectUid ? this._foodByUid(this._inspectUid) : null;
@@ -263,6 +340,7 @@ export class BasketPanel extends PIXI.Container {
         }));
       }
     }
+    TutorialOverlay.refresh();
   }
 
   private _foodByUid(uid: string): { defId: string; quality: Quality; inspected: boolean } | null {
@@ -287,9 +365,6 @@ export class BasketPanel extends PIXI.Container {
   }
 
   private _paintBg(host: PIXI.Container, width: number, height: number): void {
-    whenTextureReady(BG, () => {
-      if (this._isOpen && !this._drag) this.relayout();
-    });
     const tex = gameTexture(BG);
     if (isTextureReady(tex)) {
       const sp = new PIXI.Sprite(tex);
@@ -534,12 +609,15 @@ export class BasketPanel extends PIXI.Container {
     const bg = new PIXI.Graphics();
     this._paintItemCell(bg, opts.w, opts.h, opts.rarity, on);
     root.addChild(bg);
-    const icon = new PIXI.Sprite(itemTexture(opts.defId));
-    fitSpriteInBox(icon, opts.w - 8, opts.h - 8);
-    icon.anchor.set(0.5);
-    icon.position.set(opts.w / 2, opts.h / 2);
-    icon.eventMode = 'none';
-    root.addChild(icon);
+    const tex = itemTexture(opts.defId);
+    if (isTextureReady(tex)) {
+      const icon = new PIXI.Sprite(tex);
+      fitSpriteInBox(icon, opts.w - 8, opts.h - 8);
+      icon.anchor.set(0.5);
+      icon.position.set(opts.w / 2, opts.h / 2);
+      icon.eventMode = 'none';
+      root.addChild(icon);
+    }
     root.position.set(opts.x, opts.y);
     this._bindDrag(root, opts.uid, opts.defId, opts.from, opts.w, opts.h, opts.rot);
     return root;
@@ -683,11 +761,14 @@ export class BasketPanel extends PIXI.Container {
     const bg = new PIXI.Graphics();
     this._paintItemCell(bg, bw, bh, def.rarity, false);
     wrap.addChild(bg);
-    const icon = new PIXI.Sprite(itemTexture(drag.defId));
-    fitSpriteInBox(icon, bw - 8, bh - 8);
-    icon.anchor.set(0.5);
-    icon.position.set(bw / 2, bh / 2);
-    wrap.addChild(icon);
+    const tex = itemTexture(drag.defId);
+    if (isTextureReady(tex)) {
+      const icon = new PIXI.Sprite(tex);
+      fitSpriteInBox(icon, bw - 8, bh - 8);
+      icon.anchor.set(0.5);
+      icon.position.set(bw / 2, bh / 2);
+      wrap.addChild(icon);
+    }
     this._float.addChild(wrap);
   }
 

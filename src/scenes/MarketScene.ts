@@ -37,7 +37,7 @@ import type { Scene } from '@/core/SceneManager';
 import type { ExtractResult } from '@/sim';
 import { isRummageNode } from '@/sim';
 import { TutorialManager, TutorialStep } from '@/managers/TutorialManager';
-import { TutorialOverlay, stageRectOf } from '@/gameobjects/ui/TutorialOverlay';
+import { TutorialOverlay, stageRectOf, type TutorialTarget } from '@/gameobjects/ui/TutorialOverlay';
 import { TutorialGuard } from '@/systems/TutorialGuard';
 
 const REVEAL_FACE = 188;
@@ -59,8 +59,9 @@ export class MarketScene implements Scene {
   private _result = new ResultPanel();
   private _onRun = () => this._sync();
   private _onExtract = (result: ExtractResult) => {
+    this._basket.close(true);
     this._result.open(result);
-    TutorialManager.advanceIf(TutorialStep.GO_HOME);
+    TutorialManager.advanceTo(TutorialStep.WAIT_RESULT);
     TutorialOverlay.refresh();
   };
   private _bodyKey = '';
@@ -89,7 +90,7 @@ export class MarketScene implements Scene {
   private _tutPile: PIXI.Container | null = null;
   private _tutToken: PIXI.Container | null = null;
   private _leaveBtn: PIXI.Container | null = null;
-  private _basketPeekTimer = 0;
+  private _backBtn: PIXI.Container | null = null;
 
   constructor() {
     this.container.addChild(this._bg);
@@ -129,7 +130,6 @@ export class MarketScene implements Scene {
     this._clearDusk();
     this._basket.close(true);
     this._event.close(true);
-    if (this._basketPeekTimer) globalThis.clearTimeout?.(this._basketPeekTimer);
     TutorialOverlay.unregister('market');
   }
 
@@ -137,16 +137,54 @@ export class MarketScene implements Scene {
     this._sync(true);
   }
 
-  tutorialRect(): { x: number; y: number; w: number; h: number; r?: number } | null {
+  tutorialRect(): TutorialTarget | null {
     if (!TutorialManager.isActive) return null;
     const step = TutorialManager.currentStep;
-    if (step === TutorialStep.CLICK_CARD) return stageRectOf(this._tutCard, 6);
-    if (step === TutorialStep.CLICK_PILE) return stageRectOf(this._tutPile, 8);
-    if (step === TutorialStep.TAKE_LOOT) return stageRectOf(this._tutToken, 8);
-    if (step === TutorialStep.OPEN_BASKET) return stageRectOf(this._basketBtn, 6);
-    if (step === TutorialStep.GO_HOME) return stageRectOf(this._leaveBtn, 6);
-    if (step === TutorialStep.WAIT_RESULT) return this._result.tutorialBodyRect();
+    const map = RunManager.run?.mode === 'map';
+    const stall = RunManager.run?.mode === 'rummage' || RunManager.run?.mode === 'play';
+    const top = map ? this._hudFloor() + 8 : undefined;
+    const speech = map ? 'top' as const : stall ? 'bottom' as const : undefined;
+
+    if (step === TutorialStep.CLICK_CARD) return this._aim(this._tutCard, 6, { speech, speechY: top });
+    if (step === TutorialStep.CLICK_PILE) return this._aim(this._tutPile, 8, { speech: 'bottom' });
+    if (step === TutorialStep.TAKE_LOOT) return this._aim(this._tutToken, 8, { speech: 'bottom' });
+    if (step === TutorialStep.OPEN_BASKET) return this._aim(this._basketBtn, 6, { speech, speechY: top });
+    if (step === TutorialStep.RETURN_MAP) return this._aim(this._backBtn, 6, { speech: 'bottom' });
+    if (step === TutorialStep.GO_HOME) return this._aim(this._leaveBtn, 6, { speech, speechY: top });
+    if (step === TutorialStep.FREE_WALK) {
+      const stallCopy = {
+        title: '捡进篮',
+        body: '点桌上翻出来的菜。\n坏了的不能要，进篮后还能再抽。',
+      };
+      if (stall) {
+        if (this._basket._isOpen) {
+          return { dim: false, speech: 'bottom', ...stallCopy };
+        }
+        const loot = this._aim(this._tutToken, 8, { dim: false, speech: 'bottom' });
+        if (loot) return { ...loot, ...stallCopy };
+        return { dim: false, speech: 'bottom', ...stallCopy };
+      }
+      return { dim: false, speech: 'top', speechY: top };
+    }
     return null;
+  }
+
+  private _aim(
+    obj: PIXI.Container | null,
+    pad: number,
+    extra: Pick<TutorialTarget, 'speech' | 'speechY' | 'dim'> = {},
+  ): TutorialTarget | null {
+    const rect = stageRectOf(obj, pad);
+    if (!rect) return extra.speech || extra.speechY != null || extra.dim === false
+      ? { dim: extra.dim, speech: extra.speech, speechY: extra.speechY }
+      : null;
+    return {
+      holes: [rect],
+      fingerAt: { x: rect.x + rect.w * 0.5, y: rect.y + rect.h * 0.5 },
+      speech: extra.speech,
+      speechY: extra.speechY,
+      dim: extra.dim,
+    };
   }
 
   private _sync(force = false): void {
@@ -215,6 +253,7 @@ export class MarketScene implements Scene {
   private _drawHud(): void {
     this._res.removeChildren();
     this._basketBtn = null;
+    this._backBtn = null;
     const run = RunManager.run;
     const w = Game.designWidth;
     if (!run) {
@@ -265,13 +304,7 @@ export class MarketScene implements Scene {
     this._basketBtn.on('pointertap', () => {
       if (TutorialGuard.block('openBasket')) return;
       this._basket.open();
-      if (TutorialManager.isStep(TutorialStep.OPEN_BASKET)) {
-        if (this._basketPeekTimer) globalThis.clearTimeout?.(this._basketPeekTimer);
-        this._basketPeekTimer = globalThis.setTimeout(() => {
-          this._basket.close(true);
-          TutorialManager.advanceTo(TutorialStep.GO_HOME);
-        }, 800) as unknown as number;
-      }
+      TutorialManager.advanceIf(TutorialStep.OPEN_BASKET);
     });
     this._res.addChild(this._basketBtn);
 
@@ -281,16 +314,21 @@ export class MarketScene implements Scene {
       const back = this._roundIconBtn(
         HUD_ICON.back,
         '返回菜场',
-        () => (run.mode === 'play' ? RunManager.leavePlay() : RunManager.leaveStall()),
+        () => {
+          if (TutorialGuard.block('leaveStall')) return;
+          if (run.mode === 'play') RunManager.leavePlay();
+          else RunManager.leaveStall();
+          TutorialManager.advanceIf(TutorialStep.RETURN_MAP);
+        },
         redraw,
       );
       back.position.set(16, y);
+      this._backBtn = back;
       this._res.addChild(back);
     }
     const leave = this._roundIconBtn(HUD_ICON.leave, '回家', () => {
       if (TutorialGuard.block('extract')) return;
       RunManager.extract(true);
-      TutorialManager.advanceIf(TutorialStep.GO_HOME);
     }, redraw);
     leave.position.set(w - 16 - side, y);
     this._leaveBtn = leave;
@@ -542,7 +580,7 @@ export class MarketScene implements Scene {
 
   /** 绕过去也是走一步：新的一排就是当前所有卡的下一层，动画照用。 */
   private _walkBypass(): void {
-    if (TutorialManager.isActive) {
+    if (TutorialManager.isActive && !TutorialManager.isStep(TutorialStep.FREE_WALK)) {
       TutorialGuard.block('walkOtherCard');
       return;
     }
@@ -867,7 +905,11 @@ export class MarketScene implements Scene {
     const placed = this._packPile(nodeId, RunManager.currentPile(), table);
     placed.forEach((slot) => {
       const token = this._pileToken(slot.item, slot.x, slot.y, slot.w, slot.h);
-      if (slot.item.defId === 'caitai' || !this._tutToken) this._tutToken = token;
+      if (slot.item.quality !== 'rotten') {
+        if (!this._tutToken || slot.item.defId === 'caitai') this._tutToken = token;
+      } else if (!this._tutToken) {
+        this._tutToken = token;
+      }
       const flight = this._flying.get(slot.item.uid);
       if (flight) {
         token.alpha = 0;

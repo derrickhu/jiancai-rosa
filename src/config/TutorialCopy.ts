@@ -3,30 +3,21 @@ import { TutorialStep } from '@/managers/TutorialManager';
 export const TUTORIAL_ASSETS = {
   hand: 'subpkg_kitchen/tutorial_hand.png',
   cabbage: 'subpkg_kitchen/tutorial_cabbage.png',
-  paper: 'subpkg_kitchen/tutorial_paper.png',
-  intro1: 'subpkg_kitchen/tutorial_intro_1.jpg',
-  intro2: 'subpkg_kitchen/tutorial_intro_2.jpg',
 } as const;
 
 export interface TutorialIntroPage {
-  image: string;
   title: string;
   body: string;
-  button: string;
 }
 
 export const TUTORIAL_INTRO: TutorialIntroPage[] = [
   {
-    image: TUTORIAL_ASSETS.intro1,
     title: '天黑了',
     body: '菜场还在收摊。\n地上漏的菜，不捡可惜。',
-    button: '下一页',
   },
   {
-    image: TUTORIAL_ASSETS.intro2,
     title: '跟我走一趟',
     body: '出门翻堆，装进篮，\n回家炒一盘。',
-    button: '开始捡菜',
   },
 ];
 
@@ -52,16 +43,32 @@ export const TUTORIAL_COPY: Record<number, { title: string; body: string }> = {
     body: '桌上那棵菜苔，\n点一下就进篮。',
   },
   [TutorialStep.OPEN_BASKET]: {
-    title: '看一眼篮',
-    body: '顶上那颗菜篮。\n点开，确认菜在里面。',
+    title: '看看菜篮',
+    body: '顶上那颗菜篮。\n点开，我告诉你怎么装。',
   },
-  [TutorialStep.GO_HOME]: {
-    title: '可以回家了',
-    body: '够今晚炒一盘。\n点回家。',
+  [TutorialStep.BASKET_DRY]: {
+    title: '干区',
+    body: '浅色格子放干货。\n菜苔、豆腐这类不怕干。\n点这里看下一段。',
+  },
+  [TutorialStep.BASKET_WET]: {
+    title: '湿区',
+    body: '青格子放湿货。\n鱼、叶菜要垫湿，才不容易坏。\n点这里继续。',
+  },
+  [TutorialStep.CLOSE_BASKET]: {
+    title: '关好篮',
+    body: '记住干湿分开。\n点「关好」，回菜场接着走。',
+  },
+  [TutorialStep.RETURN_MAP]: {
+    title: '回菜场',
+    body: '点「返回菜场」。\n先别回家，路上还能再翻。',
+  },
+  [TutorialStep.FREE_WALK]: {
+    title: '自己挑路',
+    body: '脚下的卡你自己点。\n天黑或点回家，都能收摊。',
   },
   [TutorialStep.WAIT_RESULT]: {
-    title: '收摊账',
-    body: '点空白处，\n把这页翻过去。',
+    title: '今晚收成',
+    body: '这些是带回来的菜。\n点空白，回家。',
   },
   [TutorialStep.COOK_TABLE]: {
     title: '开火',
@@ -69,7 +76,7 @@ export const TUTORIAL_COPY: Record<number, { title: string; body: string }> = {
   },
   [TutorialStep.COOK_DISH]: {
     title: '下锅',
-    body: '菜谱已经是炒菜苔。\n点「烹饪」。',
+    body: '左边是炒菜苔。\n材料够了，点「烹饪」。',
   },
   [TutorialStep.OPEN_FRIDGE]: {
     title: '出锅了',
@@ -81,7 +88,11 @@ export const TUTORIAL_COPY: Record<number, { title: string; body: string }> = {
   },
   [TutorialStep.SELL_DISH]: {
     title: '卖掉',
-    body: '点「卖掉」。\n今晚第一笔钱。',
+    body: '点右边「卖掉」。\n今晚第一笔钱。',
+  },
+  [TutorialStep.HINT_DOOR]: {
+    title: '再出门',
+    body: '礼金到了。\n门还在那儿，想翻就再去。',
   },
 };
 
@@ -93,7 +104,10 @@ export const TUTORIAL_DENY = {
   pileFirst: '先抽遮挡堆',
   takeCaitai: '先把桌上的菜苔捡进篮',
   basketFirst: '先打开菜篮看一眼',
-  goHome: '先点回家',
+  closeBasket: '先把篮关好',
+  returnMap: '先点返回菜场',
+  extractEarly: '先回菜场走走，再收摊',
+  goHome: '点空白回家',
   cookOnly: '这趟只炒菜苔',
   fridgeDish: '先点刚炒好的那盘',
   sellOnly: '这盘先卖掉',

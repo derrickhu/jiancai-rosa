@@ -15,11 +15,11 @@ import { MarketScene } from '@/scenes/MarketScene';
 import { SpecialMarketScene } from '@/scenes/SpecialMarketScene';
 import { AudioManager } from '@/core/AudioManager';
 import { CdnAssetService } from '@/core/CdnAssetService';
-import { preloadTextures } from '@/utils/assets';
-import { kitchenBootPaths } from '@/utils/bootAssets';
+import { gameTexture, isTextureFailed, isTextureReady, preloadTextures } from '@/utils/assets';
+import { kitchenBootPaths, kitchenCriticalPaths } from '@/utils/bootAssets';
 
 const BOOT_HOLD_MS = 480;
-const BOOT_MAX_MS = 12000;
+const BOOT_HANG_MS = 40000;
 
 function handleCloudSaveReload(info: CloudImportInfo): void {
   console.warn(
@@ -73,20 +73,29 @@ async function main(): Promise<void> {
   };
 
   await CdnAssetService.fetchManifest();
-  const paths = kitchenBootPaths(SaveManager.data);
+  const save = SaveManager.data;
+  const paths = kitchenBootPaths(save);
+  const critical = kitchenCriticalPaths(save);
   const loaded = preloadTextures(paths, (done, total) => {
-    loading.setProgress(done / Math.max(1, total) * 0.85);
+    loading.setProgress(0.08 + done / Math.max(1, total) * 0.82);
   });
-  const audioReady = AudioManager.preloadSfx().then(() => {
-    loading.setProgress(1);
+  const audioReady = AudioManager.preloadSfx();
+  const hang = new Promise<void>((resolve) => {
+    globalThis.setTimeout(resolve, BOOT_HANG_MS);
   });
-  const timeout = new Promise<void>((resolve) => {
-    globalThis.setTimeout(resolve, BOOT_MAX_MS);
-  });
-  void Promise.race([Promise.all([loaded, audioReady]), timeout]).then(() => {
-    const wait = Math.max(0, BOOT_HOLD_MS - (Date.now() - started));
-    globalThis.setTimeout(enterKitchen, wait);
-  });
+  await Promise.race([Promise.all([loaded, audioReady]), hang]);
+  const deadline = Date.now() + 8000;
+  while (Date.now() < deadline) {
+    const ready = critical.every((path) => {
+      const tex = gameTexture(path);
+      return isTextureReady(tex) || isTextureFailed(path);
+    });
+    if (ready) break;
+    await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 200));
+  }
+  loading.setProgress(1);
+  const wait = Math.max(0, BOOT_HOLD_MS - (Date.now() - started));
+  globalThis.setTimeout(enterKitchen, wait);
 
   Platform.onHide(() => {
     SaveManager.flush();

@@ -3,6 +3,7 @@ import { EventBus } from '@/core/EventBus';
 import { Platform } from '@/core/PlatformService';
 import { EV } from '@/config/events';
 import { warmupRewardedAds } from '@/services/RewardedAdService';
+import { CloudSyncManager } from './CloudSyncManager';
 import { SaveManager } from './SaveManager';
 import {
   RECIPES,
@@ -613,6 +614,14 @@ class KitchenManagerClass {
     SaveManager.replace({ ...this.save, tutorialStep: step });
   }
 
+  grantCoins(n: number, toast?: string): void {
+    const money = this.save.money + Math.max(0, Math.floor(n));
+    SaveManager.replace({ ...this.save, money });
+    this.emit();
+    if (n > 0) AudioManager.play('coin_gain');
+    if (toast) Platform.showToast(toast, 'success');
+  }
+
   gmAddMoney(n = 100): void {
     const money = this.save.money + n;
     SaveManager.replace({ ...this.save, money });
@@ -620,7 +629,7 @@ class KitchenManagerClass {
     Platform.showToast(`金币 +${n} · 现有 ${money}`);
   }
 
-  /** 清掉进度，回到开局。云存档会随后被这局空档盖掉。 */
+  /** 清掉进度，回到开局。云存档和账号新手标记会随后被这局空档盖掉。 */
   gmResetProgress(): void {
     this._cookFx = null;
     this._unlockQueue = [];
@@ -628,8 +637,10 @@ class KitchenManagerClass {
     this.pendingHaul = null;
     this.pendingOffer = null;
     this._visitOfferDone = false;
+    CloudSyncManager.noteTutorialReset();
     SaveManager.replace(defaultSave());
     this.emit();
+    void CloudSyncManager.flushNow('gm-reset');
     Platform.showToast('已清档，从头玩', 'success');
   }
 

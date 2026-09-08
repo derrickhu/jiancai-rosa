@@ -13,6 +13,7 @@ import {
   BACKEND_LOGIN_PATH,
   BACKEND_PULL_PATH,
   BACKEND_PUSH_PATH,
+  BACKEND_TUTORIAL_COMPLETE_PATH,
   BACKEND_REQUEST_TIMEOUT_MS,
   BACKEND_TOKEN_KEY,
 } from '@/config/CloudConfig';
@@ -27,6 +28,8 @@ export interface BackendPullResult {
   payload: Record<string, string>;
   payloadKeys: string[];
   clientFingerprint?: string;
+  tutorialCompleted?: boolean;
+  tutorialCompletedAt?: number;
 }
 
 export interface BackendPushPayload {
@@ -36,6 +39,8 @@ export interface BackendPushPayload {
   baseRemoteUpdatedAt: number;
   clientFingerprint: string;
   payload: Record<string, string>;
+  tutorialCompleted?: boolean;
+  resetTutorial?: boolean;
 }
 
 export interface BackendPushResult {
@@ -44,6 +49,14 @@ export interface BackendPushResult {
   savedAt: number;
   mode: 'insert' | 'update';
   sizeBytes: number;
+  tutorialCompleted?: boolean;
+}
+
+export interface BackendTutorialCompleteResult {
+  userId: string;
+  tutorialCompleted: boolean;
+  tutorialCompletedAt?: number;
+  mode: 'insert' | 'update';
 }
 
 export interface GameClubDataItem {
@@ -122,6 +135,10 @@ class BackendServiceClass {
 
   async pushSave(snapshot: BackendPushPayload): Promise<BackendPushResult> {
     return this._callWithAuth<BackendPushResult>(BACKEND_PUSH_PATH, snapshot);
+  }
+
+  async completeTutorial(): Promise<BackendTutorialCompleteResult> {
+    return this._callWithAuth<BackendTutorialCompleteResult>(BACKEND_TUTORIAL_COMPLETE_PATH, {});
   }
 
   decryptGameClubData(payload: { encryptedData: string; iv: string }): Promise<GameClubDecryptedData> {

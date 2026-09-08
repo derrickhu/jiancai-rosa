@@ -1,5 +1,6 @@
 import { SAVE_KEY } from '@/config/CloudConfig';
 import { PersistService } from '@/core/PersistService';
+import { CloudSyncManager } from '@/managers/CloudSyncManager';
 import { decayFridge, normalizeSave, regenStamina, type KitchenSave } from '@/sim/kitchen';
 
 class SaveManagerClass {
@@ -11,6 +12,9 @@ class SaveManagerClass {
     let data = normalizeSave(raw && raw.version === 1 ? raw : null, now);
     data = regenStamina(data, now);
     data = decayFridge(data, now);
+    if (CloudSyncManager.accountTutorialCompleted && data.tutorialStep < 99) {
+      data = { ...data, tutorialStep: 99 };
+    }
     this.data = data;
     this.flush();
     return this.data;

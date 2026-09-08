@@ -306,7 +306,7 @@ export class KitchenScene implements Scene {
   tutorialRect(): { x: number; y: number; w: number; h: number; r?: number } | null {
     if (!TutorialManager.isActive) return null;
     const step = TutorialManager.currentStep;
-    if (step === TutorialStep.GO_OUT) {
+    if (step === TutorialStep.GO_OUT || step === TutorialStep.HINT_DOOR) {
       return worldRectToStage(this._world, this._spotRects.get('door') ?? { x: 20, y: 220, w: 160, h: 280 }, 12);
     }
     if (step === TutorialStep.COOK_TABLE) {
@@ -676,10 +676,6 @@ export class KitchenScene implements Scene {
       spr.position.set(size / 2, size / 2);
       spr.eventMode = 'none';
       root.addChild(spr);
-    } else {
-      const g = new PIXI.Graphics();
-      fillRect(g, 4, 4, size - 8, size - 8, 0xC46A3A, 18);
-      root.addChild(g);
     }
     const chip = new PIXI.Graphics();
     fillRect(chip, 2, size - 2, size - 4, 26, 0xFFF8F0, 12);
@@ -714,10 +710,6 @@ export class KitchenScene implements Scene {
       spr.position.set(size / 2, size / 2);
       spr.eventMode = 'none';
       root.addChild(spr);
-    } else {
-      const g = new PIXI.Graphics();
-      fillRect(g, 4, 4, size - 8, size - 8, 0xC46A3A, 18);
-      root.addChild(g);
     }
     const chip = new PIXI.Graphics();
     fillRect(chip, 8, size - 2, size - 16, 26, 0xFFF8F0, 12);
@@ -886,6 +878,9 @@ export class KitchenScene implements Scene {
     this._gmHouse = 0;
     this._layout = cloneLayout();
     KitchenManager.gmResetProgress();
+    TutorialManager.start();
+    TutorialOverlay.refresh();
+    this.relayout();
   }
 
   private _nudgeGmHouse(delta: number): void {
@@ -1394,6 +1389,7 @@ export class KitchenScene implements Scene {
     if (OutingCurtain.busy) return;
     AudioManager.play('outing');
     TutorialManager.advanceIf(TutorialStep.GO_OUT);
+    TutorialManager.advanceIf(TutorialStep.HINT_DOOR);
     OutingCurtain.play({
       paths: destinationBootPaths(),
       then: () => SceneManager.switchTo('destinations'),

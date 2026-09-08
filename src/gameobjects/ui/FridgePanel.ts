@@ -24,8 +24,9 @@ import {
   gameTexture,
   isTextureReady,
   itemLookTexture,
-  whenTextureReady,
+  watchTextures,
 } from '@/utils/assets';
+import { fridgePanelPaths } from '@/utils/panelAssets';
 import { inspectFromFridge, makeItemInspectCard } from './ItemInspectCard';
 import { TutorialManager, TutorialStep } from '@/managers/TutorialManager';
 import { TutorialOverlay, stageRectOf } from './TutorialOverlay';
@@ -66,6 +67,7 @@ export class FridgePanel extends PIXI.Container {
   private _inspectQty = 1;
   private _btnSlices = new Map<string, { left: PIXI.Texture; mid: PIXI.Texture; right: PIXI.Texture }>();
   private _scroller: VerticalScroller;
+  private _paintQueued = false;
 
   constructor() {
     super();
@@ -98,6 +100,7 @@ export class FridgePanel extends PIXI.Container {
     this.relayout();
     OverlayManager.bringToFront();
     if (this._isOpen) TutorialOverlay.register('fridge', () => this.tutorialRect());
+    this._warm();
   }
 
   close(silent = false): void {
@@ -116,7 +119,24 @@ export class FridgePanel extends PIXI.Container {
     return null;
   }
 
+  private _warm(): void {
+    watchTextures(fridgePanelPaths(KitchenManager.save), this._scheduleRelayout);
+  }
+
+  private _scheduleRelayout = (): void => {
+    if (!this._isOpen || this._paintQueued) return;
+    this._paintQueued = true;
+    const later = typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame
+      : (cb: () => void) => setTimeout(cb, 0);
+    later(() => {
+      this._paintQueued = false;
+      if (this._isOpen) this.relayout();
+    });
+  };
+
   relayout(): void {
+    this._warm();
     this._tutSlot = null;
     this._sellBtn = null;
     this._root.removeChildren();
@@ -251,7 +271,8 @@ export class FridgePanel extends PIXI.Container {
           TutorialManager.onSold(inspecting.uid);
           this._inspectUid = null;
           this._inspectQty = 1;
-          this.relayout();
+          if (TutorialManager.isStep(TutorialStep.HINT_DOOR)) this.close(true);
+          else this.relayout();
           this.onChange?.();
         },
         onEat: () => {
@@ -289,9 +310,6 @@ export class FridgePanel extends PIXI.Container {
   }
 
   private _paintBg(host: PIXI.Container, width: number, height: number): void {
-    whenTextureReady(BG, () => {
-      if (this._isOpen) this.relayout();
-    });
     const tex = gameTexture(BG);
     if (isTextureReady(tex)) {
       const sp = new PIXI.Sprite(tex);
@@ -369,9 +387,6 @@ export class FridgePanel extends PIXI.Container {
       off: INK,
     };
     const root = new PIXI.Container();
-    whenTextureReady(path, () => {
-      if (this._isOpen) this.relayout();
-    });
     const slices = this._buttonSlices(path);
     if (slices) {
       const th = slices.left.height;
@@ -470,23 +485,26 @@ export class FridgePanel extends PIXI.Container {
       return root;
     }
     if (fridgeKind(it) === 'dish') {
-      const icon = new PIXI.Sprite(dishTexture(it.defId));
-      whenTextureReady(`subpkg_images/dish_${it.defId}.png`, () => {
-        if (this._isOpen) this.relayout();
-      });
-      fitSpriteInBox(icon, size - 12, size - 12);
-      icon.anchor.set(0.5);
-      icon.position.set(x + size / 2, y + size / 2);
-      icon.eventMode = 'none';
-      root.addChild(icon);
+      const tex = dishTexture(it.defId);
+      if (isTextureReady(tex)) {
+        const icon = new PIXI.Sprite(tex);
+        fitSpriteInBox(icon, size - 12, size - 12);
+        icon.anchor.set(0.5);
+        icon.position.set(x + size / 2, y + size / 2);
+        icon.eventMode = 'none';
+        root.addChild(icon);
+      }
     } else {
       const look = it.quality === 'rotten' ? 'rotten' as const : 'clean' as const;
-      const icon = new PIXI.Sprite(itemLookTexture(it.defId, look));
-      fitSpriteInBox(icon, size - 12, size - 12);
-      icon.anchor.set(0.5);
-      icon.position.set(x + size / 2, y + size / 2);
-      icon.eventMode = 'none';
-      root.addChild(icon);
+      const tex = itemLookTexture(it.defId, look);
+      if (isTextureReady(tex)) {
+        const icon = new PIXI.Sprite(tex);
+        fitSpriteInBox(icon, size - 12, size - 12);
+        icon.anchor.set(0.5);
+        icon.position.set(x + size / 2, y + size / 2);
+        icon.eventMode = 'none';
+        root.addChild(icon);
+      }
     }
     const qty = fridgeItemQty(it);
     if (qty > 1) {

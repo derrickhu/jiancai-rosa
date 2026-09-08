@@ -168,6 +168,27 @@ export function whenTextureReady(path: string, onReady: () => void): void {
   waiters.set(path, list);
 }
 
+/** 打开菜单时预热当前页贴图；就绪后合并成一次刷新。 */
+export function watchTextures(paths: string[], onReady: () => void): void {
+  const unique = [...new Set(paths.filter(Boolean))];
+  let scheduled = false;
+  const once = (): void => {
+    if (scheduled) return;
+    scheduled = true;
+    const later = typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame
+      : (cb: () => void) => setTimeout(cb, 0);
+    later(() => {
+      scheduled = false;
+      onReady();
+    });
+  };
+  for (const path of unique) {
+    gameTexture(path);
+    whenTextureReady(path, once);
+  }
+}
+
 export function isTextureSettled(path: string): boolean {
   if (failed.has(path)) return true;
   const tex = cache.get(path);

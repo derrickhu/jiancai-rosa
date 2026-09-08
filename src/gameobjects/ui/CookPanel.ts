@@ -27,8 +27,9 @@ import {
   gameTexture,
   isTextureReady,
   itemTexture,
-  whenTextureReady,
+  watchTextures,
 } from '@/utils/assets';
+import { cookPanelPaths } from '@/utils/panelAssets';
 import {
   inspectFromItem,
   inspectFromRecipe,
@@ -37,7 +38,7 @@ import {
   type ItemInspectView,
 } from './ItemInspectCard';
 import { TutorialManager, TutorialStep } from '@/managers/TutorialManager';
-import { TutorialOverlay, stageRectOf } from './TutorialOverlay';
+import { TutorialOverlay, stageRectOf, type TutorialTarget } from './TutorialOverlay';
 import { TutorialGuard } from '@/systems/TutorialGuard';
 
 const BG = 'subpkg_kitchen/ui_cook_panel.png';
@@ -67,6 +68,7 @@ export class CookPanel extends PIXI.Container {
   private _btnSlices = new Map<string, { left: PIXI.Texture; mid: PIXI.Texture; right: PIXI.Texture }>();
   private _scroller: VerticalScroller;
   private _cookBtn: PIXI.Container | null = null;
+  private _paintQueued = false;
 
   constructor() {
     super();
@@ -92,6 +94,7 @@ export class CookPanel extends PIXI.Container {
     this.relayout();
     OverlayManager.bringToFront();
     if (this._isOpen) TutorialOverlay.register('cook', () => this.tutorialCookRect());
+    this._warm();
   }
 
   close(silent = false): void {
@@ -103,12 +106,36 @@ export class CookPanel extends PIXI.Container {
     TutorialOverlay.unregister('cook');
   }
 
-  tutorialCookRect(): { x: number; y: number; w: number; h: number; r?: number } | null {
+  tutorialCookRect(): TutorialTarget | null {
     if (!TutorialManager.isStep(TutorialStep.COOK_DISH) || !this._isOpen) return null;
-    return stageRectOf(this._cookBtn, 6);
+    const box = this._boardBox(Game.designWidth, Game.logicHeight);
+    const cook = stageRectOf(this._cookBtn, 4);
+    return {
+      holes: [{ x: box.x, y: box.y, w: box.w, h: box.h, r: 22 }],
+      fingerAt: cook
+        ? { x: cook.x + cook.w * 0.5, y: cook.y + cook.h * 0.5 }
+        : { x: box.x + box.w * 0.62, y: box.y + box.h * 0.86 },
+    };
   }
 
+  private _warm(): void {
+    watchTextures(cookPanelPaths(KitchenManager.save, this._pick), this._scheduleRelayout);
+  }
+
+  private _scheduleRelayout = (): void => {
+    if (!this._isOpen || this._paintQueued) return;
+    this._paintQueued = true;
+    const later = typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame
+      : (cb: () => void) => setTimeout(cb, 0);
+    later(() => {
+      this._paintQueued = false;
+      if (this._isOpen) this.relayout();
+    });
+  };
+
   relayout(): void {
+    this._warm();
     this._cookBtn = null;
     this._root.removeChildren();
     const w = Game.designWidth;
@@ -169,9 +196,6 @@ export class CookPanel extends PIXI.Container {
   }
 
   private _paintBg(host: PIXI.Container, width: number, height: number): void {
-    whenTextureReady(BG, () => {
-      if (this._isOpen) this.relayout();
-    });
     const tex = gameTexture(BG);
     if (isTextureReady(tex)) {
       const sp = new PIXI.Sprite(tex);
@@ -318,20 +342,20 @@ export class CookPanel extends PIXI.Container {
     const dw = bw * INSET.w * (1 - LEFT_W) - pad;
     const dishSize = Math.min(Math.round(dw * 0.72), Math.round(bh * INSET.h * 0.24));
     const dishX = dx + (dw - dishSize) / 2;
-    const dishPath = `subpkg_images/dish_${recipe.id}.png`;
-    whenTextureReady(dishPath, () => {
-      if (this._isOpen) this.relayout();
-    });
     const frame = new PIXI.Graphics();
     drawRarityFrame(frame, dishX + 2, dy + 2, dishSize - 4, dishSize - 4, recipe.rarity, { radius: 14 });
     frame.eventMode = 'none';
     root.addChild(frame);
 
-    const dish = new PIXI.Sprite(dishTexture(recipe.id));
-    fitSpriteInBox(dish, dishSize * 0.78, dishSize * 0.78);
-    dish.anchor.set(0.5);
-    dish.position.set(dishX + dishSize / 2, dy + dishSize / 2);
-    dish.eventMode = 'none';
+    const dishTex = dishTexture(recipe.id);
+    if (isTextureReady(dishTex)) {
+      const dish = new PIXI.Sprite(dishTex);
+      fitSpriteInBox(dish, dishSize * 0.78, dishSize * 0.78);
+      dish.anchor.set(0.5);
+      dish.position.set(dishX + dishSize / 2, dy + dishSize / 2);
+      dish.eventMode = 'none';
+      root.addChild(dish);
+    }
     const dishHit = new PIXI.Container();
     dishHit.eventMode = 'static';
     dishHit.cursor = 'pointer';
@@ -341,7 +365,7 @@ export class CookPanel extends PIXI.Container {
       this._inspect = inspectFromRecipe(recipe.id);
       this.relayout();
     });
-    root.addChild(dish, dishHit);
+    root.addChild(dishHit);
 
     const cx = dx + dw / 2;
     const nameY = dy + dishSize + 22;
@@ -416,9 +440,6 @@ export class CookPanel extends PIXI.Container {
 
   private _cookAction(width: number, height: number, ready: boolean): PIXI.Container {
     const root = new PIXI.Container();
-    whenTextureReady(COOK_BTN, () => {
-      if (this._isOpen) this.relayout();
-    });
     const slices = this._buttonSlices(COOK_BTN);
     if (slices) {
       const th = slices.left.height;
@@ -499,17 +520,16 @@ export class CookPanel extends PIXI.Container {
     }
     root.addChild(bg);
 
-    const path = `subpkg_images/${iconId}.png`;
-    whenTextureReady(path, () => {
-      if (this._isOpen) this.relayout();
-    });
-    const icon = new PIXI.Sprite(itemTexture(iconId));
-    fitSpriteInBox(icon, size - 16, size - 16);
-    icon.anchor.set(0.5);
-    icon.position.set(x + size / 2, y + size / 2);
-    icon.eventMode = 'none';
-    if (!ok) icon.alpha = 0.45;
-    root.addChild(icon);
+    const iconTex = itemTexture(iconId);
+    if (isTextureReady(iconTex)) {
+      const icon = new PIXI.Sprite(iconTex);
+      fitSpriteInBox(icon, size - 16, size - 16);
+      icon.anchor.set(0.5);
+      icon.position.set(x + size / 2, y + size / 2);
+      icon.eventMode = 'none';
+      if (!ok) icon.alpha = 0.45;
+      root.addChild(icon);
+    }
 
     const count = makeCornerMark(`${have}/${need}`, 16, ok ? OK : TERRACOTTA);
     count.anchor.set(1, 1);
@@ -578,9 +598,6 @@ export class CookPanel extends PIXI.Container {
       off: INK,
     };
     const root = new PIXI.Container();
-    whenTextureReady(path, () => {
-      if (this._isOpen) this.relayout();
-    });
     const slices = this._buttonSlices(path);
     if (slices) {
       const th = slices.left.height;

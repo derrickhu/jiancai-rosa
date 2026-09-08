@@ -29,8 +29,9 @@ import {
   imgPath,
   isTextureReady,
   itemTexture,
-  whenTextureReady,
+  watchTextures,
 } from '@/utils/assets';
+import { dexViewPaths } from '@/utils/panelAssets';
 
 const BG = 'subpkg_kitchen/ui_dex_panel.png';
 const INK = 0x2A2018;
@@ -88,6 +89,7 @@ export class DexPanel extends PIXI.Container {
     this.relayout();
     OverlayManager.bringToFront();
     this._bindWx(true);
+    this._warmView();
   }
 
   close(silent = false): void {
@@ -121,18 +123,13 @@ export class DexPanel extends PIXI.Container {
     shell.on('pointertap', (e) => e.stopPropagation());
     this._root.addChild(shell);
 
+    this._warmView();
     const bgTex = gameTexture(BG);
-    whenTextureReady(BG, redraw);
     if (isTextureReady(bgTex)) {
       const bg = new PIXI.Sprite(bgTex);
       bg.width = box.w;
       bg.height = box.h;
       shell.addChild(bg);
-    } else {
-      const fb = new PIXI.Graphics();
-      fillRect(fb, 0, 0, box.w, box.h, 0x8B5A2B, 24);
-      fillRect(fb, box.w * 0.12, box.h * 0.08, box.w * 0.8, box.h * 0.8, 0xF6EDE0, 16);
-      shell.addChild(fb);
     }
 
     this._drawClose(shell, box.w);
@@ -399,24 +396,21 @@ export class DexPanel extends PIXI.Container {
     const tex = gameTexture(path);
     const cx = width / 2;
     const cy = 4 + iconSize / 2;
-    const spr = new PIXI.Sprite(tex);
-    spr.anchor.set(0.5);
-    spr.position.set(cx, cy);
-    const clip = new PIXI.Graphics();
-    clip.eventMode = 'none';
-    const fitCat = (): void => {
+    if (isTextureReady(tex)) {
+      const spr = new PIXI.Sprite(tex);
+      spr.anchor.set(0.5);
+      spr.position.set(cx, cy);
       fitSpriteInBox(spr, iconSize, iconSize);
+      const clip = new PIXI.Graphics();
+      clip.eventMode = 'none';
       const mw = Math.max(8, spr.width * 0.97);
       const mh = Math.max(8, spr.height * 0.97);
-      clip.clear();
       clip.beginFill(0xffffff);
       clip.drawRoundedRect(cx - mw / 2, cy - mh / 2, mw, mh, Math.min(mw, mh) * 0.2);
       clip.endFill();
-    };
-    spr.mask = clip;
-    root.addChild(spr, clip);
-    if (isTextureReady(tex)) fitCat();
-    else whenTextureReady(path, fitCat);
+      spr.mask = clip;
+      root.addChild(spr, clip);
+    }
     const name = makeStrokeLabel(cat.label, 26, 0xFFF8F0, cat.ink, 6, { fontFamily: TITLE_FONT });
     name.anchor.set(0.5);
     name.position.set(cx, 4 + iconSize * 0.66);
@@ -505,17 +499,14 @@ export class DexPanel extends PIXI.Container {
       drawRarityFrame(g, 2, 2, cellW - 4, cellH - 4, it.rarity, { radius: 12 });
       card.addChild(g);
       const tex = it.dish ? dishTexture(it.id) : itemTexture(it.id);
-      const path = it.dish ? `subpkg_images/dish_${it.id}.png` : `subpkg_images/${it.id}.png`;
-      const spr = new PIXI.Sprite(tex);
-      spr.anchor.set(0.5);
-      spr.position.set(cellW / 2, iconY);
-      const fitIcon = (): void => {
+      if (isTextureReady(tex)) {
+        const spr = new PIXI.Sprite(tex);
+        spr.anchor.set(0.5);
+        spr.position.set(cellW / 2, iconY);
         fitSpriteInBox(spr, cellW - (dish ? 8 : 20), iconH);
         if (!it.unlocked) applyGray(spr);
-      };
-      if (isTextureReady(tex)) fitIcon();
-      else whenTextureReady(path, fitIcon);
-      card.addChild(spr);
+        card.addChild(spr);
+      }
       const label = makeDexName(it.unlocked ? it.name : '未解锁', dish ? 20 : 18, it.unlocked, cellW - 10);
       label.anchor.set(0.5, 0);
       label.position.set(cellW / 2, labelY);
@@ -554,6 +545,13 @@ export class DexPanel extends PIXI.Container {
     });
     shell.addChild(btn);
     void bw;
+  }
+
+  private _warmView(): void {
+    const view = this._view.kind === 'home'
+      ? { kind: 'home' as const, tab: this._tab }
+      : this._view;
+    watchTextures(dexViewPaths(KitchenManager.save, view), this._scheduleRelayout);
   }
 
   private _scheduleRelayout = (): void => {

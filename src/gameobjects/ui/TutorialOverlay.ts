@@ -1,6 +1,6 @@
 /**
  * 新手指引层：四块矩形拼暗区，镂空不画所以点击穿透。
- * 挂 Game.stage，zIndex 高于 OverlayManager。
+ * 白菜站在气泡外面，手指横着指。挂 Game.stage，高于 OverlayManager。
  */
 import * as PIXI from 'pixi.js';
 import { AudioManager } from '@/core/AudioManager';
@@ -9,14 +9,10 @@ import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { Ease, TweenManager } from '@/core/TweenManager';
 import { EV } from '@/config/events';
-import {
-  TUTORIAL_ASSETS,
-  TUTORIAL_COPY,
-  TUTORIAL_INTRO,
-} from '@/config/TutorialCopy';
+import { TUTORIAL_ASSETS, TUTORIAL_COPY, TUTORIAL_INTRO } from '@/config/TutorialCopy';
 import { TutorialManager, TutorialStep } from '@/managers/TutorialManager';
 import { gameTexture, isTextureReady, whenTextureReady } from '@/utils/assets';
-import { FONT, fillRect, makeLabel, makeSlicedButton } from '@/utils/ui';
+import { FONT, fillRect, makeLabel } from '@/utils/ui';
 
 export interface SpotlightRect {
   x: number;
@@ -26,10 +22,23 @@ export interface SpotlightRect {
   r?: number;
 }
 
+export interface TutorialTarget {
+  holes?: SpotlightRect[];
+  fingerAt?: { x: number; y: number };
+  dim?: boolean;
+  speech?: 'top' | 'bottom';
+  speechY?: number;
+  title?: string;
+  body?: string;
+}
+
+type ProviderResult = SpotlightRect | TutorialTarget | null;
+
 const TITLE_FONT = 'Songti SC, STSong, PingFang SC, serif';
 const INK = 0x2A2018;
 const GOLD = 0xE8C15A;
 const PAPER = 0xFFF6EA;
+const CLIP = 0x8B5A2B;
 const DIM = 0.56;
 
 export function stageRectOf(obj: PIXI.Container | null | undefined, pad = 10): SpotlightRect | null {
@@ -64,13 +73,26 @@ export function worldRectToStage(
   };
 }
 
+function isSpotlightRect(v: ProviderResult): v is SpotlightRect {
+  return !!v
+    && typeof (v as SpotlightRect).w === 'number'
+    && !('holes' in v)
+    && !('fingerAt' in v)
+    && !('dim' in v)
+    && !('speech' in v)
+    && !('speechY' in v)
+    && !('title' in v)
+    && !('body' in v);
+}
+
 class TutorialOverlayClass {
   private _root: PIXI.Container | null = null;
   private _layer = new PIXI.Container();
-  private _providers = new Map<string, () => SpotlightRect | null>();
+  private _providers = new Map<string, () => ProviderResult>();
   private _introPage = 0;
   private _shownStep: TutorialStep | null = null;
   private _finger: PIXI.Container | null = null;
+  private _blankTap: (() => void) | null = null;
   private _onStep = (step: TutorialStep) => {
     if (step === TutorialStep.INTRO) this._introPage = 0;
     this.refresh();
@@ -98,18 +120,21 @@ class TutorialOverlayClass {
 
   ensureTop(): void {
     if (!this._root || !Game.stage) return;
-    if (this._root.parent !== Game.stage) Game.stage.addChild(this._root);
-    else Game.stage.addChild(this._root);
+    Game.stage.addChild(this._root);
     this._root.zIndex = 20000;
   }
 
-  register(id: string, get: () => SpotlightRect | null): void {
+  register(id: string, get: () => ProviderResult): void {
     this._providers.set(id, get);
     this.refresh();
   }
 
   unregister(id: string): void {
     this._providers.delete(id);
+  }
+
+  onBlankTap(fn: (() => void) | null): void {
+    this._blankTap = fn;
   }
 
   refresh(): void {
@@ -143,13 +168,46 @@ class TutorialOverlayClass {
     this._shownStep = null;
   }
 
-  private _target(): SpotlightRect | null {
+  private _rawTarget(): ProviderResult {
     const ids = [...this._providers.keys()].reverse();
     for (const id of ids) {
-      const rect = this._providers.get(id)?.() ?? null;
-      if (rect && rect.w > 8 && rect.h > 8) return rect;
+      const raw = this._providers.get(id)?.() ?? null;
+      if (!raw) continue;
+      if (isSpotlightRect(raw)) {
+        if (raw.w > 8 && raw.h > 8) return raw;
+        continue;
+      }
+      if ((raw.holes && raw.holes.length) || raw.fingerAt || raw.dim === false || raw.speech || raw.speechY != null || raw.title || raw.body) {
+        return raw;
+      }
     }
     return null;
+  }
+
+  private _normalize(step: TutorialStep): TutorialTarget {
+    const raw = this._rawTarget();
+    const dim = TutorialManager.usesMask();
+    if (!raw) return { dim };
+    if (isSpotlightRect(raw)) {
+      return {
+        dim,
+        holes: [raw],
+        fingerAt: { x: raw.x + raw.w * 0.5, y: raw.y + raw.h * 0.5 },
+      };
+    }
+    const holes = (raw.holes ?? []).filter((h) => h.w > 8 && h.h > 8);
+    const fingerAt = raw.fingerAt ?? (holes[0]
+      ? { x: holes[0].x + holes[0].w * 0.5, y: holes[0].y + holes[0].h * 0.5 }
+      : undefined);
+    return {
+      dim: raw.dim ?? dim,
+      holes,
+      fingerAt,
+      speech: raw.speech,
+      speechY: raw.speechY,
+      title: raw.title,
+      body: raw.body,
+    };
   }
 
   private _drawIntro(): void {
@@ -161,31 +219,26 @@ class TutorialOverlayClass {
     fillRect(dim, 0, 0, w, h, 0x140E0A);
     dim.alpha = 0.72;
     dim.eventMode = 'static';
+    dim.cursor = 'pointer';
+    dim.on('pointertap', () => this._nextIntro());
     this._layer.addChild(dim);
 
-    const artH = Math.min(h * 0.46, 520);
-    const artW = Math.min(w - 48, artH * 0.75);
-    const artY = Game.safeTop + 28;
-    this._layer.addChild(this._introArt(page.image, (w - artW) / 2, artY, artW, artH));
+    const cabbage = this._cabbage(200);
+    cabbage.position.set(w / 2, Game.safeTop + Math.min(h * 0.26, 280));
+    cabbage.eventMode = 'none';
+    this._layer.addChild(cabbage);
 
-    const bubbleY = artY + artH + 18;
-    this._layer.addChild(this._speech(page.title, page.body, w / 2, bubbleY, w - 56));
+    const bubble = this._speech(page.title, page.body, w / 2, cabbage.y + 132, w - 48, false);
+    this._layer.addChild(bubble);
 
-    const btnW = 280;
-    const btn = makeSlicedButton({
-      label: page.button,
-      width: btnW,
-      height: 58,
-      skin: 'terracotta',
-      onReady: () => {
-        if (TutorialManager.isStep(TutorialStep.INTRO)) this.refresh();
-      },
-    });
-    btn.position.set((w - btnW) / 2, h - Math.max(36, Game.safeBottom + 28) - 58);
-    btn.eventMode = 'static';
-    btn.cursor = 'pointer';
-    btn.on('pointertap', () => this._nextIntro());
-    this._layer.addChild(btn);
+    const tap = new PIXI.Graphics();
+    tap.beginFill(0xffffff, 0.001);
+    tap.drawRect(0, 0, w, h);
+    tap.endFill();
+    tap.eventMode = 'static';
+    tap.cursor = 'pointer';
+    tap.on('pointertap', () => this._nextIntro());
+    this._layer.addChild(tap);
 
     if (this._shownStep !== TutorialStep.INTRO) {
       this._shownStep = TutorialStep.INTRO;
@@ -203,60 +256,71 @@ class TutorialOverlayClass {
     TutorialManager.advanceTo(TutorialStep.GO_OUT);
   }
 
-  private _introArt(path: string, x: number, y: number, width: number, height: number): PIXI.Container {
-    const root = new PIXI.Container();
-    root.position.set(x, y);
-    whenTextureReady(path, () => {
-      if (TutorialManager.isStep(TutorialStep.INTRO)) this.refresh();
-    });
-    const frame = new PIXI.Graphics();
-    frame.lineStyle(4, 0x2A2018, 1);
-    frame.beginFill(0x3A2A1C);
-    frame.drawRoundedRect(0, 0, width, height, 22);
-    frame.endFill();
-    root.addChild(frame);
-    const tex = gameTexture(path);
-    if (isTextureReady(tex)) {
-      const sp = new PIXI.Sprite(tex);
-      const scale = Math.max(width / tex.width, height / tex.height);
-      sp.anchor.set(0.5);
-      sp.scale.set(scale);
-      sp.position.set(width / 2, height / 2);
-      const mask = new PIXI.Graphics();
-      mask.beginFill(0xffffff);
-      mask.drawRoundedRect(6, 6, width - 12, height - 12, 18);
-      mask.endFill();
-      sp.mask = mask;
-      root.addChild(sp, mask);
-    }
-    return root;
-  }
-
   private _drawGuide(step: TutorialStep): void {
     const fresh = this._shownStep !== step;
     this._clear();
     this._shownStep = step;
     const w = Game.designWidth;
-    const h = Game.logicHeight;
-    const rect = this._target();
-    const copy = TUTORIAL_COPY[step];
-    if (rect) this._drawHole(rect);
-    else {
-      const dim = new PIXI.Graphics();
-      fillRect(dim, 0, 0, w, h, 0x000000);
-      dim.alpha = step === TutorialStep.WAIT_RESULT ? 0.22 : DIM;
-      dim.eventMode = step === TutorialStep.WAIT_RESULT ? 'none' : 'static';
-      this._layer.addChild(dim);
+    const target = this._normalize(step);
+    const holes = target.holes ?? [];
+    const copy = (target.title && target.body)
+      ? { title: target.title, body: target.body }
+      : TUTORIAL_COPY[step];
+
+    if (target.dim) {
+      if (holes.length) {
+        for (const hole of holes) this._drawHole(hole);
+      } else {
+        const dim = new PIXI.Graphics();
+        fillRect(dim, 0, 0, w, Game.logicHeight, 0x000000);
+        dim.alpha = DIM;
+        dim.eventMode = 'static';
+        this._layer.addChild(dim);
+      }
     }
-    if (rect) {
-      this._drawGlow(rect);
-      this._startFinger(rect.x + rect.w * 0.72, rect.y + rect.h * 0.78);
+
+    if (target.dim) {
+      for (const hole of holes) this._drawGlow(hole);
     }
+
+    if (TutorialManager.tapHoleAdvances()) {
+      for (const hole of holes) this._holeCatcher(hole, step);
+    }
+
+    if (target.fingerAt && step !== TutorialStep.WAIT_RESULT) {
+      this._startFinger(target.fingerAt);
+    }
+
+    if (step === TutorialStep.WAIT_RESULT) {
+      const tap = new PIXI.Graphics();
+      tap.beginFill(0xffffff, 0.001);
+      tap.drawRect(0, 0, w, Game.logicHeight);
+      tap.endFill();
+      tap.hitArea = new PIXI.Rectangle(0, 0, w, Game.logicHeight);
+      tap.eventMode = 'static';
+      tap.cursor = 'pointer';
+      tap.on('pointertap', () => this._blankTap?.());
+      this._layer.addChild(tap);
+    }
+
     if (copy) {
-      const bubbleY = this._bubbleY(rect, copy.body);
-      this._layer.addChild(this._speech(copy.title, copy.body, w / 2, bubbleY, w - 56));
+      const bubbleY = this._bubbleY(target);
+      this._layer.addChild(this._speech(copy.title, copy.body, w / 2, bubbleY, w - 56, true));
     }
-    if (fresh) AudioManager.play(rect ? 'tutorial_hint' : 'tutorial_pop');
+    if (fresh) AudioManager.play(holes.length && target.dim ? 'tutorial_hint' : 'tutorial_pop');
+  }
+
+  private _holeCatcher(sp: SpotlightRect, step: TutorialStep): void {
+    const g = new PIXI.Graphics();
+    g.beginFill(0xffffff, 0.001);
+    g.drawRoundedRect(sp.x, sp.y, sp.w, sp.h, sp.r ?? 16);
+    g.endFill();
+    g.eventMode = 'static';
+    g.cursor = 'pointer';
+    g.on('pointertap', () => {
+      TutorialManager.advanceIf(step);
+    });
+    this._layer.addChild(g);
   }
 
   private _drawHole(sp: SpotlightRect): void {
@@ -310,25 +374,29 @@ class TutorialOverlayClass {
     pulse();
   }
 
-  private _startFinger(x: number, y: number): void {
+  private _startFinger(at: { x: number; y: number }): void {
     const finger = this._makeFinger();
+    const flip = at.x + 120 > Game.designWidth - 16;
+    const x = flip ? at.x - 8 : at.x + 40;
+    const y = at.y;
+    finger.scale.x = flip ? -1 : 1;
     finger.position.set(x, y);
     finger.eventMode = 'none';
     this._layer.addChild(finger);
     this._finger = finger;
-    const baseY = y;
+    const toward = flip ? -14 : 14;
     const bounce = (): void => {
       if (!this._finger || this._finger.destroyed) return;
       TweenManager.to({
         target: this._finger,
-        props: { y: baseY - 16 },
+        props: { x: x + toward },
         duration: 0.36,
         ease: Ease.easeInOutQuad,
         onComplete: () => {
           if (!this._finger || this._finger.destroyed) return;
           TweenManager.to({
             target: this._finger,
-            props: { y: baseY + 4 },
+            props: { x },
             duration: 0.36,
             ease: Ease.easeInOutQuad,
             onComplete: bounce,
@@ -356,28 +424,36 @@ class TutorialOverlayClass {
     const tex = gameTexture(TUTORIAL_ASSETS.hand);
     if (isTextureReady(tex)) {
       const sp = new PIXI.Sprite(tex);
-      sp.anchor.set(0.46, 0.9);
-      sp.width = 92;
-      sp.height = 92;
+      sp.anchor.set(0.08, 0.38);
+      sp.width = 96;
+      sp.height = 96;
       root.addChild(sp);
       return root;
     }
     const g = new PIXI.Graphics();
-    g.beginFill(0xF2C7A4);
     g.lineStyle(3, INK, 1);
-    g.drawRoundedRect(-8, 8, 28, 46, 10);
-    g.drawRoundedRect(8, -18, 22, 52, 10);
-    g.drawCircle(18, -22, 12);
+    g.beginFill(0xF2C7A4);
+    g.drawRoundedRect(8, -16, 46, 28, 10);
+    g.drawRoundedRect(-36, -10, 52, 18, 9);
     g.endFill();
     root.addChild(g);
     return root;
   }
 
-  private _speech(title: string, body: string, cx: number, y: number, maxW: number): PIXI.Container {
+  private _speech(
+    title: string,
+    body: string,
+    cx: number,
+    y: number,
+    maxW: number,
+    showCabbage: boolean,
+  ): PIXI.Container {
     const root = new PIXI.Container();
-    const width = Math.min(maxW, 640);
-    const padL = 92;
-    const padR = 28;
+    const cabSize = showCabbage ? 96 : 0;
+    const gap = showCabbage ? 10 : 0;
+    const width = Math.min(maxW - cabSize - gap, 560);
+    const padL = 26;
+    const padR = 26;
     const titleT = makeLabel(title, 28, INK, {
       fontFamily: TITLE_FONT,
       fontWeight: '700',
@@ -394,63 +470,87 @@ class TutorialOverlayClass {
     });
     bodyT.eventMode = 'none';
     const height = Math.max(118, 28 + titleT.height + 10 + bodyT.height + 28);
-    whenTextureReady(TUTORIAL_ASSETS.paper, () => {
-      if (TutorialManager.isActive) this.refresh();
-    });
-    const paperTex = gameTexture(TUTORIAL_ASSETS.paper);
-    if (isTextureReady(paperTex)) {
-      const paper = new PIXI.Sprite(paperTex);
-      paper.width = width;
-      paper.height = height;
-      paper.eventMode = 'none';
-      root.addChild(paper);
-    } else {
-      const g = new PIXI.Graphics();
-      g.lineStyle(3, INK, 1);
-      g.beginFill(PAPER);
-      g.drawRoundedRect(0, 0, width, height, 18);
-      g.endFill();
-      root.addChild(g);
-    }
-    const cabbage = this._cabbage();
-    cabbage.position.set(46, height / 2);
-    root.addChild(cabbage);
-    titleT.position.set(padL, 22);
-    bodyT.position.set(padL, 22 + titleT.height + 8);
+    const paper = this._paper(width, height);
+    paper.position.set(cabSize + gap, 0);
+    root.addChild(paper);
+    titleT.position.set(cabSize + gap + padL, 22);
+    bodyT.position.set(cabSize + gap + padL, 22 + titleT.height + 8);
     root.addChild(titleT, bodyT);
-    root.position.set(cx - width / 2, y);
+
+    if (showCabbage) {
+      const cabbage = this._cabbage(cabSize);
+      cabbage.position.set(cabSize / 2, height * 0.52);
+      root.addChild(cabbage);
+    }
+
+    const total = cabSize + gap + width;
+    const left = Math.max(14, Math.min(cx - total / 2, Game.designWidth - total - 14));
+    root.position.set(left, y);
     root.eventMode = 'none';
     return root;
   }
 
-  private _cabbage(): PIXI.Container {
+  private _paper(width: number, height: number): PIXI.Container {
+    const root = new PIXI.Container();
+    const g = new PIXI.Graphics();
+    g.beginFill(0x2A2018, 0.16);
+    g.drawRoundedRect(4, 6, width, height, 18);
+    g.endFill();
+    g.lineStyle(3, INK, 1);
+    g.beginFill(PAPER);
+    g.drawRoundedRect(0, 0, width, height, 18);
+    g.endFill();
+    g.lineStyle(0);
+    g.beginFill(0xF3E2C4, 0.55);
+    g.drawRoundedRect(10, 8, width - 20, 10, 4);
+    g.endFill();
+    root.addChild(g);
+
+    const clip = new PIXI.Graphics();
+    clip.beginFill(CLIP);
+    clip.drawRoundedRect(width / 2 - 16, -10, 32, 22, 5);
+    clip.endFill();
+    clip.beginFill(0xC48A3A);
+    clip.drawRoundedRect(width / 2 - 12, -6, 24, 8, 3);
+    clip.endFill();
+    root.addChild(clip);
+    return root;
+  }
+
+  private _cabbage(size: number): PIXI.Container {
     const root = new PIXI.Container();
     whenTextureReady(TUTORIAL_ASSETS.cabbage, () => {
       if (TutorialManager.isActive) this.refresh();
     });
     const tex = gameTexture(TUTORIAL_ASSETS.cabbage);
+    root.eventMode = 'none';
     if (isTextureReady(tex)) {
       const sp = new PIXI.Sprite(tex);
       sp.anchor.set(0.5);
-      sp.width = 78;
-      sp.height = 78;
+      sp.width = size;
+      sp.height = size;
+      sp.eventMode = 'none';
       root.addChild(sp);
       return root;
     }
     const g = new PIXI.Graphics();
-    g.beginFill(0xC8E09A);
     g.lineStyle(3, INK, 1);
-    g.drawCircle(0, 4, 28);
+    g.beginFill(0xC8E09A);
+    g.drawCircle(0, 4, size * 0.36);
     g.endFill();
     root.addChild(g);
     return root;
   }
 
-  private _bubbleY(rect: SpotlightRect | null, body: string): number {
+  private _bubbleY(target: TutorialTarget): number {
     const h = Game.logicHeight;
     const top = Game.safeTop + 16;
-    const bottom = h - Math.max(28, Game.safeBottom + 20) - 140;
-    if (!rect) return Math.max(top, h * 0.62);
+    const bottom = h - Math.max(28, Game.safeBottom + 20) - 150;
+    if (target.speechY != null) return target.speechY;
+    if (target.speech === 'top') return top;
+    if (target.speech === 'bottom') return bottom;
+    const rect = target.holes?.[0] ?? null;
+    if (!rect || !target.dim) return bottom;
     const above = rect.y - 28 - 130;
     const below = rect.y + rect.h + 18;
     if (below < bottom) return below;

@@ -83,21 +83,13 @@ export class ResultPanel extends PIXI.Container {
     AudioManager.play(result.kind === 'safe' ? 'result_safe' : 'result_dusk');
     this.relayout(result);
     OverlayManager.bringToFront();
-    TutorialOverlay.register('result', () => this.tutorialBodyRect());
+    TutorialOverlay.onBlankTap(this._onBgTap);
+    TutorialOverlay.register('result', () => ({ dim: false }));
     TutorialOverlay.refresh();
   }
 
-  tutorialBodyRect(): { x: number; y: number; w: number; h: number; r?: number } | null {
-    if (!this._isOpen || !TutorialManager.isStep(TutorialStep.WAIT_RESULT)) return null;
-    const w = Game.designWidth;
-    const h = Game.logicHeight;
-    return {
-      x: 24,
-      y: Game.safeTop + 40,
-      w: w - 48,
-      h: h - Game.safeTop - 80,
-      r: 24,
-    };
+  tutorialBodyRect(): { dim: false } {
+    return { dim: false };
   }
 
   close(): void {
@@ -114,6 +106,7 @@ export class ResultPanel extends PIXI.Container {
     this._stopPops();
     this._scroller.disable();
     TutorialOverlay.unregister('result');
+    TutorialOverlay.onBlankTap(null);
     TutorialManager.advanceIf(TutorialStep.WAIT_RESULT);
     RunManager.clear();
     SceneManager.switchTo('kitchen');

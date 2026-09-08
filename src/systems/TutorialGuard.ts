@@ -15,6 +15,7 @@ export type TutorialAction =
   | 'drawPile'
   | 'takeLoot'
   | 'openBasket'
+  | 'leaveStall'
   | 'extract'
   | 'openCook'
   | 'cook'
@@ -32,6 +33,17 @@ export type TutorialAction =
   | 'upgrade'
   | 'gameClub';
 
+const FREE_WALK: TutorialAction[] = [
+  'walkCard',
+  'walkOtherCard',
+  'drawPile',
+  'takeLoot',
+  'openBasket',
+  'closeBasket',
+  'leaveStall',
+  'extract',
+];
+
 const ALLOWED: Partial<Record<TutorialStep, TutorialAction[]>> = {
   [TutorialStep.INTRO]: [],
   [TutorialStep.GO_OUT]: ['door'],
@@ -40,6 +52,11 @@ const ALLOWED: Partial<Record<TutorialStep, TutorialAction[]>> = {
   [TutorialStep.CLICK_PILE]: ['drawPile'],
   [TutorialStep.TAKE_LOOT]: ['takeLoot'],
   [TutorialStep.OPEN_BASKET]: ['openBasket'],
+  [TutorialStep.BASKET_DRY]: [],
+  [TutorialStep.BASKET_WET]: [],
+  [TutorialStep.CLOSE_BASKET]: ['closeBasket'],
+  [TutorialStep.RETURN_MAP]: ['leaveStall'],
+  [TutorialStep.FREE_WALK]: FREE_WALK,
   [TutorialStep.GO_HOME]: ['extract', 'closeBasket'],
   [TutorialStep.WAIT_RESULT]: ['closeResult'],
   [TutorialStep.COOK_TABLE]: ['openCook'],
@@ -47,6 +64,7 @@ const ALLOWED: Partial<Record<TutorialStep, TutorialAction[]>> = {
   [TutorialStep.OPEN_FRIDGE]: ['openFridge'],
   [TutorialStep.INSPECT_DISH]: ['inspectDish'],
   [TutorialStep.SELL_DISH]: ['sellDish'],
+  [TutorialStep.HINT_DOOR]: [],
 };
 
 const DENY: Partial<Record<TutorialAction, string>> = {
@@ -58,7 +76,8 @@ const DENY: Partial<Record<TutorialAction, string>> = {
   drawPile: TUTORIAL_DENY.pileFirst,
   takeLoot: TUTORIAL_DENY.takeCaitai,
   openBasket: TUTORIAL_DENY.basketFirst,
-  extract: TUTORIAL_DENY.goHome,
+  leaveStall: TUTORIAL_DENY.returnMap,
+  extract: TUTORIAL_DENY.extractEarly,
   cook: TUTORIAL_DENY.cookOnly,
   pickRecipe: TUTORIAL_DENY.cookOnly,
   inspectDish: TUTORIAL_DENY.fridgeDish,
@@ -66,12 +85,13 @@ const DENY: Partial<Record<TutorialAction, string>> = {
   eatDish: TUTORIAL_DENY.sellOnly,
   closeCook: TUTORIAL_DENY.closeLater,
   closeFridge: TUTORIAL_DENY.closeLater,
-  closeBasket: TUTORIAL_DENY.closeLater,
+  closeBasket: TUTORIAL_DENY.closeBasket,
 };
 
 export const TutorialGuard = {
   allows(action: TutorialAction): boolean {
     if (!TutorialManager.isActive) return true;
+    if (TutorialManager.isStep(TutorialStep.HINT_DOOR)) return true;
     const ok = ALLOWED[TutorialManager.currentStep] ?? [];
     return ok.includes(action);
   },

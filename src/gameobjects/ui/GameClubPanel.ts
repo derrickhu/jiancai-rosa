@@ -7,7 +7,8 @@ import { KitchenManager } from '@/managers/KitchenManager';
 import { GAME_CLUB_DAILY_COINS } from '@/sim';
 import { fetchDailyPostCount, isGameClubButtonSupported } from '@/services/GameClubService';
 import { HUD_ICON, fillRect, makeLabel, makeSlicedButton } from '@/utils/ui';
-import { fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from '@/utils/assets';
+import { fitSpriteInBox, gameTexture, isTextureReady, watchTextures, whenTextureReady } from '@/utils/assets';
+import { PANEL_SHELL } from '@/utils/panelAssets';
 
 const BG = 'subpkg_kitchen/ui_gameclub_panel.png';
 const INK = 0x2A2018;
@@ -56,6 +57,9 @@ export class GameClubPanel extends PIXI.Container {
     this.visible = true;
     this.relayout();
     OverlayManager.bringToFront();
+    watchTextures([...PANEL_SHELL.gameClub], () => {
+      if (this._isOpen) this.relayout();
+    });
     void this._refreshStatus();
     this._syncNativeButton();
   }

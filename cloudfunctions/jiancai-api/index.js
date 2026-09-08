@@ -5,6 +5,7 @@
  *   /login        登录：wx/dy code2session / anon，签发 JWT
  *   /save/pull    拉取当前用户存档
  *   /save/push    上传当前用户存档（Upsert，updatedAt 防回写）
+ *   /tutorial/complete  只记新手指引已完成（账号级，清缓存/换机不重走）
  *   /game-club/decrypt  解密 wx.getGameClubData（需登录）
  *   /health       健康检查（无鉴权）
  *
@@ -18,7 +19,7 @@
  */
 
 const { handleLogin } = require('./lib/auth');
-const { handlePull, handlePush } = require('./lib/save');
+const { handlePull, handlePush, handleComplete } = require('./lib/save');
 const { handleDecrypt } = require('./lib/game-club');
 const { respond, parseEvent, preflight } = require('./lib/http');
 
@@ -28,6 +29,7 @@ const ROUTES = {
   'POST /login': handleLogin,
   'POST /save/pull': handlePull,
   'POST /save/push': handlePush,
+  'POST /tutorial/complete': handleComplete,
   'POST /game-club/decrypt': handleDecrypt,
 };
 

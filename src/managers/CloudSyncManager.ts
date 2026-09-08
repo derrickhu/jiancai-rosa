@@ -18,6 +18,7 @@ import {
   CLOUD_SYNC_MAX_FAIL_COUNT,
   CLOUD_SYNC_RETRY_INTERVAL_MS,
   CLOUD_SYNC_STARTUP_TIMEOUT_MS,
+  SAVE_KEY,
 } from '@/config/CloudConfig';
 import { BackendError, BackendService } from '@/core/BackendService';
 import { PersistService } from '@/core/PersistService';
@@ -43,6 +44,8 @@ class CloudSyncManagerClass {
   private _syncPending = false;
   private _authorityState: CloudAuthorityState = this.enabled ? 'unknown' : 'disabled';
   private _lastStartupRemoteApplied = false;
+  private _tutorialCompleted = false;
+  private _resetTutorial = false;
 
   constructor() {
     PersistService.subscribe((changedKeys) => {
@@ -69,6 +72,29 @@ class CloudSyncManagerClass {
 
   get userId(): string {
     return BackendService.userId;
+  }
+
+  /** 账号已走过新手。清本地缓存 / 换机登录后仍跳过。 */
+  get accountTutorialCompleted(): boolean {
+    return this._tutorialCompleted;
+  }
+
+  async markTutorialComplete(): Promise<void> {
+    this._tutorialCompleted = true;
+    this._resetTutorial = false;
+    if (!this.enabled) return;
+    try {
+      await BackendService.ensureToken();
+      await BackendService.completeTutorial();
+      console.log('[CloudSync] 新手指引已记到账号');
+    } catch (e) {
+      console.warn('[CloudSync] 上报新手完成失败，将随存档再传:', e);
+    }
+  }
+
+  noteTutorialReset(): void {
+    this._tutorialCompleted = false;
+    this._resetTutorial = true;
   }
 
   prewarm(): void {
@@ -217,8 +243,16 @@ class CloudSyncManagerClass {
 
     const localSnapshot = PersistService.exportCloudSnapshot();
     const localMeta = PersistService.getCloudSyncMeta();
+    this._applyRemoteTutorial(remote, localSnapshot.payload);
 
     if (!remote.exists) {
+      if (this._tutorialCompleted) {
+        this._confirmRemoteBaseline(0, 'startup-tutorial-keep-local');
+        if (localSnapshot.payloadKeys.length > 0) {
+          this.scheduleSync('startup-upload-tutorial');
+        }
+        return;
+      }
       if (localSnapshot.payloadKeys.length > 0) {
         console.warn(
           `[CloudSync] 云端无存档，按云端权威清空本地缓存 keys=${localSnapshot.payloadKeys.length}`,
@@ -240,6 +274,13 @@ class CloudSyncManagerClass {
       : Object.keys(remote.payload || {});
 
     if (remotePayloadKeys.length === 0) {
+      if (this._tutorialCompleted) {
+        this._confirmRemoteBaseline(remoteUpdatedAt, 'startup-tutorial-flag');
+        if (localSnapshot.payloadKeys.length > 0) {
+          this.scheduleSync('startup-upload-after-tutorial-flag');
+        }
+        return;
+      }
       if (localSnapshot.payloadKeys.length > 0) {
         console.warn(
           `[CloudSync] 云端为空存档，按云端权威清空本地缓存 keys=${localSnapshot.payloadKeys.length}`,
@@ -323,10 +364,14 @@ class CloudSyncManagerClass {
           baseRemoteUpdatedAt: finalSnapshot.baseRemoteUpdatedAt,
           clientFingerprint: this._buildClientFingerprint(),
           payload: finalSnapshot.payload,
+          tutorialCompleted: this._tutorialCompleted || this._payloadTutorialCompleted(finalSnapshot.payload),
+          resetTutorial: this._resetTutorial,
         });
 
         PersistService.markCloudSynced(res.updatedAt || finalSnapshot.updatedAt);
         this._confirmRemoteBaseline(res.updatedAt || finalSnapshot.updatedAt, 'push-ok');
+        if (res.tutorialCompleted) this._tutorialCompleted = true;
+        if (this._resetTutorial) this._resetTutorial = false;
 
         if (this._syncFailCount > 0) {
           console.log('[CloudSync] 云同步恢复成功');
@@ -346,8 +391,10 @@ class CloudSyncManagerClass {
           const remote = e.data.remote as {
             updatedAt?: number;
             payload?: Record<string, string>;
+            tutorialCompleted?: boolean;
           };
           console.warn('[CloudSync] 服务端版本更新，改为下行覆盖本地');
+          this._applyRemoteTutorial(remote, remote.payload);
           PersistService.importCloudSnapshot({
             updatedAt: Number(remote.updatedAt) || Date.now(),
             payload: remote.payload || {},
@@ -388,6 +435,33 @@ class CloudSyncManagerClass {
         this._syncPending = false;
         this.scheduleSync('pending-resume');
       }
+    }
+  }
+
+  private _applyRemoteTutorial(
+    remote?: { exists?: boolean; tutorialCompleted?: boolean; payload?: Record<string, unknown> },
+    localPayload?: Record<string, unknown>,
+  ): void {
+    if (!remote || remote.exists === false) {
+      this._tutorialCompleted = this._payloadTutorialCompleted(localPayload);
+      return;
+    }
+    this._tutorialCompleted = !!(
+      remote.tutorialCompleted
+      || this._payloadTutorialCompleted(remote.payload)
+    );
+  }
+
+  private _payloadTutorialCompleted(payload?: Record<string, unknown>): boolean {
+    if (!payload) return false;
+    const raw = payload[SAVE_KEY];
+    if (typeof raw !== 'string' || !raw) return false;
+    try {
+      const save = JSON.parse(raw) as { tutorialStep?: number };
+      if (typeof save.tutorialStep !== 'number' || !Number.isFinite(save.tutorialStep)) return true;
+      return Math.floor(save.tutorialStep) >= 99;
+    } catch (_) {
+      return false;
     }
   }
 

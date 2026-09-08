@@ -19,6 +19,7 @@ export const BACKEND_PATH_PREFIX = `/${GAME_KEY}-api`;
 export const BACKEND_LOGIN_PATH = `${BACKEND_PATH_PREFIX}/login`;
 export const BACKEND_PULL_PATH = `${BACKEND_PATH_PREFIX}/save/pull`;
 export const BACKEND_PUSH_PATH = `${BACKEND_PATH_PREFIX}/save/push`;
+export const BACKEND_TUTORIAL_COMPLETE_PATH = `${BACKEND_PATH_PREFIX}/tutorial/complete`;
 export const BACKEND_GAME_CLUB_DECRYPT_PATH = `${BACKEND_PATH_PREFIX}/game-club/decrypt`;
 export const BACKEND_HEALTH_PATH = `${BACKEND_PATH_PREFIX}/health`;
 
@@ -48,7 +49,7 @@ export const CLOUD_SYNC_EXCLUDE_KEYS = [
   AUDIO_SETTINGS_KEY,
 ] as const;
 
-export const CLOUD_SYNC_STARTUP_TIMEOUT_MS = 2500;
+export const CLOUD_SYNC_STARTUP_TIMEOUT_MS = 6000;
 export const CLOUD_SYNC_DEBOUNCE_MS = 1500;
 export const CLOUD_SYNC_BASE_DELAY_MS = 1500;
 export const CLOUD_SYNC_MAX_BACKOFF_MS = 30000;

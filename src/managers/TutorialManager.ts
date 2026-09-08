@@ -1,8 +1,10 @@
 /**
- * 新手指引状态机。只读写 KitchenSave.tutorialStep，不另开存档。
+ * 新手指引状态机。进度写 KitchenSave.tutorialStep，完成态另记账号后台，
+ * 清本地缓存或换机登录也不重走。
  */
 import { EventBus } from '@/core/EventBus';
 import { EV } from '@/config/events';
+import { CloudSyncManager } from '@/managers/CloudSyncManager';
 import { KitchenManager } from '@/managers/KitchenManager';
 
 export enum TutorialStep {
@@ -14,6 +16,7 @@ export enum TutorialStep {
   CLICK_PILE = 5,
   TAKE_LOOT = 6,
   OPEN_BASKET = 7,
+  /** 旧档：摊上点回家。新流程改成收摊账后再回家。 */
   GO_HOME = 8,
   WAIT_RESULT = 9,
   COOK_TABLE = 10,
@@ -21,8 +24,16 @@ export enum TutorialStep {
   OPEN_FRIDGE = 12,
   INSPECT_DISH = 13,
   SELL_DISH = 14,
+  BASKET_DRY = 15,
+  BASKET_WET = 16,
+  CLOSE_BASKET = 17,
+  RETURN_MAP = 18,
+  FREE_WALK = 19,
+  HINT_DOOR = 20,
   COMPLETED = 99,
 }
+
+export const TUTORIAL_GIFT_COINS = 30;
 
 export const TUTORIAL_SEQUENCE: TutorialStep[] = [
   TutorialStep.INTRO,
@@ -32,13 +43,18 @@ export const TUTORIAL_SEQUENCE: TutorialStep[] = [
   TutorialStep.CLICK_PILE,
   TutorialStep.TAKE_LOOT,
   TutorialStep.OPEN_BASKET,
-  TutorialStep.GO_HOME,
+  TutorialStep.BASKET_DRY,
+  TutorialStep.BASKET_WET,
+  TutorialStep.CLOSE_BASKET,
+  TutorialStep.RETURN_MAP,
+  TutorialStep.FREE_WALK,
   TutorialStep.WAIT_RESULT,
   TutorialStep.COOK_TABLE,
   TutorialStep.COOK_DISH,
   TutorialStep.OPEN_FRIDGE,
   TutorialStep.INSPECT_DISH,
   TutorialStep.SELL_DISH,
+  TutorialStep.HINT_DOOR,
   TutorialStep.COMPLETED,
 ];
 
@@ -51,6 +67,7 @@ class TutorialManagerClass {
   private _started = false;
   private _dishUid = '';
   private _cardId = '';
+  private _gifted = false;
 
   get currentStep(): TutorialStep {
     return this._step;
@@ -85,7 +102,18 @@ class TutorialManagerClass {
   }
 
   needsOutingSeed(): boolean {
-    return this.isActive && this._step <= TutorialStep.GO_HOME;
+    return this.isActive && this._step <= TutorialStep.RETURN_MAP;
+  }
+
+  usesMask(): boolean {
+    return this.isActive
+      && this._step !== TutorialStep.FREE_WALK
+      && this._step !== TutorialStep.HINT_DOOR
+      && this._step !== TutorialStep.WAIT_RESULT;
+  }
+
+  tapHoleAdvances(): boolean {
+    return this.at(TutorialStep.BASKET_DRY, TutorialStep.BASKET_WET);
   }
 
   start(): void {
@@ -98,6 +126,11 @@ class TutorialManagerClass {
     }
     this._step = saved === TutorialStep.NOT_STARTED ? TutorialStep.INTRO : saved;
     this._started = true;
+    if (this._step === TutorialStep.INTRO) {
+      this._gifted = false;
+      this._dishUid = '';
+      this._cardId = '';
+    }
     this._write(this._step);
     EventBus.emit(EV.tutorialStepChanged, this._step);
   }
@@ -142,7 +175,8 @@ class TutorialManagerClass {
   onSold(uid: string): void {
     if (!this.isStep(TutorialStep.SELL_DISH)) return;
     if (this._dishUid && uid !== this._dishUid) return;
-    this.advanceTo(TutorialStep.COMPLETED);
+    this._grantGift();
+    this.advanceTo(TutorialStep.HINT_DOOR);
   }
 
   noteDishUid(uid: string): void {
@@ -153,6 +187,12 @@ class TutorialManagerClass {
     this._complete();
   }
 
+  private _grantGift(): void {
+    if (this._gifted) return;
+    this._gifted = true;
+    KitchenManager.grantCoins(TUTORIAL_GIFT_COINS, `指引完成，送你 ${TUTORIAL_GIFT_COINS} 金币`);
+  }
+
   private _complete(): void {
     this._step = TutorialStep.COMPLETED;
     this._started = false;
@@ -160,9 +200,13 @@ class TutorialManagerClass {
     this._cardId = '';
     this._write(TutorialStep.COMPLETED);
     EventBus.emit(EV.tutorialCompleted);
+    void CloudSyncManager.markTutorialComplete().then(() => {
+      void CloudSyncManager.flushNow('tutorial-complete');
+    });
   }
 
   private _read(): TutorialStep {
+    if (CloudSyncManager.accountTutorialCompleted) return TutorialStep.COMPLETED;
     const raw = KitchenManager.save.tutorialStep;
     if (typeof raw !== 'number' || !Number.isFinite(raw)) return TutorialStep.COMPLETED;
     return raw as TutorialStep;
@@ -178,6 +222,11 @@ class TutorialManagerClass {
     const fridge = KitchenManager.save.fridge;
     const hasStirfry = fridge.some((it) => it.kind === 'dish' && it.defId === 'stirfry');
     const hasCaitai = fridge.some((it) => it.defId === 'caitai');
+    if (step === TutorialStep.GO_HOME) {
+      if (hasStirfry) return TutorialStep.OPEN_FRIDGE;
+      if (hasCaitai) return TutorialStep.COOK_TABLE;
+      return TutorialStep.FREE_WALK;
+    }
     if (hasStirfry && step >= TutorialStep.CLICK_CARD && step <= TutorialStep.COOK_DISH) {
       const uid = fridge.filter((it) => it.kind === 'dish' && it.defId === 'stirfry').at(-1)?.uid;
       if (uid) this._dishUid = uid;
@@ -188,6 +237,9 @@ class TutorialManagerClass {
     }
     if (step >= TutorialStep.CLICK_CARD && step <= TutorialStep.WAIT_RESULT) {
       return TutorialStep.GO_OUT;
+    }
+    if (step >= TutorialStep.BASKET_DRY && step <= TutorialStep.FREE_WALK) {
+      return hasCaitai ? TutorialStep.COOK_TABLE : TutorialStep.GO_OUT;
     }
     if ((step === TutorialStep.INSPECT_DISH || step === TutorialStep.SELL_DISH) && !hasStirfry) {
       return hasCaitai ? TutorialStep.COOK_TABLE : TutorialStep.OPEN_FRIDGE;

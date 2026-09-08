@@ -178,18 +178,26 @@ export function makeItemInspectCard(opts: {
   if (view.kind === 'dish') {
     const path = `subpkg_images/dish_${view.defId}.png`;
     whenTextureReady(path, () => opts.onReady?.());
-    const icon = new PIXI.Sprite(dishTexture(view.defId));
-    fitSpriteInBox(icon, iconBox - 16, iconBox - 16);
-    icon.anchor.set(0.5);
-    icon.position.set(iconBox / 2, iconBox / 2);
-    iconHost.addChild(icon);
+    const tex = dishTexture(view.defId);
+    if (isTextureReady(tex)) {
+      const icon = new PIXI.Sprite(tex);
+      fitSpriteInBox(icon, iconBox - 16, iconBox - 16);
+      icon.anchor.set(0.5);
+      icon.position.set(iconBox / 2, iconBox / 2);
+      iconHost.addChild(icon);
+    }
   } else {
     const look = view.quality === 'rotten' ? 'rotten' as const : 'clean' as const;
-    const icon = new PIXI.Sprite(itemLookTexture(view.defId, look));
-    fitSpriteInBox(icon, iconBox - 16, iconBox - 16);
-    icon.anchor.set(0.5);
-    icon.position.set(iconBox / 2, iconBox / 2);
-    iconHost.addChild(icon);
+    const path = `subpkg_images/${view.defId}${look === 'rotten' ? '_rotten' : ''}.png`;
+    whenTextureReady(path, () => opts.onReady?.());
+    const tex = itemLookTexture(view.defId, look);
+    if (isTextureReady(tex)) {
+      const icon = new PIXI.Sprite(tex);
+      fitSpriteInBox(icon, iconBox - 16, iconBox - 16);
+      icon.anchor.set(0.5);
+      icon.position.set(iconBox / 2, iconBox / 2);
+      iconHost.addChild(icon);
+    }
   }
   iconHost.position.set(28, 28);
   if (view.maxQty > 1) {
@@ -269,19 +277,28 @@ export function makeItemInspectCard(opts: {
   const btnW = cardW - 56;
   const btnY = cardH - 68;
   const half = (btnW - 12) / 2;
-  const sell = makeSellChip(canEat ? half : btnW, 48, unit > 0 ? goldN : 0, opts.onReady);
-  sell.position.set(28, btnY);
-  sell.on('pointertap', () => {
-    if (unit <= 0) return;
-    opts.onSell?.();
-  });
-  opts.onSellBtn?.(sell);
-  card.addChild(sell);
   if (canEat) {
     const eatBtn = makeChip('吃掉', half, 48, 'primary');
-    eatBtn.position.set(28 + half + 12, btnY);
+    eatBtn.position.set(28, btnY);
     eatBtn.on('pointertap', () => opts.onEat?.());
     card.addChild(eatBtn);
+    const sell = makeSellChip(half, 48, unit > 0 ? goldN : 0, opts.onReady);
+    sell.position.set(28 + half + 12, btnY);
+    sell.on('pointertap', () => {
+      if (unit <= 0) return;
+      opts.onSell?.();
+    });
+    opts.onSellBtn?.(sell);
+    card.addChild(sell);
+  } else {
+    const sell = makeSellChip(btnW, 48, unit > 0 ? goldN : 0, opts.onReady);
+    sell.position.set(28, btnY);
+    sell.on('pointertap', () => {
+      if (unit <= 0) return;
+      opts.onSell?.();
+    });
+    opts.onSellBtn?.(sell);
+    card.addChild(sell);
   }
   return root;
 }
