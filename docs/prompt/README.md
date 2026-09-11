@@ -1,12 +1,13 @@
 # 捡菜市集 prompt
 
-1. 先读 [美术风格圣经](../美术风格圣经.md)。
-2. 风格段原样粘贴 [`_style_block.txt`](./_style_block.txt)。
+1. 先读 [美术风格圣经](../美术风格圣经.md)。等距场景另读 [等距场景规格](../等距场景规格.md)。
+2. 风格段原样粘贴 [`_style_block.txt`](./_style_block.txt)；等距物件再加 [`_iso_block.txt`](./_iso_block.txt)。
 3. 原图输出到仓库外 `../game_assets/jiancai-rosa/assets/raw/`。对比选稿后：场景图压成 JPG 进 `minigame/images/`，食材/熟菜走切图+抠图+裁切再进游戏。
 4. 音频提示词在 [`audio/`](./audio/README.md)。音效先生成到仓库外 `../game_assets/jiancai-rosa/audio/final/`，确认后再拷进 `minigame/subpkg_audio/`。
 
 | 文件 | 用途 | 比例 |
 |---|---|---|
+| `iso_pilot_prompt.txt` | 等距样张包：整屋概念图、Q 版主角四向、门口摊位、可摆放家具四件 | 3:4 / 1:1 |
 | `kitchen_scene_prompt.txt` | 旧：整屋厨房（已拆） | 9:16 |
 | `kitchen_room_prompt.txt` / `kitchen_room_wide_prompt.txt` | 旧：加宽横版空屋（已弃用） | 横版 |
 | `kitchen_room_0_shack_prompt.txt` | 陋屋空屋（镜头基准） | 竖版 3:4 |

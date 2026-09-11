@@ -1,0 +1,82 @@
+# 等距样张包（验证新画风 + 2:1 等距视角）
+# 风格段 = _style_block.txt，视角段 = _iso_block.txt，下面每条再补物件描述。
+# 母版：../game_assets/jiancai-rosa/iso_pilot/raw/
+# 抠完：../game_assets/jiancai-rosa/iso_pilot/cut/ → minigame/subpkg_kitchen/iso_*.png
+#
+# 教训：附整屋概念图当参考能锁住画风，但会把模型带回去画整屋。
+# 单件物件要么不附参考图，要么开头就写死 ONE ISOLATED OBJECT + no room/walls/floor/people。
+
+
+=== 1. 整屋概念图（定风格用，不入库） iso_kitchen_hero / 3:4 ===
+Strict 2:1 isometric (dimetric) projection, classic game isometric tile view, camera locked at 45
+degrees rotation and about 30 degrees elevation. Parallel projection with NO vanishing point and NO
+real perspective: distant objects stay exactly the same size as near ones, all parallel edges stay
+parallel. The floor reads as a 2:1 diamond grid, twice as wide as tall.
+
+Subject: a small cosy home kitchen shown as an open isometric diorama room. Only the two back walls
+exist (left-back wall and right-back wall); the front two walls are removed so we see inside. Square
+room about 5 by 5 floor tiles. Cream plaster walls (#FFF1DC), pale warm tiled floor (#F2E3C9) with a
+subtle diamond tile grid. Against the left-back wall: a chunky rounded cartoon refrigerator in cream
+and warm wood, plus a small wicker vegetable basket hanging on the wall. Against the right-back wall:
+a wooden cooking counter with a stove and a pot. On the floor: a white foam crate full of whole fresh
+vegetables - whole cabbages, whole carrots, one whole eggplant, all complete and uncut, never sliced.
+Standing in the middle of the room: a cute chibi girl about 2.5 heads tall, big friendly eyes, long
+dark-brown hair, wearing a warm orange apron over a cream shirt, smiling, holding a small basket.
+Beside her a tiny adorable cabbage mascot with little legs and a happy face. An open doorway in the
+right-back wall.
+
+<_style_block.txt>
+Plain flat pale background outside the room.
+
+
+=== 2. Q 版主角四向 iso_char_chibi_v2 / 1:1 / 参考图：整屋概念图 ===
+Character turnaround sheet for an isometric game, matching the exact art style of the reference
+image: same clean medium-thick warm-brown outlines, same flat soft cel shading, same bright cream
+palette, same chunky simplified cartoon shapes, same tiny 2.5-head chibi proportions as the little
+girl standing in the reference kitchen. Do NOT use a soft painterly storybook rendering, do NOT use
+fine sketchy hair strands - use simple flat clumped shapes with crisp outlines exactly like the
+reference.
+
+Layout: four separate full-body figures of the SAME character in one row on a plain flat pale cream
+background, evenly spaced, each figure complete and not cropped or overlapping. All four are viewed
+from an elevated 2:1 isometric game camera, looking down at roughly 30 degrees, parallel projection
+with no perspective distortion, and each figure stands flat with no ground shadow.
+Figure 1: facing down-right, standing idle.  Figure 2: facing down-left, standing idle.
+Figure 3: facing up-right, seen mostly from behind.  Figure 4: facing up-left, seen mostly from behind.
+
+Character: a very cute tiny chibi girl, only about 2.5 heads tall with a big round head and a short
+stubby body, big simple round dark eyes, small smiling mouth, rosy cheeks, chin-length dark-brown
+hair in simple flat clumps, wearing a warm orange apron over a cream long-sleeve shirt, olive
+trousers and cream cloth shoes.
+
+<_style_block.txt>
+Readable silhouette at 64 pixels. No semi-realistic anime rendering.
+
+
+=== 3. 门口摆摊场景（定玩法观感，不入库） iso_doorway_stall / 3:4 / 参考图：整屋概念图 ===
+同 1 的视角段。屋内 + 门口摊位：木台带奶油橙条纹棚，台上竹筐装整菜，挂一杆铜秤；
+柜台后是 Q 版主角挥手，柜台前是 Q 版街坊大婶拎布袋；白菜吉祥物坐在台角。
+摊位周围留出空的地砖给后续扩建。要午后暖阳，NOT night，不要压暗。
+
+
+=== 4–7. 可摆放家具单件 / 1:1 / 不附参考图 ===
+每条统一以这段开头：
+
+ONE ISOLATED FURNITURE OBJECT floating alone on a completely solid pure magenta background
+(#FF00FF). Absolutely no room, no walls, no floor, no floor tiles, no ground plane, no interior
+scene, no people, no characters, no mascot, no shadow on the background. Every single pixel that is
+not the object itself must be flat uniform magenta.
+
+<_iso_block.txt>
+
+物件描述：
+- iso_fridge：双门冰箱，奶白配蜜色木侧板，深棕圆把手，顶上一盆绿植和一块木砧板。占地 1×1。
+- iso_stove：蜜色木橱柜灶台，约两格长，台面嵌奶白双眼灶，一口奶白珐琅锅带盖开小火，
+  一端放木质餐具筒。占地 2×1。
+- iso_crate：奶白泡沫筐带木沿，装满整菜——两颗整圆白菜、几根带缨整胡萝卜、一根整紫茄子、
+  几颗整番茄。全部完整不切。占地 1×1。
+- iso_stall：蜜色木板柜台，长约深的两倍，四角木柱撑起奶油橙条纹布棚；台面竹筐木盘装整菜，
+  棚架上挂一杆小铜秤。无人。占地 1×2。
+
+<_style_block.txt>
+No cast shadow, no ground contact shadow. NO TEXT, no signage lettering.

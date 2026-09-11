@@ -12,6 +12,8 @@ import { OrderPanel } from '@/gameobjects/ui/OrderPanel';
 import { EventPanel } from '@/gameobjects/ui/EventPanel';
 import { GameClubPanel } from '@/gameobjects/ui/GameClubPanel';
 import { UpgradePanel } from '@/gameobjects/ui/UpgradePanel';
+import { buildIsoRoom } from '@/gameobjects/kitchen/IsoRoom';
+import { roomTiles } from '@/sim/iso';
 import { ensureRecipeUnlockPanel } from '@/gameobjects/ui/RecipeUnlockPanel';
 import { ensureCookLevelUpPanel } from '@/gameobjects/ui/CookLevelUpPanel';
 import { Platform } from '@/core/PlatformService';
@@ -115,6 +117,9 @@ export class KitchenScene implements Scene {
   private _fit = { x: 0, y: 0, scale: 1, srcW: 1600, srcH: 900 };
   private _itemDrag: { id: FurnId; nx0: number; ny0: number } | null = null;
   private _gmPick: FurnId | null = null;
+  /** GM 下切等距原型，和旧正面视图同机对比用。见 docs/等距场景规格.md。 */
+  private _iso = false;
+  private _isoPick: { gx: number; gy: number } | null = null;
   private _gmView: Record<FurnId, number> = { fridge: 0, table: 0, basket: 0, foam: 0 };
   private _gmHouse = 0;
   private _furnRoots = new Map<FurnId, PIXI.Container>();
@@ -241,6 +246,31 @@ export class KitchenScene implements Scene {
     this._world.mask = this._viewClip;
     const save = KitchenManager.save;
     const house = this._viewHouse();
+
+    if (this._iso) {
+      this._worldSize = { w, h };
+      this._world.position.set(0, 0);
+      this._world.hitArea = new PIXI.Rectangle(0, 0, w, h);
+      this._furnRoots.clear();
+      this._spotRects.clear();
+      this._world.addChild(buildIsoRoom({
+        house,
+        viewW: w,
+        viewH: h,
+        pick: this._isoPick,
+        onPickCell: (gx, gy) => {
+          this._isoPick = { gx, gy };
+          this.relayout();
+        },
+        onNeedRedraw: () => {
+          if (this.container.parent && this._iso) this.relayout();
+        },
+      }));
+      this._drawHud(w);
+      TutorialOverlay.refresh();
+      return;
+    }
+
     const roomPath = this._roomPath(house);
     const tex = gameTexture(roomPath);
     whenTextureReady(roomPath, () => {
@@ -748,6 +778,30 @@ export class KitchenScene implements Scene {
     this._ui.addChild(gm);
 
     if (!this._gm) return;
+
+    const iso = makeButton(this._iso ? '等距开' : '等距关', 116, 48, this._iso ? 0xFF8A3D : 0x4A6B7A);
+    iso.position.set(16, y - 60);
+    iso.on('pointerdown', stop);
+    iso.on('pointertap', () => {
+      this._iso = !this._iso;
+      this._isoPick = null;
+      this.relayout();
+    });
+    this._ui.addChild(iso);
+
+    if (this._iso) {
+      const house = makeButton(`${houseLabel(this._gmHouse)} ${roomTiles(this._gmHouse)}×${roomTiles(this._gmHouse)}`, 180, 48, 0x6B5A3A);
+      house.position.set(144, y - 60);
+      house.on('pointerdown', stop);
+      house.on('pointertap', () => {
+        this._gmHouse = (this._gmHouse + 1) % (HOUSE_MAX_LEVEL + 1);
+        this._isoPick = null;
+        this.relayout();
+      });
+      this._ui.addChild(house);
+      return;
+    }
+
     const dump = makeButton('导出布局', 140, 48, 0x5C6B4A);
     dump.position.set(128, y);
     dump.on('pointerdown', stop);
