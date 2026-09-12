@@ -440,6 +440,10 @@ export function emptyCellsHint(state: BasketState): Array<{ x: number; y: number
   return cells;
 }
 
+export function isBasketFull(state: BasketState): boolean {
+  return emptyCellsHint(state).length === 0;
+}
+
 export interface StagingSlot {
   uid: string;
   defId: string;

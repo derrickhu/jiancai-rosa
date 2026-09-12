@@ -287,10 +287,14 @@ export function hasGodPick(state: RunState): boolean {
 }
 
 /** 摊位费：第一摊白翻，人情也白翻。之后按菜场+摊型收，货多/好货多的才贵。 */
-export function nodeFee(state: RunState, node: MapNode): number {
+export function nodeFee(
+  state: RunState,
+  node: MapNode,
+  opts?: { ignoreFreePass?: boolean },
+): number {
   if (!isRummageNode(node)) return 0;
   if (state.paid.includes(node.id)) return 0;
-  if (state.freePass) return 0;
+  if (!opts?.ignoreFreePass && state.freePass) return 0;
   if (state.paid.length === 0) return 0;
   const enc = nodeEncounter(node);
   const fee = rummageEntryFee(state.marketId, {

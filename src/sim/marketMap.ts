@@ -86,7 +86,7 @@ const CARD_HINT: Record<CardKind, string> = {
   fork: '走哪边，后面的牌会不一样',
   deadend: '白走一步',
   empty: '没货，看清下一层',
-  favor: '下一摊免费还慢',
+  favor: '下一摊白翻，不用给钱',
   deep: '再往里走一段',
   recipe: '一张油纸，上面有菜',
   talk: '说两句，可能有东西',

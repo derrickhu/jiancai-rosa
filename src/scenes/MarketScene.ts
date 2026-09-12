@@ -14,6 +14,7 @@ import {
   getItem,
   itemsForStall,
   pileToBasketDraft,
+  isBasketFull,
   tryAutoPlace,
   visibleDefId,
   type PileItem,
@@ -39,7 +40,6 @@ import { isRummageNode } from '@/sim';
 import { TutorialManager, TutorialStep } from '@/managers/TutorialManager';
 import { TutorialOverlay, stageRectOf, type TutorialTarget } from '@/gameobjects/ui/TutorialOverlay';
 import { TutorialGuard } from '@/systems/TutorialGuard';
-
 const REVEAL_FACE = 188;
 const REVEAL_POP = 0.14;
 const REVEAL_FLY = 0.26;
@@ -91,6 +91,7 @@ export class MarketScene implements Scene {
   private _tutToken: PIXI.Container | null = null;
   private _leaveBtn: PIXI.Container | null = null;
   private _backBtn: PIXI.Container | null = null;
+  private _coinHud = { x: 120, y: 220 };
 
   constructor() {
     this.container.addChild(this._bg);
@@ -278,6 +279,7 @@ export class MarketScene implements Scene {
       onIconReady: redraw,
     });
     money.position.set(rowX, pillY);
+    this._coinHud = { x: rowX + 22, y: pillY + 22 };
     this._res.addChild(money);
 
     const bag = RunManager.basket.items;
@@ -310,6 +312,10 @@ export class MarketScene implements Scene {
 
     const side = 104;
     const y = this._hudTop();
+    const hintExit = run.mode === 'rummage'
+      && !TutorialManager.usesMask()
+      && !RunManager.crateLeft().length;
+    const basketFull = isBasketFull(RunManager.basket);
     if (run.mode === 'rummage' || run.mode === 'play') {
       const back = this._roundIconBtn(
         HUD_ICON.back,
@@ -321,6 +327,7 @@ export class MarketScene implements Scene {
           TutorialManager.advanceIf(TutorialStep.RETURN_MAP);
         },
         redraw,
+        hintExit && !basketFull,
       );
       back.position.set(16, y);
       this._backBtn = back;
@@ -329,7 +336,7 @@ export class MarketScene implements Scene {
     const leave = this._roundIconBtn(HUD_ICON.leave, '回家', () => {
       if (TutorialGuard.block('extract')) return;
       RunManager.extract(true);
-    }, redraw);
+    }, redraw, hintExit && basketFull);
     leave.position.set(w - 16 - side, y);
     this._leaveBtn = leave;
     this._res.addChild(leave);
@@ -453,18 +460,52 @@ export class MarketScene implements Scene {
     this._duskUrgent = false;
   }
 
-  private _roundIconBtn(icon: string, label: string, onTap: () => void, onReady: () => void): PIXI.Container {
+  private _roundIconBtn(
+    icon: string,
+    label: string,
+    onTap: () => void,
+    onReady: () => void,
+    highlight = false,
+  ): PIXI.Container {
     const size = 104;
     const root = new PIXI.Container();
+    if (highlight) {
+      const halo = new PIXI.Graphics();
+      halo.beginFill(0xF2C14D, 0.34);
+      halo.drawCircle(size / 2, size / 2, size / 2 + 12);
+      halo.endFill();
+      halo.eventMode = 'none';
+      root.addChild(halo);
+      const pulse = (): void => {
+        if (halo.destroyed || !halo.parent) return;
+        TweenManager.to({
+          target: halo,
+          props: { alpha: 0.28 },
+          duration: 0.55,
+          ease: Ease.easeInOutQuad,
+          onComplete: () => {
+            if (halo.destroyed || !halo.parent) return;
+            TweenManager.to({
+              target: halo,
+              props: { alpha: 1 },
+              duration: 0.55,
+              ease: Ease.easeInOutQuad,
+              onComplete: pulse,
+            });
+          },
+        });
+      };
+      pulse();
+    }
     const plate = new PIXI.Graphics();
     plate.beginFill(0x2A2018, 0.18);
     plate.drawCircle(size / 2 + 2, size / 2 + 3, size / 2);
     plate.endFill();
     plate.lineStyle(4, 0x2A2018, 1);
-    plate.beginFill(0xC46A3A);
+    plate.beginFill(highlight ? 0xE07A3A : 0xC46A3A);
     plate.drawCircle(size / 2, size / 2, size / 2 - 2);
     plate.endFill();
-    plate.lineStyle(2, 0xF2C14D, 0.85);
+    plate.lineStyle(highlight ? 4 : 2, 0xF2C14D, highlight ? 1 : 0.85);
     plate.drawCircle(size / 2, size / 2, size / 2 - 10);
     root.addChild(plate);
 

@@ -1,6 +1,7 @@
 import { AudioManager } from '@/core/AudioManager';
 import { EventBus } from '@/core/EventBus';
 import { Platform } from '@/core/PlatformService';
+import { showPrompt } from '@/gameobjects/ui/PromptPanel';
 import { EV } from '@/config/events';
 import { warmupRewardedAds } from '@/services/RewardedAdService';
 import { CloudSyncManager } from './CloudSyncManager';
@@ -34,12 +35,12 @@ import {
   fridgeRoom,
   fridgeSlotsNeeded,
   fridgeUnpackNeed,
+  settleFridgeUnpack,
   type FridgeDraft,
   furnLevel,
   grantCookXp,
   houseLevel,
   ingestExtract,
-  noteDex,
   noteMarketFood,
   discoverFood,
   regenStamina,
@@ -171,11 +172,12 @@ class KitchenManagerClass {
       Platform.showToast('体力已经满了');
       return;
     }
-    const ok = await Platform.showModal({
+    const ok = await showPrompt({
       title: '体力不够了',
       content: `看一段广告，回来加 ${STAMINA_AD_GAIN} 点体力`,
       confirmText: '看广告',
       cancelText: '再等等',
+      icon: 'subpkg_images/hud_stamina.png',
     });
     if (!ok) return;
     Platform.showRewardedVideo('stamina', () => {
@@ -207,25 +209,14 @@ class KitchenManagerClass {
     return fridgeUnpackNeed(this.save, this.pendingHaul ?? []);
   }
 
-  commitUnpack(sellHaulUids: string[], sellFridgeUids: string[]): { error?: string; gained: number; kept: number } {
+  commitUnpack(sellUids: string[]): { error?: string; gained: number; kept: number } {
     const haul = this.pendingHaul ?? [];
-    const need = this.unpackNeed();
-    const picked = sellHaulUids.length + sellFridgeUids.length;
-    if (picked < need) return { error: `再卖掉 ${need - picked} 件才能装下`, gained: 0, kept: 0 };
-    const haulSet = new Set(sellHaulUids);
-    const keep = haul.filter((it) => !haulSet.has(it.uid));
-    const soldHaul = haul.filter((it) => haulSet.has(it.uid));
-    const fridgeSold = sellItems(this.save, sellFridgeUids);
-    if (!fridgeCanFit(fridgeSold.save, keep)) {
-      return { error: '还是装不下，再卖掉几件', gained: 0, kept: 0 };
-    }
-    const gold = soldHaul.reduce((sum, it) => sum + it.sell, 0);
-    let save = noteDex(fridgeSold.save, haul);
-    save = ingestExtract({ ...save, money: save.money + gold }, keep);
+    const result = settleFridgeUnpack(this.save, haul, sellUids);
+    if (result.error) return { error: result.error, gained: 0, kept: 0 };
     this.pendingHaul = null;
-    SaveManager.replace(save);
+    SaveManager.replace(result.save);
     this.emit();
-    return { gained: fridgeSold.gained + gold, kept: keep.length };
+    return { gained: result.gained, kept: result.kept };
   }
 
   fridgeRoom(): number {
@@ -283,7 +274,7 @@ class KitchenManagerClass {
     return coins === GAME_CLUB_DAILY_COINS;
   }
 
-  trySpend(amount: number): boolean {
+  trySpend(amount: number, opts?: { silent?: boolean }): boolean {
     if (amount <= 0) return true;
     if (this.save.money < amount) {
       AudioManager.play('ui_deny');
@@ -292,7 +283,7 @@ class KitchenManagerClass {
     }
     SaveManager.replace({ ...this.save, money: this.save.money - amount });
     this.emit();
-    AudioManager.play('coin_spend');
+    if (!opts?.silent) AudioManager.play('coin_spend');
     return true;
   }
 

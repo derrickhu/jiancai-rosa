@@ -390,12 +390,23 @@ export class BasketPanel extends PIXI.Container {
     cols: number,
   ): void {
     const pad = 4;
+    const cap = makeLabel('暂存：带不走，只能跟篮里换', 17, INK, {
+      fontFamily: TITLE_FONT,
+      fontWeight: '700',
+      stroke: '#F6EDE0',
+      strokeThickness: 4,
+    });
+    cap.anchor.set(0.5, 0);
+    cap.position.set(stage.x + stage.w / 2, stage.y + 1);
+    cap.eventMode = 'none';
+    shell.addChild(cap);
+    const capH = Math.ceil(cap.height) + 4;
     const stageCell = Math.max(
       22,
       Math.min(
         cell,
         Math.floor((stage.w - pad * 2) / Math.max(1, cols)),
-        Math.floor((stage.h - pad * 2) / 3),
+        Math.floor((stage.h - capH - pad) / 3),
       ),
     );
     const layout = packStagingLayout(items, cols);
@@ -403,7 +414,7 @@ export class BasketPanel extends PIXI.Container {
     const gridW = cols * stageCell;
     const gridH = rows * stageCell;
     const gridX = stage.x + (stage.w - gridW) / 2;
-    const gridY = stage.y + pad;
+    const gridY = stage.y + capH;
 
     const viewport = new PIXI.Container();
     const mask = new PIXI.Graphics();

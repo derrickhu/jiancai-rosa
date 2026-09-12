@@ -705,12 +705,16 @@ export function makeRewardStrip(
   chips: Array<{ icon?: string; itemId?: string; label: string }>,
   onReady?: () => void,
   lead = '',
+  tone: 'night' | 'paper' = 'night',
 ): PIXI.Container {
   const root = new PIXI.Container();
   let x = 0;
   const h = 44;
+  const ink = tone === 'paper'
+    ? { lead: 0x8A6A40, gold: 0xC48A14, item: 0x2A2018 }
+    : { lead: 0xC9B8A4, gold: 0xF2C14D, item: 0xF4EFE6 };
   if (lead) {
-    const tag = makeLabel(lead, 20, 0xC9B8A4);
+    const tag = makeLabel(lead, 20, ink.lead);
     tag.anchor.set(0, 0.5);
     tag.position.set(0, h / 2);
     root.addChild(tag);
@@ -718,7 +722,7 @@ export function makeRewardStrip(
   }
   for (const chip of chips) {
     const gold = Boolean(chip.icon);
-    const label = makeLabel(chip.label, 22, gold ? 0xF2C14D : 0xF4EFE6, { fontWeight: '700' });
+    const label = makeLabel(chip.label, 22, gold ? ink.gold : ink.item, { fontWeight: '700' });
     const iconSize = gold ? 36 : 40;
     const hasIcon = Boolean(chip.icon || chip.itemId);
     const cell = new PIXI.Container();

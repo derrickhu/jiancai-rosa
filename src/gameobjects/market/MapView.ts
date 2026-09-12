@@ -52,7 +52,7 @@ function slotTexture(atlas: string, slot: number): PIXI.Texture | null {
   return sub;
 }
 
-/** 收费摊也画自己摊型的图：贵不贵看标题栏右侧那组数字+金币。 */
+/** 收费摊也画自己摊型的图：贵不贵看卡面图上方那组数字+金币。 */
 export function slotForNode(node: { kind: CardKind; stall?: StallId }, revealed: boolean): number {
   if (!revealed && isMysteryCard(node.kind)) return BACK_SLOT;
   if (node.stall) return STALL_SLOT[node.stall];
@@ -68,30 +68,28 @@ function feeBroke(opt: RouteOption): boolean {
   return opt.fee > 0 && !!opt.blocked && opt.blocked.includes('金币');
 }
 
-/** 卡面下沿：收费摊的价写在标题栏，这里只留件数或进不去的理由。 */
+/** 卡面下沿：收费摊的价写在图上方空白处，这里只留件数或进不去的理由。 */
 function infoLine(opt: RouteOption): string {
   if (!opt.revealed) return cardHint(opt.node, false);
   if (isRummageOption(opt)) {
     const stock = `剩 ${opt.left} 件`;
+    if (opt.waived) return `人情白翻 · ${stock}`;
     return opt.fee > 0 ? stock : `免费 · ${stock}`;
   }
   return cardHint(opt.node, true);
 }
 
-/** 标题栏价签：细金边小数标，钱不够时数字改红。原点在左中。 */
+/** 卡面图上方价签：奶油底，钱不够时数字改红。原点在左中。 */
 function makeFeeMark(fee: number, broke: boolean, size: number, onReady?: () => void): PIXI.Container {
   const root = new PIXI.Container();
   root.eventMode = 'none';
-  const num = makeLabel(String(fee), size, broke ? 0xFF5A4A : 0xFFE7A0, {
+  const num = makeLabel(String(fee), size, broke ? 0xC44A3A : 0x8B5A2B, {
     fontWeight: '700',
-    dropShadow: true,
-    dropShadowColor: 0x2A2018,
-    dropShadowDistance: 1,
-    dropShadowBlur: 1,
-    dropShadowAlpha: 0.55,
+    stroke: 0xFFF6E8,
+    strokeThickness: Math.max(3, Math.round(size * 0.16)),
   });
   num.anchor.set(0, 0.5);
-  const iconSize = Math.round(size * 0.9);
+  const iconSize = Math.round(size * 0.95);
   whenTextureReady(HUD_ICON.coin, () => onReady?.());
   const coin = new PIXI.Sprite(gameTexture(HUD_ICON.coin));
   const hasCoin = isTextureReady(coin.texture);
@@ -99,20 +97,76 @@ function makeFeeMark(fee: number, broke: boolean, size: number, onReady?: () => 
   coin.anchor.set(0, 0.5);
   coin.eventMode = 'none';
   const gap = Math.max(2, Math.round(size * 0.1));
-  const padX = Math.round(size * 0.28);
-  const padY = Math.round(size * 0.1);
+  const padX = Math.round(size * 0.32);
+  const padY = Math.round(size * 0.14);
   const inner = num.width + (hasCoin ? gap + iconSize : 0);
   const bw = inner + padX * 2;
   const bh = Math.max(iconSize, num.height) + padY * 2;
   const bg = new PIXI.Graphics();
-  bg.lineStyle(1.5, broke ? 0xC44A3A : 0xE0A100, 0.95);
-  bg.beginFill(broke ? 0x4A1810 : 0x3A2A14, 0.42);
+  bg.lineStyle(2, broke ? 0xC44A3A : 0xC4A574, 1);
+  bg.beginFill(broke ? 0xF3D2B4 : 0xFFF8F0, 0.94);
   bg.drawRoundedRect(0, -bh / 2, bw, bh, bh / 2);
   bg.endFill();
   num.position.set(padX, 0);
   coin.position.set(padX + num.width + gap, 0);
   root.addChild(bg, num);
   if (hasCoin) root.addChild(coin);
+  return root;
+}
+
+/** 人情免单：划掉原价，改挂绿色「免费」。 */
+function makeWaivedMark(fee: number, size: number, onReady?: () => void): PIXI.Container {
+  const root = new PIXI.Container();
+  root.eventMode = 'none';
+  const old = makeLabel(String(fee), Math.round(size * 0.86), 0x8A6A40, {
+    fontWeight: '700',
+    stroke: 0xFFF6E8,
+    strokeThickness: Math.max(3, Math.round(size * 0.14)),
+  });
+  old.anchor.set(0, 0.5);
+  const strike = new PIXI.Graphics();
+  strike.lineStyle(2, 0xC44A3A, 0.95);
+  strike.moveTo(0, 0);
+  strike.lineTo(old.width, 0);
+  strike.eventMode = 'none';
+  const oldWrap = new PIXI.Container();
+  oldWrap.addChild(old, strike);
+  const free = makeLabel('免费', size, 0x3D7A38, {
+    fontWeight: '700',
+    stroke: 0xFFF6E8,
+    strokeThickness: Math.max(3, Math.round(size * 0.16)),
+  });
+  free.anchor.set(0, 0.5);
+  const iconSize = Math.round(size * 0.82);
+  whenTextureReady(HUD_ICON.coin, () => onReady?.());
+  const coin = new PIXI.Sprite(gameTexture(HUD_ICON.coin));
+  const hasCoin = isTextureReady(coin.texture);
+  if (hasCoin) fitSpriteInBox(coin, iconSize, iconSize);
+  coin.anchor.set(0, 0.5);
+  coin.eventMode = 'none';
+  coin.alpha = 0.45;
+  const gap = Math.max(3, Math.round(size * 0.12));
+  const padX = Math.round(size * 0.28);
+  const padY = Math.round(size * 0.12);
+  const inner = old.width + gap + free.width + (hasCoin ? gap + iconSize : 0);
+  const bw = inner + padX * 2;
+  const bh = Math.max(iconSize, old.height, free.height) + padY * 2;
+  const bg = new PIXI.Graphics();
+  bg.lineStyle(2, 0x6BA368, 1);
+  bg.beginFill(0xF3F6E8, 0.94);
+  bg.drawRoundedRect(0, -bh / 2, bw, bh, bh / 2);
+  bg.endFill();
+  let x = padX;
+  if (hasCoin) {
+    coin.position.set(x, 0);
+    x += iconSize + gap;
+  }
+  oldWrap.position.set(x, 0);
+  x += old.width + gap;
+  free.position.set(x, 0);
+  root.addChild(bg);
+  if (hasCoin) root.addChild(coin);
+  root.addChild(oldWrap, free);
   return root;
 }
 
@@ -192,8 +246,8 @@ export function makeRouteCard(opts: {
     root.addChild(edge);
   }
 
-  const showFee = option.revealed && option.fee > 0;
-  const titleSize = Math.round(width * (mode === 'far' ? 0.15 : showFee ? 0.108 : 0.125));
+  const showFee = option.revealed && (option.fee > 0 || option.waived);
+  const titleSize = Math.round(width * (mode === 'far' ? 0.15 : 0.125));
   const title = makeLabel(cardName(option.node, option.revealed, opts.marketId), titleSize, 0xF6EDE0, {
     fontWeight: '700',
     dropShadow: true,
@@ -202,25 +256,24 @@ export function makeRouteCard(opts: {
     dropShadowBlur: 2,
     dropShadowAlpha: 0.6,
   });
-  title.anchor.set(0, 0.5);
-  const titleY = height * 0.115;
+  title.anchor.set(0.5);
+  title.position.set(width / 2, height * 0.115);
+  root.addChild(title);
   if (showFee) {
-    const mark = makeFeeMark(
-      option.fee,
-      feeBroke(option),
-      Math.round(width * (mode === 'far' ? 0.12 : 0.1)),
-      opts.onReady,
-    );
-    const gap = Math.round(width * 0.035);
-    const rowW = title.width + gap + mark.width;
-    const rowX = Math.round((width - rowW) / 2);
-    title.position.set(rowX, titleY);
-    mark.position.set(rowX + title.width + gap, titleY);
-    root.addChild(title, mark);
-  } else {
-    title.anchor.set(0.5);
-    title.position.set(width / 2, titleY);
-    root.addChild(title);
+    const mark = option.waived
+      ? makeWaivedMark(
+        option.listedFee,
+        Math.round(width * (mode === 'far' ? 0.11 : 0.092)),
+        opts.onReady,
+      )
+      : makeFeeMark(
+        option.fee,
+        feeBroke(option),
+        Math.round(width * (mode === 'far' ? 0.12 : 0.1)),
+        opts.onReady,
+      );
+    mark.position.set(Math.round((width - mark.width) / 2), winY + Math.round(winH * 0.09));
+    root.addChild(mark);
   }
 
   if (mode !== 'far') {
@@ -242,26 +295,6 @@ export function makeRouteCard(opts: {
     info.anchor.set(0.5);
     info.position.set(width / 2, stripY + stripH / 2);
     root.addChild(info);
-  }
-
-  const badge = option.node.steps === 0
-    ? { text: '0步', color: 0x6BA368 }
-    : option.node.kind === 'paystall'
-      ? { text: '¥', color: 0xE0A100 }
-      : null;
-  if (badge && option.revealed) {
-    const r = Math.round(width * 0.105);
-    const disc = new PIXI.Graphics();
-    disc.lineStyle(3, 0x2A2018, 1);
-    disc.beginFill(badge.color);
-    disc.drawCircle(0, 0, r);
-    disc.endFill();
-    disc.position.set(width * 0.86, height * 0.28);
-    root.addChild(disc);
-    const mark = makeLabel(badge.text, Math.round(width * 0.085), 0xFFF8F0, { fontWeight: '700' });
-    mark.anchor.set(0.5);
-    mark.position.set(width * 0.86, height * 0.28);
-    root.addChild(mark);
   }
 
   if (mode === 'full') {

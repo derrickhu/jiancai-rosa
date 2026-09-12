@@ -66,8 +66,8 @@ const MARKET_BGM: Record<string, MarketBgmId> = {
 const AUDIO_DIR = 'subpkg_audio';
 const BGM_VOL = 0.42;
 const SFX_VOL = 0.86;
-/** 普通捡菜：轻一点，别盖过菜场。 */
-const PICKUP_SFX = new Set<SfxId>(['item_reveal', 'pickup_veg', 'pickup_wet']);
+const REVEAL_VOL = 0.7;
+const PICKUP_SFX = new Set<SfxId>(['pickup_veg', 'pickup_wet']);
 const PICKUP_VOL = 0.46;
 /** 结算 / 神捡 / 升级：压过 BGM 的爽感短句 */
 const REWARD_SFX = new Set<SfxId>(['result_safe', 'result_dusk', 'pickup_god', 'level_up']);
@@ -115,6 +115,8 @@ class AudioManagerClass {
   private bgmRequestSeq = 0;
   private bgmHttpsTried = false;
   private readonly webSfxPool = new Map<string, HTMLAudioElement>();
+  private revealToken = 0;
+  private revealWx: WxInnerAudioContext | null = null;
 
   sfxPath(id: SfxId): string {
     if (id === 'tutorial_pop' || id === 'tutorial_hint' || id === 'tutorial_ok') {
@@ -176,8 +178,12 @@ class AudioManagerClass {
     if (!this.soundEnabled) return;
     this.init();
     const logical = this.sfxPath(id);
+    const token = this.revealToken;
     void CdnAssetService.resolveAudioSrc(logical)
-      .then((src) => this.playResolvedSfx(id, src, volume, logical))
+      .then((src) => {
+        if (id === 'item_reveal' && token !== this.revealToken) return;
+        this.playResolvedSfx(id, src, volume, logical);
+      })
       .catch((err) => {
         console.warn(TAG, `音效 "${id}" 资源未就绪`, err);
       });
@@ -187,9 +193,11 @@ class AudioManagerClass {
     this.play(zone === 'wet' ? 'pickup_wet' : 'pickup_veg');
   }
 
-  /** 任意途径有物品出现：同一首出现音。神捡演出另走 pickup_god。 */
+  /** 物品出现：花花那条组合短句。连出时重触发，避免好几条叠在一起刺耳。 */
   playGain(_opts?: { god?: boolean }): void {
-    this.play('item_reveal');
+    this.revealToken += 1;
+    this.stopRevealWx();
+    this.play('item_reveal', REVEAL_VOL);
   }
 
   playMarketBgm(marketId: string): void {
@@ -230,9 +238,21 @@ class AudioManagerClass {
     } catch (_) {}
   }
 
+  private stopRevealWx(): void {
+    const audio = this.revealWx;
+    this.revealWx = null;
+    if (!audio) return;
+    try { audio.stop?.(); } catch (_) {}
+    try { audio.destroy?.(); } catch (_) {}
+  }
+
   private playResolvedSfx(name: string, src: string, volume: number, logical?: string): void {
     const wxCtx = Platform.createInnerAudioContext() as WxInnerAudioContext | null;
     if (wxCtx) {
+      if (name === 'item_reveal') {
+        this.stopRevealWx();
+        this.revealWx = wxCtx;
+      }
       this.playWxSfx(name, wxCtx, src, volume, logical);
       return;
     }
@@ -253,6 +273,7 @@ class AudioManagerClass {
     const cleanup = () => {
       if (done) return;
       done = true;
+      if (this.revealWx === audio) this.revealWx = null;
       try { audio.destroy?.(); } catch (_) {}
     };
     const tryPlay = () => {

@@ -9,19 +9,23 @@ import { RunManager } from '@/managers/RunManager';
 import { Platform } from '@/core/PlatformService';
 import {
   RARITY_STYLE,
-  fridgeItemName,
+  fridgeCap,
   fridgeItemPrice,
   fridgeItemQty,
   fridgeKind,
-  fridgeRoom,
   itemRarity,
+  previewFridgeAfterHaul,
+  recipeRarity,
   type ExtractedItem,
   type ExtractResult,
+  type FridgeItem,
   type Rarity,
+  type RecipeId,
 } from '@/sim';
-import { HUD_ICON, fillRect, makeLabel, makeSlicedButton } from '@/utils/ui';
+import { HUD_ICON, bindUiClick, drawRarityFrame, fillRect, makeCornerMark, makeLabel, makeQtyMark, makeSlicedButton } from '@/utils/ui';
 import { VerticalScroller } from '@/utils/scroll';
-import { dishTexture, fitSpriteInBox, gameTexture, isTextureReady, itemLookTexture, whenTextureReady } from '@/utils/assets';
+import { dishTexture, fitSpriteInBox, gameTexture, isTextureReady, itemLookTexture, watchTextures, whenTextureReady } from '@/utils/assets';
+import { PANEL_SHELL, fridgeItemPath } from '@/utils/panelAssets';
 import { TutorialManager, TutorialStep } from '@/managers/TutorialManager';
 import { TutorialOverlay } from './TutorialOverlay';
 import { TutorialGuard } from '@/systems/TutorialGuard';
@@ -36,15 +40,24 @@ const TITLE_ART = {
   messy: 'subpkg_kitchen/ui_result_title_messy.png',
 } as const;
 
-const BG = 'subpkg_kitchen/ui_result_panel.png';
+const FRIDGE_BG = 'subpkg_kitchen/ui_fridge_panel.png';
 const BTN = 'subpkg_kitchen/ui_fridge_btn_terracotta.png';
 const BURST = 'subpkg_kitchen/ui_result_burst.png';
-const PAGE = { x: 0.08, y: 0.07, w: 0.84, h: 0.86 };
+const HEADER = { y: 0.028, h: 0.188 };
+const CAVITY = { x: 0.12, y: 0.228, w: 0.76, h: 0.568 };
+const FOOTER = { y: 0.798, h: 0.145 };
 const TITLE_FONT = 'Songti SC, STSong, PingFang SC, serif';
 const FLOAT_FONT = 'Kaiti SC, STKaiti, Songti SC, STSong, PingFang SC, serif';
 const INK = 0x2A2018;
 const GOLD = 0xC48A14;
+const PAPER = 0xFFF8F0;
+const TERRACOTTA = 0xC46A3A;
+const WALNUT = 0x8B5A2B;
 const ROTTEN_FLOAT = 0xC9B8A8;
+
+function fridgeSlotRarity(it: FridgeItem): Rarity {
+  return fridgeKind(it) === 'dish' ? recipeRarity(it.defId as RecipeId) : itemRarity(it.defId);
+}
 
 export class ResultPanel extends PIXI.Container {
   _isOpen = false;
@@ -54,6 +67,8 @@ export class ResultPanel extends PIXI.Container {
   private _scroller: VerticalScroller;
   private _celebrate = false;
   private _pops: PIXI.Container[] = [];
+  private _paintQueued = false;
+  private _pickTapAt = 0;
 
   constructor() {
     super();
@@ -96,7 +111,8 @@ export class ResultPanel extends PIXI.Container {
     if (!this._isOpen) return;
     if (TutorialGuard.block('closeResult')) return;
     if (KitchenManager.pendingHaul?.length) {
-      Platform.showToast(`再卖掉 ${KitchenManager.unpackNeed() - this._picked()} 件才能装下`);
+      const left = Math.max(0, KitchenManager.unpackNeed() - this._picked());
+      Platform.showToast(left > 0 ? `再卖掉 ${left} 格才能装下` : '先点下面确认卖掉');
       return;
     }
     this._isOpen = false;
@@ -353,58 +369,6 @@ export class ResultPanel extends PIXI.Container {
     return root;
   }
 
-  private _mountShell(w: number, h: number): { box: { x: number; y: number; w: number; h: number }; shell: PIXI.Container } {
-    const dim = new PIXI.Graphics();
-    fillRect(dim, 0, 0, w, h, 0x1A120C);
-    dim.alpha = 0.52;
-    dim.eventMode = 'static';
-    this._root.addChild(dim);
-
-    const box = this._shellBox(w, h);
-    const shell = new PIXI.Container();
-    shell.position.set(box.x, box.y);
-    shell.eventMode = 'static';
-    shell.hitArea = new PIXI.Rectangle(0, 0, box.w, box.h);
-    this._root.addChild(shell);
-    this._paintBg(shell, box.w, box.h);
-    return { box, shell };
-  }
-
-  private _shellBox(screenW: number, screenH: number): { x: number; y: number; w: number; h: number } {
-    const tex = gameTexture(BG);
-    const marginX = 28;
-    const top = Game.safeTop + 28;
-    const bottom = Math.max(20, Game.safeBottom + 20);
-    const maxW = screenW - marginX * 2;
-    const maxH = screenH - top - bottom;
-    const tw = isTextureReady(tex) ? tex.width : 800;
-    const th = isTextureReady(tex) ? tex.height : 1203;
-    const scale = Math.min(maxW / tw, maxH / th);
-    const w = tw * scale;
-    const h = th * scale;
-    return { x: (screenW - w) / 2, y: top + (maxH - h) / 2, w, h };
-  }
-
-  private _paintBg(host: PIXI.Container, width: number, height: number): void {
-    whenTextureReady(BG, () => {
-      if (this._isOpen) this.relayout();
-    });
-    const tex = gameTexture(BG);
-    if (isTextureReady(tex)) {
-      const sp = new PIXI.Sprite(tex);
-      sp.width = width;
-      sp.height = height;
-      sp.eventMode = 'none';
-      host.addChild(sp);
-      return;
-    }
-    const g = new PIXI.Graphics();
-    g.beginFill(0xFFF8EE);
-    g.drawRoundedRect(0, 0, width, height, 36);
-    g.endFill();
-    host.addChild(g);
-  }
-
   private _coinValue(amount: number, size: number): PIXI.Container {
     const row = new PIXI.Container();
     const coin = new PIXI.Sprite(gameTexture(HUD_ICON.coin));
@@ -463,121 +427,149 @@ export class ResultPanel extends PIXI.Container {
     this._pops = [];
   }
 
+  private _schedulePickRelayout = (): void => {
+    if (!this._isOpen || this._paintQueued) return;
+    this._paintQueued = true;
+    const later = typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame
+      : (cb: () => void) => setTimeout(cb, 0);
+    later(() => {
+      this._paintQueued = false;
+      if (this._isOpen) this.relayout();
+    });
+  };
+
   private _drawPick(data: ExtractResult): void {
     const w = Game.designWidth;
     const h = Game.logicHeight;
+    const save = KitchenManager.save;
     const haul = KitchenManager.pendingHaul ?? data.items;
-    const need = KitchenManager.unpackNeed();
-    const picked = this._picked();
-    const ready = picked >= need;
-    const gold = this._pickedGold(haul);
-    const { box, shell } = this._mountShell(w, h);
+    const preview = previewFridgeAfterHaul(save, haul);
+    const valid = new Set(preview.map((it) => it.uid));
+    for (const uid of [...this._sell]) {
+      if (!valid.has(uid)) this._sell.delete(uid);
+    }
+    watchTextures([...PANEL_SHELL.fridge, ...preview.map(fridgeItemPath), HUD_ICON.coin], this._schedulePickRelayout);
 
-    const px = box.w * PAGE.x;
-    const py = box.h * PAGE.y;
-    const pw = box.w * PAGE.w;
-    const ph = box.h * PAGE.h;
-    const hx = px + pw / 2;
-    const title = new PIXI.Text('冰箱装不下', {
+    const cap = fridgeCap(save);
+    const owned = new Set(save.fridge.map((it) => it.uid));
+    const need = Math.max(0, preview.length - cap);
+    const picked = this._sell.size;
+    const remain = preview.length - picked;
+    const ready = remain <= cap;
+    const gold = preview.reduce((sum, it) => (
+      this._sell.has(it.uid) ? sum + fridgeItemPrice(it, save) : sum
+    ), 0);
+
+    const dim = new PIXI.Graphics();
+    fillRect(dim, 0, 0, w, h, 0x000000);
+    dim.alpha = 0.46;
+    dim.eventMode = 'static';
+    this._root.addChild(dim);
+
+    const box = this._fridgeBox(w, h);
+    const shell = new PIXI.Container();
+    shell.position.set(box.x, box.y);
+    shell.eventMode = 'static';
+    shell.hitArea = new PIXI.Rectangle(0, 0, box.w, box.h);
+    this._root.addChild(shell);
+    this._paintFridgeBg(shell, box.w, box.h);
+
+    const midX = box.w / 2;
+    const cx = box.w * CAVITY.x;
+    const cy = box.h * CAVITY.y;
+    const cw = box.w * CAVITY.w;
+    const ch = box.h * CAVITY.h;
+    const hy = box.h * HEADER.y;
+    const hh = box.h * HEADER.h;
+
+    const title = new PIXI.Text('腾  格  子', {
       fontFamily: TITLE_FONT,
-      fontSize: 36,
+      fontSize: 40,
       fill: INK,
       fontWeight: '700',
-      stroke: '#FFF6E8',
+      letterSpacing: 6,
+      stroke: '#F6EDE0',
       strokeThickness: 5,
-      letterSpacing: 2,
+      dropShadow: true,
+      dropShadowColor: '#C4A574',
+      dropShadowAlpha: 0.55,
+      dropShadowDistance: 2,
+      dropShadowBlur: 0,
+      dropShadowAngle: Math.PI / 2,
     });
     title.anchor.set(0.5);
-    title.position.set(hx, py + 28);
+    title.position.set(midX, hy + hh * 0.28);
     title.eventMode = 'none';
-    shell.addChild(title);
-
-    const room = fridgeRoom(KitchenManager.save);
+    const count = new PIXI.Text(`${remain} / ${cap}`, {
+      fontFamily: TITLE_FONT,
+      fontSize: 26,
+      fill: ready ? WALNUT : TERRACOTTA,
+      fontWeight: '700',
+      letterSpacing: 1,
+      stroke: '#F6EDE0',
+      strokeThickness: 4,
+    });
+    count.anchor.set(0.5);
+    count.position.set(midX, title.y + 34);
+    count.eventMode = 'none';
     const hint = makeLabel(
-      `还能装 ${room} 格，带回 ${haul.length} 件。点选卖掉，至少 ${need} 件。`,
-      18,
-      0x6B5340,
-      { wordWrap: true, breakWords: true, wordWrapWidth: pw * 0.88, align: 'center' },
+      ready ? '卖掉这些就能装下，还可以再改。' : `先和冰箱叠好。还要腾出 ${need - picked} 格，点格子卖掉。`,
+      16,
+      ready ? WALNUT : TERRACOTTA,
+      { fontWeight: '700', wordWrap: true, breakWords: true, wordWrapWidth: cw, align: 'center' },
     );
-    hint.anchor.set(0.5, 0);
-    hint.position.set(hx, py + 50);
-    shell.addChild(hint);
+    hint.anchor.set(0.5, 1);
+    hint.position.set(midX, hy + hh - 8);
+    shell.addChild(title, count, hint);
 
-    const cx = px + 8;
-    const cy = py + 96;
-    const cw = pw - 16;
-    const ch = ph - 96 - 78;
+    const cols = 6;
+    const pad = 8;
+    const cell = Math.max(48, Math.floor((cw - pad * 2) / cols));
+    const gridW = cols * cell;
+    const gridX = cx + (cw - gridW) / 2;
+    const contentH = Math.ceil(preview.length / cols) * cell;
     const viewport = new PIXI.Container();
-    viewport.position.set(cx, cy);
     const mask = new PIXI.Graphics();
-    fillRect(mask, cx, cy, cw, ch, 0xffffff);
+    mask.beginFill(0xffffff);
+    mask.drawRoundedRect(cx, cy, cw, ch, 18);
+    mask.endFill();
     mask.eventMode = 'none';
-    const list = new PIXI.Container();
-    list.mask = mask;
-    viewport.addChild(list);
+    viewport.mask = mask;
     shell.addChild(mask, viewport);
 
-    let y = 0;
-    const addHead = (text: string) => {
-      const lab = makeLabel(text, 20, GOLD, { fontWeight: '700' });
-      lab.position.set(8, y);
-      list.addChild(lab);
-      y += 36;
-    };
-    addHead('刚带回');
-    for (const it of haul) {
-      list.addChild(this._pickRow({
-        key: `h:${it.uid}`,
-        name: it.name,
-        sell: it.sell,
-        defId: it.defId,
-        dish: false,
-        rotten: it.quality === 'rotten',
-        x: 0,
-        y,
-        width: cw,
-      }));
-      y += 76;
-    }
-    addHead('冰箱里也可以卖');
-    for (const it of KitchenManager.save.fridge) {
-      const qty = fridgeItemQty(it);
-      list.addChild(this._pickRow({
-        key: `f:${it.uid}`,
-        name: qty > 1 ? `${fridgeItemName(it)} ×${qty}` : fridgeItemName(it),
-        sell: fridgeItemPrice(it, KitchenManager.save),
-        defId: it.defId,
-        dish: fridgeKind(it) === 'dish',
-        rotten: it.quality === 'rotten',
-        x: 0,
-        y,
-        width: cw,
-      }));
-      y += 76;
-    }
+    const grid = new PIXI.Container();
+    viewport.addChild(grid);
+    preview.forEach((it, i) => {
+      const x = gridX + (i % cols) * cell;
+      const y = cy + pad + Math.floor(i / cols) * cell;
+      grid.addChild(this._pickSlot(x, y, cell - 8, it, i >= cap, !owned.has(it.uid)));
+    });
     this._scroller.attach({
-      content: list,
-      maxScroll: Math.max(0, y - ch),
+      content: grid,
+      maxScroll: Math.max(0, contentH - (ch - pad)),
       baseY: 0,
       hit: { x: box.x + cx, y: box.y + cy, w: cw, h: ch },
     });
 
-    if (ready) {
+    const fy = box.h * FOOTER.y;
+    const fh = box.h * FOOTER.h;
+    const btnH = 46;
+    const btnY = fy + Math.max(6, (fh - btnH) * 0.28) + 20;
+    if (picked > 0 && gold > 0) {
       const status = this._coinValue(gold, 18);
       status.pivot.set(status.width / 2, 0);
-      status.position.set(hx, py + ph - 72);
+      status.position.set(midX, btnY - 26);
       shell.addChild(status);
-    } else {
-      const status = makeLabel(`再选 ${need - picked} 件卖掉`, 18, 0xC46A3A, { fontWeight: '700' });
+    } else if (!ready) {
+      const status = makeLabel(`再卖 ${need - picked} 格`, 18, TERRACOTTA, { fontWeight: '700' });
       status.anchor.set(0.5, 0);
-      status.position.set(hx, py + ph - 72);
+      status.position.set(midX, btnY - 26);
       shell.addChild(status);
     }
-
-    const btnW = Math.min(280, pw * 0.62);
-    const btnH = 48;
+    const btnW = Math.min(240, cw * 0.62);
     const ok = makeSlicedButton({
-      label: ready ? '卖掉选中的' : `再选 ${need - picked} 件`,
+      label: ready ? '卖掉选中的' : `再卖 ${need - picked} 格`,
       width: btnW,
       height: btnH,
       path: BTN,
@@ -587,71 +579,120 @@ export class ResultPanel extends PIXI.Container {
       },
     });
     ok.alpha = ready ? 1 : 0.55;
-    ok.position.set(px + (pw - btnW) / 2, py + ph - btnH - 8);
+    ok.position.set(midX - btnW / 2, btnY);
     ok.on('pointertap', () => this._confirm());
+    bindUiClick(ok);
     shell.addChild(ok);
   }
 
-  private _pickRow(opts: {
-    key: string;
-    name: string;
-    sell: number;
-    defId: string;
-    dish: boolean;
-    rotten: boolean;
-    x: number;
-    y: number;
-    width: number;
-  }): PIXI.Container {
-    const on = this._sell.has(opts.key);
+  private _fridgeBox(screenW: number, screenH: number): { x: number; y: number; w: number; h: number } {
+    const tex = gameTexture(FRIDGE_BG);
+    const marginX = 18;
+    const top = Game.safeTop + 4;
+    const bottom = 10;
+    const maxW = screenW - marginX * 2;
+    const maxH = screenH - top - bottom;
+    const tw = isTextureReady(tex) ? tex.width : 800;
+    const th = isTextureReady(tex) ? tex.height : 1280;
+    const scale = Math.min(maxW / tw, maxH / th);
+    return { x: (screenW - tw * scale) / 2, y: top + (maxH - th * scale) / 2, w: tw * scale, h: th * scale };
+  }
+
+  private _paintFridgeBg(host: PIXI.Container, width: number, height: number): void {
+    const tex = gameTexture(FRIDGE_BG);
+    if (isTextureReady(tex)) {
+      const sp = new PIXI.Sprite(tex);
+      sp.width = width;
+      sp.height = height;
+      sp.eventMode = 'none';
+      host.addChild(sp);
+      return;
+    }
+    const g = new PIXI.Graphics();
+    g.beginFill(0xF3E6D0);
+    g.drawRoundedRect(0, 0, width, height, 36);
+    g.endFill();
+    g.beginFill(0xB8D4C8);
+    g.drawRoundedRect(width * CAVITY.x, height * CAVITY.y, width * CAVITY.w, height * CAVITY.h, 16);
+    g.endFill();
+    host.addChild(g);
+  }
+
+  private _pickSlot(x: number, y: number, size: number, it: FridgeItem, overflow: boolean, isNew: boolean): PIXI.Container {
+    const on = this._sell.has(it.uid);
     const root = new PIXI.Container();
     const bg = new PIXI.Graphics();
-    bg.lineStyle(3, on ? 0xC46A3A : 0xC4A574, 1);
-    bg.beginFill(on ? 0xF3D2B4 : 0xFFF8F0);
-    bg.drawRoundedRect(opts.x, opts.y, opts.width, 68, 12);
+    bg.beginFill(on ? 0xF3D2B4 : PAPER, 0.96);
+    bg.drawRoundedRect(x, y, size, size, 12);
     bg.endFill();
+    drawRarityFrame(bg, x + 2, y + 2, size - 4, size - 4, fridgeSlotRarity(it), { radius: 12 });
+    if (overflow && !on) {
+      bg.lineStyle(3, TERRACOTTA, 0.92);
+      bg.drawRoundedRect(x + 1, y + 1, size - 2, size - 2, 12);
+    }
     root.addChild(bg);
 
-    const icon = new PIXI.Sprite(opts.dish ? dishTexture(opts.defId) : itemLookTexture(opts.defId, opts.rotten ? 'rotten' : 'clean'));
-    const path = opts.dish
-      ? `subpkg_images/dish_${opts.defId}.png`
-      : `subpkg_images/${opts.defId}${opts.rotten ? '_rotten' : ''}.png`;
-    whenTextureReady(path, () => {
-      if (this._isOpen) this.relayout();
-    });
-    if (isTextureReady(icon.texture)) {
-      fitSpriteInBox(icon, 52, 52);
-    }
-    icon.anchor.set(0.5);
-    icon.position.set(opts.x + 36, opts.y + 34);
-    icon.eventMode = 'none';
-    root.addChild(icon);
-
-    const name = makeLabel(opts.name, 22, INK, { fontWeight: '700' });
-    name.position.set(opts.x + 72, opts.y + 10);
-    root.addChild(name);
-    if (opts.sell > 0) {
-      const price = this._coinValue(opts.sell, 20);
-      price.position.set(opts.x + 72, opts.y + 50);
-      root.addChild(price);
+    if (fridgeKind(it) === 'dish') {
+      const tex = dishTexture(it.defId);
+      if (isTextureReady(tex)) {
+        const icon = new PIXI.Sprite(tex);
+        fitSpriteInBox(icon, size - 12, size - 12);
+        icon.anchor.set(0.5);
+        icon.position.set(x + size / 2, y + size / 2);
+        icon.eventMode = 'none';
+        if (on) icon.alpha = 0.42;
+        root.addChild(icon);
+      }
     } else {
-      const price = makeLabel('卖不掉', 18, 0xC9B8A4);
-      price.position.set(opts.x + 72, opts.y + 38);
-      root.addChild(price);
+      const look = it.quality === 'rotten' ? 'rotten' as const : 'clean' as const;
+      const tex = itemLookTexture(it.defId, look);
+      if (isTextureReady(tex)) {
+        const icon = new PIXI.Sprite(tex);
+        fitSpriteInBox(icon, size - 12, size - 12);
+        icon.anchor.set(0.5);
+        icon.position.set(x + size / 2, y + size / 2);
+        icon.eventMode = 'none';
+        if (on) icon.alpha = 0.42;
+        root.addChild(icon);
+      }
     }
 
-    const mark = makeLabel(on ? '卖掉' : '留下', 20, on ? 0xF2C14D : 0x8A6A40, { fontWeight: '700' });
-    mark.anchor.set(1, 0.5);
-    mark.position.set(opts.x + opts.width - 16, opts.y + 34);
-    root.addChild(mark);
+    const qty = fridgeItemQty(it);
+    if (qty > 1 && !on) {
+      const n = makeQtyMark(qty, 17);
+      n.anchor.set(1, 1);
+      n.position.set(x + size - 4, y + size - 2);
+      root.addChild(n);
+    }
+    if (overflow && !on) {
+      const mark = makeCornerMark('超', 15, TERRACOTTA);
+      mark.anchor.set(0, 0);
+      mark.position.set(x + 4, y + 2);
+      root.addChild(mark);
+    } else if (isNew && !on) {
+      const mark = makeCornerMark('新', 15, WALNUT);
+      mark.anchor.set(0, 0);
+      mark.position.set(x + 4, y + 2);
+      root.addChild(mark);
+    }
+    if (on) {
+      const stamp = makeLabel('卖掉', 18, TERRACOTTA, { fontWeight: '700' });
+      stamp.anchor.set(0.5);
+      stamp.position.set(x + size / 2, y + size / 2);
+      root.addChild(stamp);
+    }
 
     root.eventMode = 'static';
     root.cursor = 'pointer';
-    root.hitArea = new PIXI.Rectangle(opts.x, opts.y, opts.width, 68);
+    root.hitArea = new PIXI.Rectangle(x, y, size, size);
     root.on('pointertap', () => {
       if (this._scroller.moved) return;
-      if (this._sell.has(opts.key)) this._sell.delete(opts.key);
-      else this._sell.add(opts.key);
+      const now = Date.now();
+      if (now - this._pickTapAt < 280) return;
+      this._pickTapAt = now;
+      AudioManager.play('ui_click');
+      if (this._sell.has(it.uid)) this._sell.delete(it.uid);
+      else this._sell.add(it.uid);
       this.relayout();
     });
     return root;
@@ -661,35 +702,14 @@ export class ResultPanel extends PIXI.Container {
     return this._sell.size;
   }
 
-  private _pickedGold(haul: { uid: string; sell: number }[]): number {
-    let gold = 0;
-    for (const key of this._sell) {
-      if (key.startsWith('h:')) {
-        const uid = key.slice(2);
-        gold += haul.find((it) => it.uid === uid)?.sell ?? 0;
-      } else if (key.startsWith('f:')) {
-        const uid = key.slice(2);
-        const it = KitchenManager.save.fridge.find((row) => row.uid === uid);
-        if (it) gold += fridgeItemPrice(it, KitchenManager.save);
-      }
-    }
-    return gold;
-  }
-
   private _confirm(): void {
     const need = KitchenManager.unpackNeed();
     if (this._picked() < need) {
       AudioManager.play('ui_deny');
-      Platform.showToast(`再卖掉 ${need - this._picked()} 件才能装下`);
+      Platform.showToast(`再卖掉 ${need - this._picked()} 格才能装下`);
       return;
     }
-    const sellHaul: string[] = [];
-    const sellFridge: string[] = [];
-    for (const key of this._sell) {
-      if (key.startsWith('h:')) sellHaul.push(key.slice(2));
-      else if (key.startsWith('f:')) sellFridge.push(key.slice(2));
-    }
-    const { error, gained, kept } = KitchenManager.commitUnpack(sellHaul, sellFridge);
+    const { error, gained, kept } = KitchenManager.commitUnpack([...this._sell]);
     if (error) {
       AudioManager.play('ui_deny');
       Platform.showToast(error);
@@ -697,7 +717,7 @@ export class ResultPanel extends PIXI.Container {
     }
     if (gained > 0) AudioManager.play('coin_gain');
     this._data = this._data ? { ...this._data, needsPick: false } : null;
-    Platform.showToast(gained > 0 ? `卖掉了，${kept} 件进冰箱，收入 ${gained}` : `${kept} 件进了冰箱`, 'success');
+    Platform.showToast(gained > 0 ? `卖掉了，${kept} 格进冰箱，收入 ${gained}` : `${kept} 格进了冰箱`, 'success');
     this._isOpen = false;
     this.visible = false;
     this._sell.clear();

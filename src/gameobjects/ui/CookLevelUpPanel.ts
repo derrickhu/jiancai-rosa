@@ -179,7 +179,7 @@ export class CookLevelUpPanel extends PIXI.Container {
       this._sparks(w / 2, stack.y + titleH * 0.52);
       if (n) {
         globalThis.setTimeout?.(() => {
-          if (this._isOpen) AudioManager.play('item_reveal');
+          if (this._isOpen) AudioManager.playGain();
         }, 280);
       }
     }

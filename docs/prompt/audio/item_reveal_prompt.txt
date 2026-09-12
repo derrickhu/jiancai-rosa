@@ -1,0 +1,2 @@
+DO NOT elevenlabs --force: huahua deco_obtain.mp3
+包内用原声。连出时重触发，不叠好几条长音。

@@ -70,6 +70,10 @@ export interface RouteOption {
   /** 进不去的理由，null 表示能点 */
   blocked: string | null;
   fee: number;
+  /** 不算人情时的标价。用来画「收费变免费」。 */
+  listedFee: number;
+  /** 街坊情分把这摊的进场费免了 */
+  waived: boolean;
   left: number;
 }
 
@@ -170,6 +174,8 @@ class RunManagerClass {
   /** ahead 为真时不算天色门槛：前方的卡等你走到跟前，步数早变了。 */
   private describe(run: RunState, id: string, ahead: boolean): RouteOption {
     const node = run.map.nodes[id];
+    const fee = nodeFee(run, node);
+    const listedFee = nodeFee(run, node, { ignoreFreePass: true });
     return {
       node,
       revealed:
@@ -177,7 +183,9 @@ class RunManagerClass {
         || run.peeked.includes(id)
         || KitchenManager.cardSeen(run.marketId, node.kind),
       blocked: cardBlock(run, node, KitchenManager.save.money, KitchenManager.save.level, ahead),
-      fee: nodeFee(run, node),
+      fee,
+      listedFee,
+      waived: !!run.freePass && listedFee > 0 && fee === 0,
       left: isRummageNode(node) ? (run.piles[id] ?? []).filter((it) => !it.washed).length : 0,
     };
   }
@@ -234,10 +242,10 @@ class RunManagerClass {
         currentNodeId: id,
         paid: next.paid.includes(id) ? next.paid : [...next.paid, id],
         slowNodes: favored ? [...next.slowNodes, id] : next.slowNodes,
-        note: next.note || '摊上还剩一堆，慢慢翻。',
+        note: next.note || '摊上还剩一堆，翻开就能捡。',
       };
       if (fee > 0) Platform.showToast(`买下这摊剩货 ${fee} 金币`);
-      else if (favored) Platform.showToast('街坊打过招呼，这摊白翻，老板也不急');
+      else if (favored) Platform.showToast('街坊打过招呼，这摊白翻');
       else Platform.showToast('街坊情分，这摊剩的给你翻');
       this.emit();
       return;

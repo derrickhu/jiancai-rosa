@@ -128,7 +128,7 @@
       "text": "DO NOT elevenlabs --force: huahua deco_obtain.mp3",
       "duration": 4.0,
       "output": "../../../../game_assets/jiancai-rosa/audio/final/item_reveal.mp3",
-      "notes": "任意物品出现：花花 deco_obtain"
+      "notes": "物品出现：花花 deco_obtain。包内用原声，连出时重触发不叠音"
     },
     {
       "name": "pickup_veg",

@@ -53,7 +53,7 @@ export const MARKETS: MarketDef[] = [
   {
     id: 'jiangbian',
     name: '江边渔市',
-    hint: '水产多，注意也涨得快。',
+    hint: '潮水刚退，黄鱼带鱼还搁在冰上。',
     unlockLevel: 9,
     staminaCost: 1,
     thumb: 'subpkg_images/dest_jiangbian.jpg',

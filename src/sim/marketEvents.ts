@@ -333,9 +333,9 @@ export const EVENT_VOICE: Record<MarketId, Partial<Record<CardKind, EventVoice>>
       speaker: '巷口张婶',
       portrait: 'subpkg_images/npc_neighbor.png',
       lines: [
-        '囡囡，前头那摊我替你打过招呼了。慢慢翻，他不催你。',
+        '囡囡，前头那摊我替你打过招呼了。进去翻，不用给钱。',
         '你妈从前也这个点来。前面那摊你只管挑，账记我头上。',
-        '别急别急，前头那摊我说过了。他手脚慢，够你挑一阵。',
+        '前头那摊我说过了。进去翻，账记我头上。',
       ],
     },
     empty: {
@@ -372,7 +372,7 @@ export const EVENT_VOICE: Record<MarketId, Partial<Record<CardKind, EventVoice>>
       portrait: 'subpkg_images/npc_heyan_uncle.png',
       lines: [
         '早市这摊我熟。你去翻，他不跟你计较那几个钱。',
-        '雾还没散，前头那家我打过招呼，慢慢挑。',
+        '雾还没散，前头那家我打过招呼，进去白翻。',
         '船刚靠岸，货是新的。后面那摊算我的。',
       ],
     },
@@ -411,7 +411,7 @@ export const EVENT_VOICE: Record<MarketId, Partial<Record<CardKind, EventVoice>>
       lines: [
         '石桥那边我熟。你去翻，账先记我头上。',
         '田头货刚卸下，前头那担我打过招呼。',
-        '案板上那几根你慢慢挑，他不催。',
+        '案板上那几根你去挑，账记我头上。',
       ],
     },
     empty: {
@@ -447,7 +447,7 @@ export const EVENT_VOICE: Record<MarketId, Partial<Record<CardKind, EventVoice>>
       speaker: '山坞阿婆',
       portrait: 'subpkg_images/npc_shanwu_granny.png',
       lines: [
-        '前头那家我孙子看着摊。你慢慢挑，他不会说你。',
+        '前头那家我孙子看着摊。你进去翻，不用给钱。',
         '笋是天没亮挖的，还带土。前面那摊算我的。',
         '山路难走，你既然上来了，就多翻两筐。',
       ],
@@ -486,7 +486,7 @@ export const EVENT_VOICE: Record<MarketId, Partial<Record<CardKind, EventVoice>>
       portrait: 'subpkg_images/npc_jiangbian_aunt.png',
       lines: [
         '夜里这摊我熟。你翻，秤我帮你看着。',
-        '潮水刚退，前头那家我说过了，别急。',
+        '潮水刚退，前头那家我说过了，进去白翻。',
         '带鱼还在冰上。后面那摊账记我身上。',
       ],
     },
@@ -524,7 +524,7 @@ export const EVENT_VOICE: Record<MarketId, Partial<Record<CardKind, EventVoice>>
       portrait: 'subpkg_images/npc_laocheng_boss.png',
       lines: [
         '认得你妈。前头那间报我姓陈，秤给你放平。',
-        '老行里的规矩，熟客不催。你只管慢慢看。',
+        '老行里的规矩，熟客记账。前头那间白翻。',
         '梁上那条腿是去年的。前面那家账先记着。',
       ],
     },
@@ -561,9 +561,9 @@ export const EVENT_VOICE: Record<MarketId, Partial<Record<CardKind, EventVoice>>
       speaker: '南门豆腐坊',
       portrait: 'subpkg_images/npc_laocheng_vendor.png',
       lines: [
-        '豆干刚出锅。前头那摊我打过招呼，慢慢翻。',
+        '豆干刚出锅。前头那摊我打过招呼，进去白翻。',
         '禽笼子还在响。后面那家账记我头上。',
-        '酱缸揭开了，你去挑，他不催。',
+        '酱缸揭开了，你去挑，不用给钱。',
       ],
     },
     empty: {
@@ -599,7 +599,7 @@ export const EVENT_VOICE: Record<MarketId, Partial<Record<CardKind, EventVoice>>
       speaker: '渡口船娘',
       portrait: 'subpkg_images/npc_jiangbian_aunt.png',
       lines: [
-        '船刚靠。前头那筐我打过招呼，慢慢挑。',
+        '船刚靠。前头那筐我打过招呼，进去白翻。',
         '潮水好，黄鱼还在冰上。后面那摊算我的。',
         '干货篓在舱里。你去翻，秤我帮你看着。',
       ],
@@ -637,7 +637,7 @@ export const EVENT_VOICE: Record<MarketId, Partial<Record<CardKind, EventVoice>>
       speaker: '山珍行账房',
       portrait: 'subpkg_images/npc_laocheng_boss.png',
       lines: [
-        '认得你。前头那篓报我的号，慢慢看。',
+        '认得你。前头那篓报我的号，进去白翻。',
         '松茸不常有。后面那筐账先记着。',
         '梁上那腿是去年的。你只管翻。',
       ],

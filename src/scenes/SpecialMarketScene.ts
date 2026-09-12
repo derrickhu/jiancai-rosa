@@ -453,7 +453,8 @@ export class SpecialMarketScene implements Scene {
       this._haul.push(toSpecialExtracted(drop.defId, drop.quality));
       firstSeen = KitchenManager.discoverFood(drop.defId, drop.quality);
       const wet = getItem(drop.defId).zone === 'wet';
-      AudioManager.play(grade === 'hit' ? 'item_reveal' : 'gather');
+      if (grade === 'hit') AudioManager.playGain();
+      else AudioManager.play('gather');
       AudioManager.play(wet ? 'pickup_wet' : 'pickup_veg');
     } else {
       AudioManager.play('ui_deny');

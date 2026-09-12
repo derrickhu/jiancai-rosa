@@ -519,7 +519,7 @@ export function initialFreshness(quality: Quality): number {
 }
 
 export const STALLS: Array<{ id: StallId; name: string; hint: string; count: [number, number] }> = [
-  { id: 'leaf', name: '叶菜摊', hint: '注意低，适合开局', count: [5, 7] },
+  { id: 'leaf', name: '叶菜摊', hint: '叶子多，占格小', count: [5, 7] },
   { id: 'root', name: '根茎摊', hint: '冬瓜占格大', count: [5, 7] },
   { id: 'egg', name: '蛋豆摊', hint: '蛋易碎，豆腐怕挤', count: [4, 6] },
   { id: 'fish', name: '水产摊', hint: '好货显眼，湿货占格', count: [4, 6] },

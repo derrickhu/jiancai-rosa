@@ -373,28 +373,13 @@ class PlatformServiceClass {
     content: string;
     confirmText?: string;
     cancelText?: string;
+    showCancel?: boolean;
+    icon?: string;
   }): Promise<boolean> {
-    return new Promise((resolve) => {
-      try {
-        if (typeof this._api?.showModal === 'function') {
-          this._api.showModal({
-            title: opts.title,
-            content: opts.content,
-            confirmText: opts.confirmText || '确定',
-            cancelText: opts.cancelText || '取消',
-            showCancel: true,
-            success: (res: any) => resolve(!!res?.confirm),
-            fail: () => resolve(false),
-          });
-          return;
-        }
-      } catch (_) {}
-      if (typeof globalThis.confirm === 'function') {
-        resolve(globalThis.confirm(`${opts.title}\n${opts.content}`));
-        return;
-      }
-      resolve(false);
-    });
+    const holder = typeof GameGlobal !== 'undefined' ? GameGlobal : globalThis;
+    const show = (holder as { __jiancaiShowPrompt?: (o: typeof opts) => Promise<boolean> }).__jiancaiShowPrompt;
+    if (show) return show(opts);
+    return Promise.resolve(false);
   }
 
   /** 看完激励视频才发奖。浏览器 / 模拟器没有广告 SDK 时直接发，方便本地试。 */

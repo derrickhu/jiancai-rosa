@@ -126,7 +126,7 @@ export function applyEncounter(ctx: EncounterCtx): EncounterResult {
         state: {
           ...state,
           freePass: true,
-          note: '街坊打了招呼，下一摊白翻，老板还慢慢收。',
+          note: '街坊打了招呼，下一摊白翻。',
           lastEvent: log(node, state.marketId, ctx.voice('favor')),
         },
       };

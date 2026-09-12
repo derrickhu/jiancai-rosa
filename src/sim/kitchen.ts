@@ -518,34 +518,68 @@ export function simulateIngest(fridge: FridgeItem[], items: FridgeDraft[]): Frid
   return items.reduce((next, it) => putIntoFridge(next, asFridgeItem(it)), fridge.map((row) => ({ ...row })));
 }
 
+/** 和真正进冰箱同一套规则：坏了的丢掉，黄鱼以外都按普通品质叠。 */
+export function haulToFridgeDrafts(items: FridgeDraft[]): FridgeDraft[] {
+  return items
+    .filter((it) => it.quality !== 'rotten')
+    .map((it) => ({
+      uid: it.uid,
+      kind: it.kind === 'dish' ? 'dish' : 'food',
+      defId: it.defId,
+      quality: it.quality === 'god' ? 'god' : 'common',
+      inspected: it.inspected,
+      freshness: it.freshness,
+      qty: fridgeItemQty(it),
+      value: it.value,
+    }));
+}
+
+/** 这批货叠进现有冰箱后，预计会占哪些格。 */
+export function previewFridgeAfterHaul(save: KitchenSave, haul: FridgeDraft[]): FridgeItem[] {
+  return simulateIngest(save.fridge, haulToFridgeDrafts(haul));
+}
+
 export function fridgeCanFit(save: KitchenSave, items: FridgeDraft[]): boolean {
-  return simulateIngest(save.fridge, items).length <= fridgeCap(save);
+  return previewFridgeAfterHaul(save, items).length <= fridgeCap(save);
 }
 
 /** 这批货还要新开几格。能叠进现有格子的不算。 */
 export function fridgeSlotsNeeded(save: KitchenSave, items: FridgeDraft[]): number {
-  return Math.max(0, simulateIngest(save.fridge, items).length - save.fridge.length);
+  return Math.max(0, previewFridgeAfterHaul(save, items).length - save.fridge.length);
 }
 
-/** 至少卖掉几件（篓里或冰箱里）剩下的才能装下。 */
+/** 叠好后还多几格，至少要卖掉这么多格。 */
 export function fridgeUnpackNeed(save: KitchenSave, haul: FridgeDraft[]): number {
-  if (fridgeCanFit(save, haul)) return 0;
-  const ranked = [...haul].sort((a, b) => {
-    const space = (it: FridgeDraft) => {
-      const key = fridgeStackKey(it);
-      return save.fridge.reduce((n, row) => (
-        fridgeStackKey(row) === key ? n + Math.max(0, FRIDGE_STACK - fridgeItemQty(row)) : n
-      ), 0);
-    };
-    const da = space(b) - space(a);
-    if (da) return da;
-    return fridgeStackKey(a).localeCompare(fridgeStackKey(b));
-  });
-  const keep: FridgeDraft[] = [];
-  for (const it of ranked) {
-    if (fridgeCanFit(save, [...keep, it])) keep.push(it);
+  return Math.max(0, previewFridgeAfterHaul(save, haul).length - fridgeCap(save));
+}
+
+/** 按预览格卖掉选中的，剩下的直接成为冰箱。 */
+export function settleFridgeUnpack(
+  save: KitchenSave,
+  haul: ExtractedItem[],
+  sellUids: readonly string[],
+  now = Date.now(),
+): { save: KitchenSave; error?: string; gained: number; kept: number } {
+  const cap = fridgeCap(save);
+  const preview = previewFridgeAfterHaul(save, haul);
+  const sell = new Set(sellUids);
+  const sold = preview.filter((it) => sell.has(it.uid));
+  const keep = preview.filter((it) => !sell.has(it.uid));
+  if (keep.length > cap) {
+    return { save, error: `再卖掉 ${keep.length - cap} 格才能装下`, gained: 0, kept: 0 };
   }
-  return haul.length - keep.length;
+  const gold = sold.reduce((sum, it) => sum + fridgeItemPrice(it, save, now), 0);
+  const next = noteDex(save, haul);
+  return {
+    save: clearOutingBuff({
+      ...next,
+      fridge: compactFridge(keep),
+      money: next.money + gold,
+      dailyGodPickDate: keep.some((it) => it.defId === 'wild_yellowfish') ? todayKey(now) : save.dailyGodPickDate,
+    }),
+    gained: gold,
+    kept: keep.length,
+  };
 }
 
 function consumeFridgeQty(fridge: FridgeItem[], used: Map<string, number>): FridgeItem[] {

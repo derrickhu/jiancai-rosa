@@ -56,7 +56,7 @@ export const TUTORIAL_COPY: Record<number, { title: string; body: string }> = {
   },
   [TutorialStep.CLOSE_BASKET]: {
     title: '关好篮',
-    body: '记住干湿分开。\n点「关好」，回菜场接着走。',
+    body: '上面暂存带不走，\n只能跟篮里换。\n点「关好」，回菜场接着走。',
   },
   [TutorialStep.RETURN_MAP]: {
     title: '回菜场',
