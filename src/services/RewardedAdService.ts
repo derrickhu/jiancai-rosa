@@ -45,7 +45,9 @@ function getAd(unitId: string): RewardedVideoAd | null {
     return existing;
   }
   try {
-    const ad = api.createRewardedVideoAd({ adUnitId: unitId, multiton: true }) as RewardedVideoAd;
+    const ad = api.createRewardedVideoAd(
+      Platform.name === 'wechat' ? { adUnitId: unitId, multiton: true } : { adUnitId: unitId },
+    ) as RewardedVideoAd;
     ads.set(unitId, ad);
     bind(ad, unitId);
     return ad;
