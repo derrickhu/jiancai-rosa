@@ -49,7 +49,15 @@ async function handleLogin(req) {
 
   const userId = `${platform}:${platformUid}`;
   if (platform === 'wx' && wxSessionKey) {
-    await upsertWxSession(userId, wxSessionKey);
+    try {
+      await upsertWxSession(userId, wxSessionKey);
+    } catch (err) {
+      console.warn(
+        '[jiancai-api] upsertWxSession skipped',
+        userId,
+        err && err.message ? err.message : err,
+      );
+    }
   }
   const ttlSec = getTtlSec();
   const gameKey = getGameKey();

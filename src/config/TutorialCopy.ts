@@ -92,7 +92,7 @@ export const TUTORIAL_COPY: Record<number, { title: string; body: string }> = {
   },
   [TutorialStep.HINT_DOOR]: {
     title: '再出门',
-    body: '礼金到了。\n门还在那儿，想翻就再去。',
+    body: '礼金收好了。\n门还在那儿，想翻就再去。',
   },
 };
 

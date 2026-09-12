@@ -21,6 +21,8 @@ import { kitchenBootPaths, kitchenCriticalPaths } from '@/utils/bootAssets';
 const BOOT_HOLD_MS = 480;
 const BOOT_HANG_MS = 40000;
 
+CloudSyncManager.prewarm();
+
 function handleCloudSaveReload(info: CloudImportInfo): void {
   console.warn(
     `[jiancai] 云端核心存档已覆盖本地，准备刷新 reason=${info.reason}, updatedAt=${info.updatedAt}`,
@@ -56,7 +58,9 @@ async function main(): Promise<void> {
 
   CloudSyncManager.prewarm();
   const startupSync = await CloudSyncManager.awaitStartupSync();
-  console.log(`[jiancai] 云同步启动结果: ${startupSync.status}, reason=${startupSync.reason}`);
+  console.log(
+    `[jiancai] 云同步启动结果: ${startupSync.status}, reason=${startupSync.reason}, userId=${CloudSyncManager.userId || 'none'}`,
+  );
 
   SaveManager.load();
   initialSaveLoaded = true;

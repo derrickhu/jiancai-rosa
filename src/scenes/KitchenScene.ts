@@ -14,6 +14,7 @@ import { GameClubPanel } from '@/gameobjects/ui/GameClubPanel';
 import { UpgradePanel } from '@/gameobjects/ui/UpgradePanel';
 import { ensureRecipeUnlockPanel } from '@/gameobjects/ui/RecipeUnlockPanel';
 import { ensureCookLevelUpPanel } from '@/gameobjects/ui/CookLevelUpPanel';
+import { ensureTutorialGiftPanel } from '@/gameobjects/ui/TutorialGiftPanel';
 import { Platform } from '@/core/PlatformService';
 import {
   staminaMax,
@@ -153,6 +154,7 @@ export class KitchenScene implements Scene {
     this._fridge.onChange = () => this.relayout();
     ensureRecipeUnlockPanel();
     ensureCookLevelUpPanel();
+    ensureTutorialGiftPanel();
     this.container.eventMode = 'static';
     this._world.eventMode = 'static';
     this._ui.eventMode = 'passive';
@@ -197,7 +199,8 @@ export class KitchenScene implements Scene {
       || this._event._isOpen
       || this._gameClub._isOpen
       || ensureRecipeUnlockPanel()._isOpen
-      || ensureCookLevelUpPanel()._isOpen;
+      || ensureCookLevelUpPanel()._isOpen
+      || ensureTutorialGiftPanel()._isOpen;
   }
 
   onExit(): void {
@@ -215,6 +218,7 @@ export class KitchenScene implements Scene {
     this._clearOfferTimer();
     this._fridge.close(true);
     this._cook.close(true);
+    ensureTutorialGiftPanel().close(true);
     this._recipeBook.close(true);
     this._dex.close(true);
     this._orders.close(true);
@@ -228,6 +232,7 @@ export class KitchenScene implements Scene {
   }
 
   relayout(): void {
+    if (!Platform.isDevtools) this._gm = false;
     this._fridge.prune();
     this._world.removeChildren();
     this._ui.removeChildren();
@@ -300,6 +305,10 @@ export class KitchenScene implements Scene {
     this._applyPan();
     this._drawHud(w);
     if (!this._gm && this._upgradePick) this._drawUpgradeCard(this._upgradePick);
+    if (TutorialManager.isStep(TutorialStep.COOK_DISH) && !this._cook._isOpen && !this._gm) {
+      this._cook.open('stirfry');
+      return;
+    }
     TutorialOverlay.refresh();
   }
 
@@ -309,7 +318,7 @@ export class KitchenScene implements Scene {
     if (step === TutorialStep.GO_OUT || step === TutorialStep.HINT_DOOR) {
       return worldRectToStage(this._world, this._spotRects.get('door') ?? { x: 20, y: 220, w: 160, h: 280 }, 12);
     }
-    if (step === TutorialStep.COOK_TABLE) {
+    if (step === TutorialStep.COOK_TABLE || (step === TutorialStep.COOK_DISH && !this._cook._isOpen)) {
       return worldRectToStage(this._world, this._spotRects.get('board') ?? this._cookHitRect(), 10);
     }
     if (step === TutorialStep.OPEN_FRIDGE) {
@@ -732,6 +741,7 @@ export class KitchenScene implements Scene {
   }
 
   private _drawGmBar(w: number): void {
+    if (!Platform.isDevtools) return;
     const y = Game.logicHeight - 118;
     const stop = (e: PIXI.FederatedPointerEvent) => e.stopPropagation();
     const gm = makeButton(this._gm ? 'GM开' : 'GM关', 100, 48, this._gm ? 0xC46A3A : 0x4A433C);
@@ -873,6 +883,7 @@ export class KitchenScene implements Scene {
     this._upgradePick = null;
     ensureRecipeUnlockPanel().close();
     ensureCookLevelUpPanel().close();
+    ensureTutorialGiftPanel().close(true);
     RunManager.clear();
     for (const id of FURN_IDS) this._gmView[id] = 0;
     this._gmHouse = 0;

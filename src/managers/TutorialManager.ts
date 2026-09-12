@@ -30,6 +30,7 @@ export enum TutorialStep {
   RETURN_MAP = 18,
   FREE_WALK = 19,
   HINT_DOOR = 20,
+  CLAIM_GIFT = 21,
   COMPLETED = 99,
 }
 
@@ -54,6 +55,7 @@ export const TUTORIAL_SEQUENCE: TutorialStep[] = [
   TutorialStep.OPEN_FRIDGE,
   TutorialStep.INSPECT_DISH,
   TutorialStep.SELL_DISH,
+  TutorialStep.CLAIM_GIFT,
   TutorialStep.HINT_DOOR,
   TutorialStep.COMPLETED,
 ];
@@ -109,6 +111,7 @@ class TutorialManagerClass {
     return this.isActive
       && this._step !== TutorialStep.FREE_WALK
       && this._step !== TutorialStep.HINT_DOOR
+      && this._step !== TutorialStep.CLAIM_GIFT
       && this._step !== TutorialStep.WAIT_RESULT;
   }
 
@@ -126,6 +129,13 @@ class TutorialManagerClass {
     }
     this._step = saved === TutorialStep.NOT_STARTED ? TutorialStep.INTRO : saved;
     this._started = true;
+    if (
+      this._step >= TutorialStep.HINT_DOOR
+      && this._step !== TutorialStep.CLAIM_GIFT
+    ) {
+      KitchenManager.noteTutorialGiftClaimed();
+      this._gifted = true;
+    }
     if (this._step === TutorialStep.INTRO) {
       this._gifted = false;
       this._dishUid = '';
@@ -175,8 +185,23 @@ class TutorialManagerClass {
   onSold(uid: string): void {
     if (!this.isStep(TutorialStep.SELL_DISH)) return;
     if (this._dishUid && uid !== this._dishUid) return;
-    this._grantGift();
+    this.advanceTo(TutorialStep.CLAIM_GIFT);
+  }
+
+  giftAlreadyClaimed(): boolean {
+    return this._gifted || !!KitchenManager.save.tutorialGiftClaimed;
+  }
+
+  claimGift(): boolean {
+    if (!this.isStep(TutorialStep.CLAIM_GIFT)) return false;
+    if (this.giftAlreadyClaimed()) {
+      this.advanceTo(TutorialStep.HINT_DOOR);
+      return false;
+    }
+    this._gifted = true;
+    KitchenManager.claimTutorialGift(TUTORIAL_GIFT_COINS);
     this.advanceTo(TutorialStep.HINT_DOOR);
+    return true;
   }
 
   noteDishUid(uid: string): void {
@@ -185,12 +210,6 @@ class TutorialManagerClass {
 
   forceComplete(): void {
     this._complete();
-  }
-
-  private _grantGift(): void {
-    if (this._gifted) return;
-    this._gifted = true;
-    KitchenManager.grantCoins(TUTORIAL_GIFT_COINS, `指引完成，送你 ${TUTORIAL_GIFT_COINS} 金币`);
   }
 
   private _complete(): void {
@@ -243,6 +262,9 @@ class TutorialManagerClass {
     }
     if ((step === TutorialStep.INSPECT_DISH || step === TutorialStep.SELL_DISH) && !hasStirfry) {
       return hasCaitai ? TutorialStep.COOK_TABLE : TutorialStep.OPEN_FRIDGE;
+    }
+    if (step === TutorialStep.CLAIM_GIFT && KitchenManager.save.tutorialGiftClaimed) {
+      return TutorialStep.HINT_DOOR;
     }
     return step;
   }

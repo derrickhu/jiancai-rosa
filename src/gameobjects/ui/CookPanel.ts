@@ -37,6 +37,8 @@ import {
   makeQtyStepper,
   type ItemInspectView,
 } from './ItemInspectCard';
+import { EventBus } from '@/core/EventBus';
+import { EV } from '@/config/events';
 import { TutorialManager, TutorialStep } from '@/managers/TutorialManager';
 import { TutorialOverlay, stageRectOf, type TutorialTarget } from './TutorialOverlay';
 import { TutorialGuard } from '@/systems/TutorialGuard';
@@ -78,6 +80,7 @@ export class CookPanel extends PIXI.Container {
     this.addChild(this._root);
     OverlayManager.container.addChild(this);
     this._scroller = new VerticalScroller(this, { visible: () => this._isOpen });
+    EventBus.on(EV.tutorialCook, this._onTutorialCook);
   }
 
   open(recipeId?: RecipeId): void {
@@ -87,13 +90,19 @@ export class CookPanel extends PIXI.Container {
     this._inspect = null;
     this._cookQty = 1;
     const known = unlockedRecipes(recipeUnlockView(KitchenManager.save));
-    if (recipeId && known.some((r) => r.id === recipeId)) this._pick = recipeId;
-    else if (!known.some((r) => r.id === this._pick)) this._pick = known[0]?.id ?? 'stirfry';
+    if (TutorialManager.at(TutorialStep.COOK_TABLE, TutorialStep.COOK_DISH)) {
+      this._pick = 'stirfry';
+    } else if (recipeId && known.some((r) => r.id === recipeId)) {
+      this._pick = recipeId;
+    } else if (!known.some((r) => r.id === this._pick)) {
+      this._pick = known[0]?.id ?? 'stirfry';
+    }
     this._scroller.reset();
     this._scroller.enable();
     this.relayout();
     OverlayManager.bringToFront();
     if (this._isOpen) TutorialOverlay.register('cook', () => this.tutorialCookRect());
+    TutorialManager.advanceIf(TutorialStep.COOK_TABLE);
     this._warm();
   }
 
@@ -108,13 +117,23 @@ export class CookPanel extends PIXI.Container {
 
   tutorialCookRect(): TutorialTarget | null {
     if (!TutorialManager.isStep(TutorialStep.COOK_DISH) || !this._isOpen) return null;
+    const cook = stageRectOf(this._cookBtn, 10);
+    if (cook) {
+      return {
+        holes: [cook],
+        fingerAt: { x: cook.x + cook.w * 0.5, y: cook.y + cook.h * 0.5 },
+      };
+    }
     const box = this._boardBox(Game.designWidth, Game.logicHeight);
-    const cook = stageRectOf(this._cookBtn, 4);
     return {
-      holes: [{ x: box.x, y: box.y, w: box.w, h: box.h, r: 22 }],
-      fingerAt: cook
-        ? { x: cook.x + cook.w * 0.5, y: cook.y + cook.h * 0.5 }
-        : { x: box.x + box.w * 0.62, y: box.y + box.h * 0.86 },
+      holes: [{
+        x: box.x + box.w * 0.22,
+        y: box.y + box.h * 0.78,
+        w: box.w * 0.64,
+        h: box.h * 0.14,
+        r: 18,
+      }],
+      fingerAt: { x: box.x + box.w * 0.54, y: box.y + box.h * 0.86 },
     };
   }
 
@@ -476,26 +495,34 @@ export class CookPanel extends PIXI.Container {
       root.eventMode = 'static';
       root.cursor = 'pointer';
       root.alpha = 1;
-      root.on('pointertap', () => {
-        if (TutorialManager.isActive && this._pick !== 'stirfry') {
-          TutorialGuard.block('cook');
-          return;
-        }
-        if (TutorialGuard.block('cook')) return;
-        const step = TutorialManager.currentStep;
-        KitchenManager.cook(this._pick, this._cookQty);
-        TutorialManager.onCooked(this._pick);
-        if (TutorialManager.currentStep !== step) {
-          this.close(true);
-          return;
-        }
-        if (this._isOpen) this.relayout();
-      });
+      root.on('pointertap', () => this._doCook());
     } else {
       root.eventMode = 'none';
       root.alpha = 0.42;
     }
     return root;
+  }
+
+  private _onTutorialCook = (): void => {
+    if (!this._isOpen) return;
+    this._pick = 'stirfry';
+    this._doCook();
+  };
+
+  private _doCook(): void {
+    if (TutorialManager.isActive && this._pick !== 'stirfry') {
+      TutorialGuard.block('cook');
+      return;
+    }
+    if (TutorialGuard.block('cook')) return;
+    const step = TutorialManager.currentStep;
+    KitchenManager.cook(this._pick, this._cookQty);
+    TutorialManager.onCooked(this._pick);
+    if (TutorialManager.currentStep !== step) {
+      this.close(true);
+      return;
+    }
+    if (this._isOpen) this.relayout();
   }
 
   private _needSlot(

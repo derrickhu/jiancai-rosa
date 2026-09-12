@@ -1,7 +1,7 @@
 const { httpError } = require('./http');
 const { requireUser } = require('./auth');
-const { getCollection } = require('./db');
-const { getMaxBytes } = require('./config');
+const { getCollection, withCollection } = require('./db');
+const { getCollectionName, getMaxBytes } = require('./config');
 const {
   patchPayloadTutorialCompleted,
   readTutorialCompletedFromPayload,
@@ -23,10 +23,17 @@ function pullPayload(doc) {
   return { payload, tutorialCompleted };
 }
 
+function playerCollectionName(platform) {
+  return getCollectionName('playerData', platform);
+}
+
+function withPlayerCollection(platform, work) {
+  return withCollection(playerCollectionName(platform), () => work(getCollection(platform)));
+}
+
 async function handlePull(req) {
   const { userId, platform } = requireUser(req);
-  const col = getCollection(platform);
-
+  return withPlayerCollection(platform, async (col) => {
   const res = await col.where({ userId }).limit(1).get();
   const doc = (res && Array.isArray(res.data) && res.data[0]) || null;
 
@@ -58,6 +65,7 @@ async function handlePull(req) {
     tutorialCompleted,
     tutorialCompletedAt: tutorialCompleted ? (doc.tutorialCompletedAt || 0) : 0,
   };
+  });
 }
 
 async function handlePush(req) {
@@ -99,7 +107,7 @@ async function handlePush(req) {
     payloadKeys.push(k);
   }
 
-  const col = getCollection(platform);
+  return withPlayerCollection(platform, async (col) => {
   const existingRes = await col.where({ userId }).limit(1).get();
   const existing = (existingRes && Array.isArray(existingRes.data) && existingRes.data[0]) || null;
 
@@ -187,11 +195,12 @@ async function handlePush(req) {
     tutorialCompleted,
     _id: addRes && (addRes.id || addRes._id),
   };
+  });
 }
 
 async function handleComplete(req) {
   const { userId, platform } = requireUser(req);
-  const col = getCollection(platform);
+  return withPlayerCollection(platform, async (col) => {
   const existingRes = await col.where({ userId }).limit(1).get();
   const existing = (existingRes && Array.isArray(existingRes.data) && existingRes.data[0]) || null;
   const now = Date.now();
@@ -233,6 +242,7 @@ async function handleComplete(req) {
     mode: 'insert',
     _id: addRes && (addRes.id || addRes._id),
   };
+  });
 }
 
 module.exports = {

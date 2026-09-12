@@ -7,4 +7,5 @@ export const EV = {
   basketChanged: 'basket:changed',
   tutorialStepChanged: 'tutorial:stepChanged',
   tutorialCompleted: 'tutorial:completed',
+  tutorialCook: 'tutorial:cook',
 } as const;

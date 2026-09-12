@@ -230,6 +230,8 @@ export interface KitchenSave {
   gameClubRewardDate: string;
   /** 新手指引步骤。新号 0；老档缺字段时 normalize 写成 99，不重播。 */
   tutorialStep: number;
+  /** 新手礼金是否已点领取。 */
+  tutorialGiftClaimed: boolean;
 }
 
 function migrateSpecialVisits(raw: unknown): Record<string, { date: string; count: number }> {
@@ -334,6 +336,7 @@ export function defaultSave(now = Date.now()): KitchenSave {
     kitchenBuff: undefined,
     gameClubRewardDate: '',
     tutorialStep: 0,
+    tutorialGiftClaimed: false,
   };
 }
 
@@ -375,6 +378,7 @@ export function normalizeSave(raw: Partial<KitchenSave> | null, now = Date.now()
       && Number.isFinite((raw as KitchenSave).tutorialStep)
       ? Math.floor((raw as KitchenSave).tutorialStep)
       : 99,
+    tutorialGiftClaimed: !!(raw as KitchenSave).tutorialGiftClaimed,
   };
   next.basketLevel = next.furnLevels.basket;
   next.fridgeExtra = next.furnLevels.fridge > 0 || next.furnLevels.foam > 0;

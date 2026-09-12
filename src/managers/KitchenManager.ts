@@ -622,6 +622,21 @@ class KitchenManagerClass {
     if (toast) Platform.showToast(toast, 'success');
   }
 
+  noteTutorialGiftClaimed(): void {
+    if (this.save.tutorialGiftClaimed) return;
+    SaveManager.replace({ ...this.save, tutorialGiftClaimed: true });
+  }
+
+  claimTutorialGift(n: number): void {
+    const coins = Math.max(0, Math.floor(n));
+    SaveManager.replace({
+      ...this.save,
+      money: this.save.money + coins,
+      tutorialGiftClaimed: true,
+    });
+    this.emit();
+  }
+
   gmAddMoney(n = 100): void {
     const money = this.save.money + n;
     SaveManager.replace({ ...this.save, money });

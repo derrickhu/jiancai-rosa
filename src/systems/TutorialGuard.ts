@@ -31,7 +31,8 @@ export type TutorialAction =
   | 'closeResult'
   | 'neighbor'
   | 'upgrade'
-  | 'gameClub';
+  | 'gameClub'
+  | 'claimGift';
 
 const FREE_WALK: TutorialAction[] = [
   'walkCard',
@@ -60,10 +61,11 @@ const ALLOWED: Partial<Record<TutorialStep, TutorialAction[]>> = {
   [TutorialStep.GO_HOME]: ['extract', 'closeBasket'],
   [TutorialStep.WAIT_RESULT]: ['closeResult'],
   [TutorialStep.COOK_TABLE]: ['openCook'],
-  [TutorialStep.COOK_DISH]: ['cook'],
+  [TutorialStep.COOK_DISH]: ['cook', 'openCook', 'pickRecipe'],
   [TutorialStep.OPEN_FRIDGE]: ['openFridge'],
   [TutorialStep.INSPECT_DISH]: ['inspectDish'],
   [TutorialStep.SELL_DISH]: ['sellDish'],
+  [TutorialStep.CLAIM_GIFT]: ['claimGift'],
   [TutorialStep.HINT_DOOR]: [],
 };
 

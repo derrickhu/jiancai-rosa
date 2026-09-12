@@ -66,8 +66,11 @@ const MARKET_BGM: Record<string, MarketBgmId> = {
 const AUDIO_DIR = 'subpkg_audio';
 const BGM_VOL = 0.42;
 const SFX_VOL = 0.86;
-/** 捡到菜 / 结算：压过 BGM 的爽感短句 */
-const REWARD_SFX = new Set<SfxId>(['item_reveal', 'result_safe', 'result_dusk', 'pickup_god', 'level_up']);
+/** 普通捡菜：轻一点，别盖过菜场。 */
+const PICKUP_SFX = new Set<SfxId>(['item_reveal', 'pickup_veg', 'pickup_wet']);
+const PICKUP_VOL = 0.46;
+/** 结算 / 神捡 / 升级：压过 BGM 的爽感短句 */
+const REWARD_SFX = new Set<SfxId>(['result_safe', 'result_dusk', 'pickup_god', 'level_up']);
 const REWARD_VOL = 1;
 const TAG = '[Audio]';
 
@@ -169,7 +172,7 @@ class AudioManagerClass {
     this.setMuted(!this.isMuted());
   }
 
-  play(id: SfxId, volume = REWARD_SFX.has(id) ? REWARD_VOL : SFX_VOL): void {
+  play(id: SfxId, volume = PICKUP_SFX.has(id) ? PICKUP_VOL : REWARD_SFX.has(id) ? REWARD_VOL : SFX_VOL): void {
     if (!this.soundEnabled) return;
     this.init();
     const logical = this.sfxPath(id);

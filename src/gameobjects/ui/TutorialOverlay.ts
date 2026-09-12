@@ -152,6 +152,11 @@ class TutorialOverlayClass {
       this._drawIntro();
       return;
     }
+    if (step === TutorialStep.CLAIM_GIFT) {
+      this._clear();
+      this._root.visible = false;
+      return;
+    }
     this._drawGuide(step);
   }
 
@@ -270,12 +275,6 @@ class TutorialOverlayClass {
     if (target.dim) {
       if (holes.length) {
         for (const hole of holes) this._drawHole(hole);
-      } else {
-        const dim = new PIXI.Graphics();
-        fillRect(dim, 0, 0, w, Game.logicHeight, 0x000000);
-        dim.alpha = DIM;
-        dim.eventMode = 'static';
-        this._layer.addChild(dim);
       }
     }
 
@@ -285,6 +284,9 @@ class TutorialOverlayClass {
 
     if (TutorialManager.tapHoleAdvances()) {
       for (const hole of holes) this._holeCatcher(hole, step);
+    }
+    if (step === TutorialStep.COOK_DISH) {
+      for (const hole of holes) this._cookHoleCatcher(hole);
     }
 
     if (target.fingerAt && step !== TutorialStep.WAIT_RESULT) {
@@ -319,6 +321,24 @@ class TutorialOverlayClass {
     g.cursor = 'pointer';
     g.on('pointertap', () => {
       TutorialManager.advanceIf(step);
+    });
+    this._layer.addChild(g);
+  }
+
+  private _lastCookTap = 0;
+
+  private _cookHoleCatcher(sp: SpotlightRect): void {
+    const g = new PIXI.Graphics();
+    g.beginFill(0xffffff, 0.001);
+    g.drawRoundedRect(sp.x, sp.y, sp.w, sp.h, sp.r ?? 16);
+    g.endFill();
+    g.eventMode = 'static';
+    g.cursor = 'pointer';
+    g.on('pointertap', () => {
+      const now = Date.now();
+      if (now - this._lastCookTap < 280) return;
+      this._lastCookTap = now;
+      EventBus.emit(EV.tutorialCook);
     });
     this._layer.addChild(g);
   }

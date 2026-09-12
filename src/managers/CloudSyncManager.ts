@@ -243,28 +243,11 @@ class CloudSyncManagerClass {
 
     const localSnapshot = PersistService.exportCloudSnapshot();
     const localMeta = PersistService.getCloudSyncMeta();
+    const hasLocal = localSnapshot.payloadKeys.length > 0;
     this._applyRemoteTutorial(remote, localSnapshot.payload);
 
     if (!remote.exists) {
-      if (this._tutorialCompleted) {
-        this._confirmRemoteBaseline(0, 'startup-tutorial-keep-local');
-        if (localSnapshot.payloadKeys.length > 0) {
-          this.scheduleSync('startup-upload-tutorial');
-        }
-        return;
-      }
-      if (localSnapshot.payloadKeys.length > 0) {
-        console.warn(
-          `[CloudSync] 云端无存档，按云端权威清空本地缓存 keys=${localSnapshot.payloadKeys.length}`,
-        );
-      }
-      PersistService.importCloudSnapshot({
-        updatedAt: 0,
-        payload: {},
-        reason: this._authorityState === 'cacheOnly' ? 'startup-late' : 'startup',
-      });
-      this._confirmRemoteBaseline(0, 'startup-no-remote-doc');
-      this._lastStartupRemoteApplied = localSnapshot.payloadKeys.length > 0;
+      this._keepLocalWhenRemoteEmpty(hasLocal, 0, 'startup-no-remote-doc');
       return;
     }
 
@@ -274,35 +257,15 @@ class CloudSyncManagerClass {
       : Object.keys(remote.payload || {});
 
     if (remotePayloadKeys.length === 0) {
-      if (this._tutorialCompleted) {
-        this._confirmRemoteBaseline(remoteUpdatedAt, 'startup-tutorial-flag');
-        if (localSnapshot.payloadKeys.length > 0) {
-          this.scheduleSync('startup-upload-after-tutorial-flag');
-        }
-        return;
-      }
-      if (localSnapshot.payloadKeys.length > 0) {
-        console.warn(
-          `[CloudSync] 云端为空存档，按云端权威清空本地缓存 keys=${localSnapshot.payloadKeys.length}`,
-        );
-      }
-      PersistService.importCloudSnapshot({
-        updatedAt: remoteUpdatedAt,
-        payload: {},
-        reason: this._authorityState === 'cacheOnly' ? 'startup-late' : 'startup',
-      });
-      this._confirmRemoteBaseline(remoteUpdatedAt, 'startup-empty-remote-doc');
-      this._lastStartupRemoteApplied = localSnapshot.payloadKeys.length > 0;
+      this._keepLocalWhenRemoteEmpty(hasLocal, remoteUpdatedAt, 'startup-empty-remote-doc');
       return;
     }
 
-    const hasKnownRemoteBaseline = localMeta.remoteUpdatedAt > 0;
-    const shouldApplyRemote = remotePayloadKeys.length > 0
-      && (
-        localSnapshot.payloadKeys.length === 0
-        || !hasKnownRemoteBaseline
-        || remoteUpdatedAt > localMeta.remoteUpdatedAt
-      );
+    const localUpdatedAt = Number(localMeta.updatedAt) || 0;
+    const localTutorialDone = this._payloadTutorialCompleted(localSnapshot.payload);
+    const shouldApplyRemote = !hasLocal
+      || remoteUpdatedAt > localUpdatedAt
+      || (this._tutorialCompleted && !localTutorialDone);
 
     if (shouldApplyRemote) {
       PersistService.importCloudSnapshot({
@@ -324,6 +287,20 @@ class CloudSyncManagerClass {
     if (PersistService.isCloudDirty()) {
       this.scheduleSync('startup-local-dirty');
     }
+  }
+
+  /** 云端无档时保留本地并上行，和花花一样。空云清本地会让真机/模拟器各玩各的。 */
+  private _keepLocalWhenRemoteEmpty(
+    hasLocal: boolean,
+    remoteUpdatedAt: number,
+    reason: string,
+  ): void {
+    this._confirmRemoteBaseline(remoteUpdatedAt, reason);
+    this._lastStartupRemoteApplied = false;
+    if (!hasLocal) return;
+    console.warn(`[CloudSync] 云端无有效存档，保留本地并准备上行 reason=${reason}`);
+    if (!PersistService.isCloudDirty()) PersistService.touchCloudMeta();
+    this.scheduleSync(reason);
   }
 
   private async _syncToCloud(reason: string, force = false): Promise<void> {
@@ -393,11 +370,20 @@ class CloudSyncManagerClass {
             payload?: Record<string, string>;
             tutorialCompleted?: boolean;
           };
+          const remotePayload = remote.payload || {};
+          const remoteKeys = Object.keys(remotePayload);
+          const localKeys = PersistService.exportCloudSnapshot().payloadKeys.length;
+          if (remoteKeys.length === 0 && localKeys > 0) {
+            console.warn('[CloudSync] STALE_UPDATE 但云端为空档，保留本地不覆盖');
+            this._syncFailCount = 0;
+            this._syncDisabled = false;
+            return;
+          }
           console.warn('[CloudSync] 服务端版本更新，改为下行覆盖本地');
-          this._applyRemoteTutorial(remote, remote.payload);
+          this._applyRemoteTutorial(remote, remotePayload);
           PersistService.importCloudSnapshot({
             updatedAt: Number(remote.updatedAt) || Date.now(),
-            payload: remote.payload || {},
+            payload: remotePayload,
             reason: 'stale-update',
           });
           this._confirmRemoteBaseline(Number(remote.updatedAt) || Date.now(), 'stale-update');

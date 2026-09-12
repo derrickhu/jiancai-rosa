@@ -100,6 +100,7 @@ export class FridgePanel extends PIXI.Container {
     this.relayout();
     OverlayManager.bringToFront();
     if (this._isOpen) TutorialOverlay.register('fridge', () => this.tutorialRect());
+    TutorialManager.advanceIf(TutorialStep.OPEN_FRIDGE);
     this._warm();
   }
 
@@ -271,7 +272,7 @@ export class FridgePanel extends PIXI.Container {
           TutorialManager.onSold(inspecting.uid);
           this._inspectUid = null;
           this._inspectQty = 1;
-          if (TutorialManager.isStep(TutorialStep.HINT_DOOR)) this.close(true);
+          if (TutorialManager.at(TutorialStep.CLAIM_GIFT, TutorialStep.HINT_DOOR)) this.close(true);
           else this.relayout();
           this.onChange?.();
         },

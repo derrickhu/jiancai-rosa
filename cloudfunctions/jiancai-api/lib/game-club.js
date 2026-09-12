@@ -1,39 +1,47 @@
 const crypto = require('crypto');
 const { httpError } = require('./http');
-const { getDb } = require('./db');
+const { getDb, withCollection } = require('./db');
 const { getCollectionName } = require('./config');
 
+function sessionCollectionName() {
+  return getCollectionName('wxSessions');
+}
+
 function getSessionCollection() {
-  return getDb().collection(getCollectionName('wxSessions'));
+  return getDb().collection(sessionCollectionName());
 }
 
 async function upsertWxSession(userId, sessionKey) {
   if (!sessionKey) {
     return;
   }
-  const col = getSessionCollection();
-  const now = Date.now();
-  const existingRes = await col.where({ userId }).limit(1).get();
-  const existing = (existingRes && Array.isArray(existingRes.data) && existingRes.data[0]) || null;
-  if (existing && existing._id) {
-    await col.doc(existing._id).update({
+  await withCollection(sessionCollectionName(), async () => {
+    const col = getSessionCollection();
+    const now = Date.now();
+    const existingRes = await col.where({ userId }).limit(1).get();
+    const existing = (existingRes && Array.isArray(existingRes.data) && existingRes.data[0]) || null;
+    if (existing && existing._id) {
+      await col.doc(existing._id).update({
+        sessionKey,
+        updatedAt: now,
+      });
+      return;
+    }
+    await col.add({
+      userId,
       sessionKey,
       updatedAt: now,
     });
-    return;
-  }
-  await col.add({
-    userId,
-    sessionKey,
-    updatedAt: now,
   });
 }
 
 async function readWxSessionKey(userId) {
-  const col = getSessionCollection();
-  const res = await col.where({ userId }).limit(1).get();
-  const doc = (res && Array.isArray(res.data) && res.data[0]) || null;
-  return doc && typeof doc.sessionKey === 'string' ? doc.sessionKey : '';
+  return withCollection(sessionCollectionName(), async () => {
+    const col = getSessionCollection();
+    const res = await col.where({ userId }).limit(1).get();
+    const doc = (res && Array.isArray(res.data) && res.data[0]) || null;
+    return doc && typeof doc.sessionKey === 'string' ? doc.sessionKey : '';
+  });
 }
 
 function decryptGameClubPayload(sessionKey, encryptedData, iv) {

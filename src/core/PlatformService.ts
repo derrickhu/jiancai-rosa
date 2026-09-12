@@ -8,6 +8,7 @@ import {
   type BackendPlatformCode,
   type PlatformName,
 } from './platformDetect';
+import { ToastManager } from './ToastManager';
 
 export type { PlatformName, BackendPlatformCode };
 export { detectMinigamePlatform };
@@ -316,13 +317,13 @@ class PlatformServiceClass {
   }
 
   showToast(title: string, icon: 'success' | 'none' | 'error' = 'none'): void {
+    try { this._api?.hideToast?.(); } catch (_) {}
     try {
-      if (this._api?.showToast) {
-        this._api.showToast({ title, icon, duration: 2000 });
-        return;
-      }
-    } catch (_) {}
-    console.log('[Toast]', title);
+      ToastManager.show(title, icon);
+      return;
+    } catch (e) {
+      console.log('[Toast]', title, e);
+    }
   }
 
   /** 主包分享图。微信会话卡片建议约 5:4。 */

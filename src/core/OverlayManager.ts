@@ -1,5 +1,6 @@
 import * as PIXI from 'pixi.js';
 import { Game } from './Game';
+import { ToastManager } from './ToastManager';
 import { TweenManager } from './TweenManager';
 
 class OverlayManagerClass {
@@ -31,6 +32,7 @@ class OverlayManagerClass {
       parent.addChild(this._container);
     }
     this._afterBringToFront?.();
+    ToastManager.ensureTop();
   }
 
   resetTransform(): void {
