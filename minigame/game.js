@@ -25,15 +25,6 @@ function _showDiag() {
 _diag('game.js 开始执行, host=' + _runtime.detectMinigamePlatform());
 
 try {
-  if (_nativeApi) {
-    var _si = _nativeApi.getSystemInfoSync();
-    _diag('platform:' + _si.platform + ' system:' + _si.system);
-  }
-} catch (e) {
-  _diag('getSystemInfo失败:' + e);
-}
-
-try {
   if (typeof GameGlobal !== 'undefined') {
     GameGlobal.onError = function (msg) {
       _diag('onError:' + msg);
@@ -46,19 +37,31 @@ try {
   }
 } catch (_) {}
 
-_diag('加载 pixi-adapter...');
-try {
-  require('./pixi-adapter/index');
-  _diag('pixi-adapter OK');
-} catch (e) {
-  _diag('pixi-adapter 失败!!:' + e);
-  _showDiag();
+function _logSystemInfo() {
+  try {
+    if (!_nativeApi || typeof _nativeApi.getSystemInfoSync !== 'function') return;
+    var _si = _nativeApi.getSystemInfoSync();
+    _diag('platform:' + _si.platform + ' system:' + _si.system);
+  } catch (e) {
+    _diag('getSystemInfo失败:' + e);
+  }
 }
 
-if (typeof Intl === 'undefined') {
-  _diag('Intl不存在,注入polyfill');
-  var _g = typeof GameGlobal !== 'undefined' ? GameGlobal : (typeof globalThis !== 'undefined' ? globalThis : {});
-  _g.Intl = {};
+function _installAdapter() {
+  _diag('加载 pixi-adapter...');
+  try {
+    require('./pixi-adapter/index');
+    _diag('pixi-adapter OK');
+  } catch (e) {
+    _diag('pixi-adapter 失败!!:' + e);
+    _showDiag();
+  }
+
+  if (typeof Intl === 'undefined') {
+    _diag('Intl不存在,注入polyfill');
+    var _g = typeof GameGlobal !== 'undefined' ? GameGlobal : (typeof globalThis !== 'undefined' ? globalThis : {});
+    _g.Intl = {};
+  }
 }
 
 var _started = false;
@@ -174,7 +177,26 @@ function _loadImagesThenStart() {
   }
 }
 
-_loadImagesThenStart();
+var _bootScheduled = false;
+function _bootAfterBridge() {
+  if (_bootScheduled) return;
+  _bootScheduled = true;
+  _logSystemInfo();
+  _installAdapter();
+  _loadImagesThenStart();
+}
+
+// 开发者工具刚切工程时 jsbridge 还没好，立刻 getSystemInfo / 装 adapter 会刷红。
+// 等一帧再启动；onShow 再兜一层（真机冷启动有时 setTimeout 0 仍偏早）。
+var _nextTick = (typeof setTimeout === 'function')
+  ? function (cb) { setTimeout(cb, 0); }
+  : function (cb) { cb(); };
+_nextTick(_bootAfterBridge);
+try {
+  if (_nativeApi && typeof _nativeApi.onShow === 'function') {
+    _nativeApi.onShow(function () { _bootAfterBridge(); });
+  }
+} catch (_) {}
 
 setTimeout(function () {
   if (typeof GameGlobal !== 'undefined' && !GameGlobal.__gameRendered) {

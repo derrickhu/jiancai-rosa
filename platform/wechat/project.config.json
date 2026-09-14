@@ -1,5 +1,12 @@
 {
-  "description": "捡菜市集。请先 npm run build，微信工具打开本仓库根目录（或 build/wechat/）。",
+  "description": "捡菜市集 · 微信。日常请用微信开发者工具打开仓库根目录（根上 miniprogramRoot 指向 build/wechat/）。不要和根目录同时加进项目列表。",
+  "projectname": "jiancai-rosa",
+  "appid": "wx41ac821080ff87f9",
+  "compileType": "game",
+  "libVersion": "3.12.1",
+  "isGameTourist": false,
+  "simulatorPluginLibVersion": {},
+  "editorSetting": {},
   "setting": {
     "urlCheck": false,
     "es6": true,
@@ -27,31 +34,6 @@
     "disableSWC": true,
     "compileHotReLoad": true
   },
-  "compileType": "game",
-  "libVersion": "3.12.1",
-  "miniprogramRoot": "build/wechat/",
-  "cloudfunctionRoot": "cloudfunctions/",
-  "appid": "wx41ac821080ff87f9",
-  "projectname": "jiancai-rosa",
-  "condition": {
-    "search": {
-      "current": -1,
-      "list": []
-    },
-    "conversation": {
-      "current": -1,
-      "list": []
-    },
-    "game": {
-      "currentL": -1,
-      "list": []
-    },
-    "miniprogram": {
-      "current": -1,
-      "list": []
-    }
-  },
-  "simulatorPluginLibVersion": {},
   "packOptions": {
     "ignore": [
       {
@@ -1228,7 +1210,5 @@
       }
     ],
     "include": []
-  },
-  "isGameTourist": false,
-  "editorSetting": {}
+  }
 }

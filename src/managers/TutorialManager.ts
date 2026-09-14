@@ -2,6 +2,7 @@
  * 新手指引状态机。进度写 KitchenSave.tutorialStep，完成态另记账号后台，
  * 清本地缓存或换机登录也不重走。
  */
+import { analytics, TUTORIAL_STEPS } from '@/analytics';
 import { EventBus } from '@/core/EventBus';
 import { EV } from '@/config/events';
 import { CloudSyncManager } from '@/managers/CloudSyncManager';
@@ -63,6 +64,45 @@ export const TUTORIAL_SEQUENCE: TutorialStep[] = [
 const TUTORIAL_ORDER = new Map<TutorialStep, number>(
   TUTORIAL_SEQUENCE.map((step, index) => [step, index]),
 );
+
+const TUTORIAL_STEP_IDS: Partial<Record<TutorialStep, string>> = {
+  [TutorialStep.INTRO]: TUTORIAL_STEPS.intro,
+  [TutorialStep.GO_OUT]: TUTORIAL_STEPS.goOut,
+  [TutorialStep.PICK_XIANGKO]: TUTORIAL_STEPS.pickXiangko,
+  [TutorialStep.CLICK_CARD]: TUTORIAL_STEPS.clickCard,
+  [TutorialStep.CLICK_PILE]: TUTORIAL_STEPS.clickPile,
+  [TutorialStep.TAKE_LOOT]: TUTORIAL_STEPS.takeLoot,
+  [TutorialStep.OPEN_BASKET]: TUTORIAL_STEPS.openBasket,
+  [TutorialStep.BASKET_DRY]: TUTORIAL_STEPS.basketDry,
+  [TutorialStep.BASKET_WET]: TUTORIAL_STEPS.basketWet,
+  [TutorialStep.CLOSE_BASKET]: TUTORIAL_STEPS.closeBasket,
+  [TutorialStep.RETURN_MAP]: TUTORIAL_STEPS.returnMap,
+  [TutorialStep.FREE_WALK]: TUTORIAL_STEPS.freeWalk,
+  [TutorialStep.GO_HOME]: TUTORIAL_STEPS.goHome,
+  [TutorialStep.WAIT_RESULT]: TUTORIAL_STEPS.waitResult,
+  [TutorialStep.COOK_TABLE]: TUTORIAL_STEPS.cookTable,
+  [TutorialStep.COOK_DISH]: TUTORIAL_STEPS.cookDish,
+  [TutorialStep.OPEN_FRIDGE]: TUTORIAL_STEPS.openFridge,
+  [TutorialStep.INSPECT_DISH]: TUTORIAL_STEPS.inspectDish,
+  [TutorialStep.SELL_DISH]: TUTORIAL_STEPS.sellDish,
+  [TutorialStep.CLAIM_GIFT]: TUTORIAL_STEPS.claimGift,
+  [TutorialStep.HINT_DOOR]: TUTORIAL_STEPS.hintDoor,
+  [TutorialStep.COMPLETED]: TUTORIAL_STEPS.completed,
+};
+
+function tutorialStepIndex(step: TutorialStep): number {
+  const idx = TUTORIAL_SEQUENCE.indexOf(step);
+  return idx >= 0 ? idx + 1 : Math.max(1, Number(step));
+}
+
+function trackTutorialLeave(step: TutorialStep, status: 'done' | 'skip' = 'done'): void {
+  const stepId = TUTORIAL_STEP_IDS[step];
+  if (!stepId) return;
+  analytics.trackTutorialStep(stepId, {
+    stepIndex: tutorialStepIndex(step),
+    status,
+  });
+}
 
 class TutorialManagerClass {
   private _step: TutorialStep = TutorialStep.NOT_STARTED;
@@ -155,9 +195,14 @@ class TutorialManagerClass {
       }
       if (nextOrder === undefined && step <= this._step) return;
     }
+    const prev = this._step;
+    if (this._started && prev !== step && prev > TutorialStep.NOT_STARTED && prev < TutorialStep.COMPLETED) {
+      trackTutorialLeave(prev, 'done');
+    }
     this._step = step;
     this._write(step);
     if (step >= TutorialStep.COMPLETED) {
+      trackTutorialLeave(TutorialStep.COMPLETED, 'done');
       this._complete();
       return;
     }
@@ -209,6 +254,10 @@ class TutorialManagerClass {
   }
 
   forceComplete(): void {
+    if (this._started && this._step > TutorialStep.NOT_STARTED && this._step < TutorialStep.COMPLETED) {
+      trackTutorialLeave(this._step, 'skip');
+    }
+    trackTutorialLeave(TutorialStep.COMPLETED, 'skip');
     this._complete();
   }
 

@@ -23,6 +23,10 @@ export const BACKEND_TUTORIAL_COMPLETE_PATH = `${BACKEND_PATH_PREFIX}/tutorial/c
 export const BACKEND_GAME_CLUB_DECRYPT_PATH = `${BACKEND_PATH_PREFIX}/game-club/decrypt`;
 export const BACKEND_HEALTH_PATH = `${BACKEND_PATH_PREFIX}/health`;
 
+/** 经分批量上报（多游戏共用 analytics-ingest，按 game_key=jiancai 区分） */
+export const ANALYTICS_INGEST_PATH = '/analytics-ingest/track';
+export const ANALYTICS_ENDPOINT = `${BACKEND_BASE_URL}${ANALYTICS_INGEST_PATH}`;
+
 /** 请求超时（毫秒） */
 export const BACKEND_REQUEST_TIMEOUT_MS = 10000;
 

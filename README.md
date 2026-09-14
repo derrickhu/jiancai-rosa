@@ -7,4 +7,4 @@ npm install
 npm run build
 ```
 
-微信开发者工具打开本仓库根目录。
+微信开发者工具打开本仓库根目录（`miniprogramRoot` 指向 `build/wechat/`）。日常改代码后执行 `npm run build` 或 `npm run build:wechat`。不要直接打开 `minigame/`。

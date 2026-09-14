@@ -4,8 +4,9 @@
  * - 微信 / H5：jiancai_{suffix}
  * - 抖音：      jiancai_tt_{suffix}
  *
- * 隔离范围：本地存储 key、云端集合、经分 gameKey。
- * 不隔离：CloudBase HTTP 路由前缀（/jiancai-api），两端共用同一套云函数，由 JWT 里的 plt 分流。
+ * 隔离范围：本地存储 key、云端集合。
+ * 不隔离：经分 gameKey（永远用基础名 jiancai，微信/抖音靠 platform 字段分流）、
+ *         CloudBase HTTP 路由前缀（/jiancai-api），两端共用同一套云函数，由 JWT 里的 plt 分流。
  */
 import {
   detectMinigamePlatform,

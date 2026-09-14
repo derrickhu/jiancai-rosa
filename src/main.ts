@@ -1,4 +1,5 @@
 import '@/core/pixiUnsafeEvalPatch';
+import { analytics, initAnalytics, setAnalyticsUserId } from '@/analytics';
 import { SAVE_KEY } from '@/config/CloudConfig';
 import { EV } from '@/config/events';
 import { EventBus } from '@/core/EventBus';
@@ -6,6 +7,7 @@ import { Game } from '@/core/Game';
 import { type CloudImportInfo, PersistService } from '@/core/PersistService';
 import { Platform } from '@/core/PlatformService';
 import { SceneManager } from '@/core/SceneManager';
+import { BackendService } from '@/core/BackendService';
 import { CloudSyncManager } from '@/managers/CloudSyncManager';
 import { SaveManager } from '@/managers/SaveManager';
 import { DestinationScene } from '@/scenes/DestinationScene';
@@ -34,6 +36,22 @@ function handleCloudSaveReload(info: CloudImportInfo): void {
 }
 
 async function main(): Promise<void> {
+  initAnalytics();
+  if (typeof GameGlobal !== 'undefined') {
+    const prevError = GameGlobal.onError;
+    const prevReject = GameGlobal.onUnhandledRejection;
+    GameGlobal.onError = (msg: string) => {
+      console.error('[GlobalError]', msg);
+      try { prevError?.(msg); } catch { /* */ }
+      analytics.trackAppError(msg, { source: 'GameGlobal.onError' });
+    };
+    GameGlobal.onUnhandledRejection = (ev: any) => {
+      console.error('[UnhandledRejection]', ev?.reason || ev);
+      try { prevReject?.(ev); } catch { /* */ }
+      analytics.trackAppError(ev?.reason || ev, { source: 'unhandledRejection' });
+    };
+  }
+
   const canvas = (typeof GameGlobal !== 'undefined' && GameGlobal.canvas)
     ? GameGlobal.canvas
     : (globalThis as any).canvas;
@@ -61,6 +79,21 @@ async function main(): Promise<void> {
   console.log(
     `[jiancai] 云同步启动结果: ${startupSync.status}, reason=${startupSync.reason}, userId=${CloudSyncManager.userId || 'none'}`,
   );
+
+  let resolvedUserId = CloudSyncManager.userId;
+  if (!resolvedUserId && BackendService.available) {
+    try {
+      await BackendService.ensureToken();
+      resolvedUserId = BackendService.userId;
+    } catch (error) {
+      console.warn('[jiancai] 启动后补登失败', error);
+    }
+  }
+  if (resolvedUserId) {
+    setAnalyticsUserId(resolvedUserId);
+  } else {
+    console.warn('[jiancai] 未拿到登录 userId，经分仅以 anonymous_id 上报');
+  }
 
   SaveManager.load();
   initialSaveLoaded = true;
@@ -101,12 +134,32 @@ async function main(): Promise<void> {
   const wait = Math.max(0, BOOT_HOLD_MS - (Date.now() - started));
   globalThis.setTimeout(enterKitchen, wait);
 
+  analytics.trackSessionStart({
+    entry: 'main_boot',
+    with_user_id: !!resolvedUserId,
+    cloud_sync_status: startupSync.status,
+  });
+
+  let lastHideAt = 0;
   Platform.onHide(() => {
     SaveManager.flush();
     void CloudSyncManager.flushNow('hide');
+    analytics.trackSessionEnd('app-hide');
+    lastHideAt = Date.now();
+  });
+  Platform.onShow(() => {
+    if (lastHideAt > 0) {
+      analytics.trackAppShow({
+        from_background: true,
+        background_ms: Math.max(0, Date.now() - lastHideAt),
+      });
+    }
   });
 
   console.log(`[jiancai] 启动完成 v${typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'}`);
 }
 
-void main();
+void main().catch((e) => {
+  console.error('[jiancai] 启动失败:', e);
+  analytics.trackAppError(e, { source: 'main.catch' });
+});

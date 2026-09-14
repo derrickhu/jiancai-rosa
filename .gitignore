@@ -7,6 +7,11 @@
 
 node_modules/
 cloudfunctions/**/node_modules/
+
+# 构建产物
+.bundle/
+build/
+minigame/game-bundle.js
 minigame/index.html
 .tmp_qc_*/
 .tmp_loading/

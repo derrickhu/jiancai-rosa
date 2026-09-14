@@ -1,3 +1,4 @@
+import { analytics } from '@/analytics';
 import { scopeStorageKey, getScopedGameKey } from '@/config/gameKeyScope';
 import type { RewardedAdScene } from '@/config/AdsConfig';
 import { playRewardedAd } from '@/services/RewardedAdService';
@@ -348,19 +349,33 @@ class PlatformServiceClass {
       });
     } catch (_) {}
     try {
-      api.onShareAppMessage?.(() => ({ title: getTitle(), imageUrl: imageUrl() }));
+      api.onShareAppMessage?.((res?: { from?: string }) => {
+        const from = String(res?.from || '');
+        const entryPoint = from === 'button' ? 'wx_button' : from === 'menu' ? 'wx_menu' : 'wx_other';
+        const title = getTitle();
+        const image = imageUrl();
+        analytics.trackShareAppMessage(entryPoint, { title, image_url: image });
+        return { title, imageUrl: image };
+      });
     } catch (_) {}
     try {
-      api.onShareTimeline?.(() => ({ title: getTitle(), imageUrl: imageUrl() }));
+      api.onShareTimeline?.(() => {
+        const title = getTitle();
+        const image = imageUrl();
+        analytics.trackShareTimeline('wx_timeline', { title, image_url: image });
+        return { title, imageUrl: image };
+      });
     } catch (_) {}
   }
 
   shareAppMessage(opts: { title: string; imageUrl?: string }): boolean {
     try {
       if (typeof this._api?.shareAppMessage !== 'function') return false;
+      const imageUrl = opts.imageUrl || this.pickShareImage();
+      analytics.trackShareAppMessage('api_share_game', { title: opts.title, image_url: imageUrl });
       this._api.shareAppMessage({
         title: opts.title,
-        imageUrl: opts.imageUrl || this.pickShareImage(),
+        imageUrl,
       });
       return true;
     } catch (_) {

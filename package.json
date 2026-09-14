@@ -4,13 +4,15 @@
   "type": "module",
   "description": "捡菜市集 - 微信小游戏",
   "scripts": {
-    "build": "vite build && rimraf minigame/index.html",
+    "build": "vite build && rimraf .bundle/index.html minigame/index.html && node scripts/build-platform.mjs",
+    "build:wechat": "JIANCAI_PLATFORM=wechat npm run build",
     "dev": "vite build --watch",
     "upload:cdn": "node scripts/upload_cdn.js",
     "upload:cdn:dry": "node scripts/upload_cdn.js --dry-run"
   },
   "license": "ISC",
   "dependencies": {
+    "@gp/analytics-sdk": "file:../game-analysis/packages/analytics-sdk",
     "@pixi/unsafe-eval": "^7.3.2",
     "pixi.js": "^7.3.2"
   },

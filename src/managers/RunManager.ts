@@ -1,3 +1,4 @@
+import { analytics } from '@/analytics';
 import { EventBus } from '@/core/EventBus';
 import { EV } from '@/config/events';
 import {
@@ -85,6 +86,7 @@ class RunManagerClass {
   pendingLoot: OutingLoot[] = [];
   interacting = false;
   private _rng: Rng = mulberry32(1);
+  private _outingStartedAt = 0;
 
   /** 摊上抽货时给「手里菜谱用得上的食材」加权，货才跟得上进度。 */
   private _wanted(): Set<string> {
@@ -126,11 +128,24 @@ class RunManagerClass {
       outing,
     );
     this.pendingLoot = [];
+    this._outingStartedAt = Date.now();
+    analytics.trackQuestStart(`outing_${marketId}`, 'event', {
+      market_id: marketId,
+      seed,
+    });
     this.emit();
     return true;
   }
 
   abortUnused(): void {
+    const marketId = this.run?.marketId;
+    if (marketId) {
+      analytics.trackQuestAbandon(`outing_${marketId}`, 'event', 'unused', {
+        market_id: marketId,
+        duration_ms: Math.max(0, Date.now() - this._outingStartedAt),
+      });
+    }
+    this._outingStartedAt = 0;
     this.run = null;
     KitchenManager.refundStamina();
     this.emit();
@@ -717,6 +732,15 @@ class RunManagerClass {
     const unpack = KitchenManager.receiveExtract(result.items);
     const extract = { ...result, needsPick: unpack.needsPick };
     this.run = { ...this.run, ended: true, extract };
+    analytics.trackQuestComplete(`outing_${this.run.marketId}`, 'event', {
+      durationMs: Math.max(0, Date.now() - this._outingStartedAt),
+      market_id: this.run.marketId,
+      extract_kind: kind,
+      item_count: result.items.length,
+      lost: result.lost,
+      voluntary,
+    });
+    this._outingStartedAt = 0;
     EventBus.emit(EV.runExtracted, extract);
     this.emit();
     return extract;
