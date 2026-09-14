@@ -7,7 +7,6 @@ import { warmupRewardedAds } from '@/services/RewardedAdService';
 import { CloudSyncManager } from './CloudSyncManager';
 import { SaveManager } from './SaveManager';
 import {
-  RECIPES,
   recipeById,
   recipesGainedByCook,
   recipesGainedByTable,
@@ -57,6 +56,7 @@ import {
   type KitchenSave,
   type RecipeId,
 } from '@/sim/kitchen';
+import type { Rarity } from '@/sim/rarity';
 import {
   NEIGHBOR_COOLDOWN,
   NEIGHBOR_OFFER_CHANCE,
@@ -87,8 +87,16 @@ export interface CookLevelUp {
   recipes: RecipeId[];
 }
 
+export interface CookReadyFx {
+  recipeId: RecipeId;
+  cooked: number;
+  xp: number;
+  levels: number;
+  rarity: Rarity;
+}
+
 class KitchenManagerClass {
-  private _cookFx: { xp: number; levels: number } | null = null;
+  private _cookFx: CookReadyFx | null = null;
   private _unlockQueue: RecipeId[] = [];
   private _levelUps: CookLevelUp[] = [];
   private _dayKey = todayKey();
@@ -135,7 +143,7 @@ class KitchenManagerClass {
     return SaveManager.data;
   }
 
-  consumeCookFx(): { xp: number; levels: number } | null {
+  consumeCookFx(): CookReadyFx | null {
     const fx = this._cookFx;
     this._cookFx = null;
     return fx;
@@ -354,12 +362,16 @@ class KitchenManagerClass {
       return;
     }
     AudioManager.play('cook_sizzle');
-    if ((xp ?? 0) > 0) this._cookFx = { xp: xp ?? 0, levels: levels ?? 0 };
+    this._cookFx = {
+      recipeId,
+      cooked: cooked ?? 1,
+      xp: xp ?? 0,
+      levels: levels ?? 0,
+      rarity: recipeById(recipeId)?.rarity ?? 'common',
+    };
     const paid = this._fulfillNeighborOrder(save, recipeId);
     SaveManager.replace(paid.save);
     this.emit();
-    const name = RECIPES.find((r) => r.id === recipeId)?.name ?? '菜';
-    const batch = (cooked ?? 1) > 1 ? ` ×${cooked}` : '';
     if (paid.bonus > 0) {
       AudioManager.play('coin_gain');
       let msg = `${paid.npc}要的${paid.dish}好了，多给了 ${paid.bonus} 金`;
@@ -369,15 +381,9 @@ class KitchenManagerClass {
         msg += `，还塞来一份${paid.foodName}`;
       }
       Platform.showToast(msg, 'success');
-    } else if ((levels ?? 0) > 0) {
-      this.enqueueCookLevelUp(fromLevel, paid.save.level);
-    } else if ((xp ?? 0) > 0) {
-      Platform.showToast(`${name}${batch} 出锅，+${xp} 经验`, 'success');
-    } else {
-      Platform.showToast(`${name}${batch} 出锅，放进冰箱了`, 'success');
     }
-    if (paid.bonus > 0 && (levels ?? 0) > 0) {
-      this.enqueueCookLevelUp(fromLevel, paid.save.level);
+    if ((levels ?? 0) > 0) {
+      this.enqueueCookLevelUp(fromLevel, paid.save.level, true);
     }
   }
 
@@ -553,14 +559,14 @@ class KitchenManagerClass {
     return this._unlockQueue.shift() ?? null;
   }
 
-  enqueueCookLevelUp(from: number, to: number): void {
+  enqueueCookLevelUp(from: number, to: number, silent = false): void {
     if (to <= from) return;
     this._levelUps.push({
       from,
       to,
       recipes: recipesGainedByCook(from, to),
     });
-    EventBus.emit(EV.cookLeveled);
+    if (!silent) EventBus.emit(EV.cookLeveled);
   }
 
   peekCookLevelUp(): CookLevelUp | null {

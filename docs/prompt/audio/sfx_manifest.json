@@ -80,6 +80,22 @@
       "notes": "打开烹饪台菜谱：锅碗"
     },
     {
+      "name": "cook_ready",
+      "text": "warm rising three-note celebration chime of small brass kitchen bells, cheerful success sting, then a light ceramic plate tap, close dry home kitchen, 1.15 seconds, bright and happy, no orchestra, no choir, no voice, no lyrics, no reverb hall",
+      "duration": 1.15,
+      "prompt_influence": 0.65,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/cook_ready.mp3",
+      "notes": "出锅成功：庆祝短句"
+    },
+    {
+      "name": "xp_gain",
+      "text": "tiny crystal star sparkle ping, one sharp high glass tick, bright and dry, 0.2 seconds, attack immediately, no wood thud, no warm brass, no orchestra, no voice, no music, no reverb",
+      "duration": 0.2,
+      "prompt_influence": 0.7,
+      "output": "../../../../game_assets/jiancai-rosa/audio/final/xp_gain.mp3",
+      "notes": "经验飞入进度条：清脆玻璃星闪"
+    },
+    {
       "name": "level_up",
       "text": "short rising dry chime of three small bells on wood, warm harmonic, no orchestra, no reverb hall, no voice, no lyrics",
       "duration": 1.5,

@@ -368,6 +368,20 @@ class PlatformServiceClass {
     }
   }
 
+  /** 轻触反馈。翻堆捡菜这类手感用 light；微信/抖音走 vibrateShort，浏览器用 navigator.vibrate。 */
+  vibrateShort(type: 'light' | 'medium' | 'heavy' = 'light'): void {
+    try {
+      if (typeof this._api?.vibrateShort === 'function') {
+        this._api.vibrateShort({ type });
+        return;
+      }
+    } catch (_) {}
+    try {
+      const ms = type === 'heavy' ? 30 : type === 'medium' ? 18 : 10;
+      navigator.vibrate?.(ms);
+    } catch (_) {}
+  }
+
   showModal(opts: {
     title: string;
     content: string;

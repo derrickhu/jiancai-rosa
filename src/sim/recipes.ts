@@ -400,15 +400,13 @@ export function remainingMarketRecipes(marketId: MarketId, found: RecipeId[]): R
 }
 
 function foodQty(it: RecipeFood): number {
-  return Math.max(1, Math.floor(it.qty ?? 1));
+  const raw = it.qty ?? 1;
+  const n = Math.floor(Number(raw));
+  return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
 function usableFoods(save: RecipeUnlockView): RecipeFood[] {
-  return save.fridge.filter((it) => it.kind !== 'dish' && it.quality !== 'rotten');
-}
-
-function freshest(list: RecipeFood[]): RecipeFood | undefined {
-  return [...list].sort((a, b) => b.freshness - a.freshness)[0];
+  return save.fridge.filter((it) => it.kind !== 'dish' && it.quality !== 'rotten' && foodQty(it) > 0);
 }
 
 export function recipeNeeds(save: RecipeUnlockView, recipeId: RecipeId): RecipeNeed[] {
@@ -423,26 +421,25 @@ export function recipeNeeds(save: RecipeUnlockView, recipeId: RecipeId): RecipeN
   }));
 }
 
+/** 按格扣料，不按 uid 合并。旧档里几格共用一个 uid 时，合并会把 8 份收成 1 份，页面上够、下锅不够。 */
 export function pickRecipeFoods(save: RecipeUnlockView, recipeId: RecipeId): RecipeFood[] {
-  const foods = usableFoods(save);
   const recipe = recipeById(recipeId);
   if (!recipe) return [];
+  const pool = usableFoods(save).map((it) => ({ it, left: foodQty(it) }));
   const picked: RecipeFood[] = [];
-  const left = new Map<string, number>();
-  for (const it of foods) {
-    if (it.uid) left.set(it.uid, foodQty(it));
-  }
   for (const id of recipe.needs) {
-    const hit = freshest(foods.filter((it) => it.defId === id && (it.uid ? (left.get(it.uid) ?? 0) > 0 : true)));
+    const hit = pool
+      .filter((row) => row.it.defId === id && row.left > 0)
+      .sort((a, b) => b.it.freshness - a.it.freshness)[0];
     if (!hit) return [];
-    if (hit.uid) left.set(hit.uid, (left.get(hit.uid) ?? 1) - 1);
-    picked.push({ ...hit, qty: 1 });
+    hit.left -= 1;
+    picked.push({ ...hit.it, qty: 1 });
   }
   return picked;
 }
 
 export function recipeCanCook(save: RecipeUnlockView, recipeId: RecipeId): boolean {
-  return recipeCookCount(save, recipeId) > 0;
+  return isRecipeUnlocked(save, recipeId) && pickRecipeFoods(save, recipeId).length > 0;
 }
 
 /** 按冰箱现有份数，这道菜现在能连做几份。材料共用时各自独立算。 */

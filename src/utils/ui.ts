@@ -442,6 +442,7 @@ export const HUD_ICON = {
   back: 'subpkg_images/hud_back.png',
   peek: 'subpkg_images/hud_peek.png',
   player: 'subpkg_images/hud_player.png',
+  exp: 'subpkg_images/hud_exp.png',
 } as const;
 
 export const UI_BTN = {

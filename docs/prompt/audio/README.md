@@ -15,9 +15,9 @@
 | 短音效 25 条 | ElevenLabs（`game-sfx-gen`） | `game_assets/jiancai-rosa/audio/final/*.mp3` |
 | 背景音乐 | Suno（网页，无 API） | 下载后放 `game_assets/jiancai-rosa/audio/raw/`，去封面压到 128kbps 后进 `final/` |
 
-确认后再拷进 `minigame/subpkg_audio/`。整目录走 CDN（对齐花花）：启动时下载到本地缓存，InnerAudio 只播 `wxfile://`，不读包内相对路径。
+确认后再拷进 `minigame/subpkg_audio/`。整目录走 CDN（对齐花花）：启动时下载到本地缓存，InnerAudio 播缓存路径，不给模拟器单独走包内文件。
 
-烹饪：打开烹饪台菜谱播 `cook_done`（锅碗），点烹饪播 `cook_sizzle`（煎炸）。出锅成功不再叠锅碗，升级音晚一秒再响。
+烹饪：打开烹饪台菜谱播 `cook_done`（锅碗），点烹饪播 `cook_sizzle`（煎炸）。出锅成功播 `cook_ready`（三音庆祝钟），经验图标飞入进度条播 `xp_gain`（清脆玻璃星闪）。升级音等出锅动效结束后再响。
 
 ## 结算短句（不要交给 ElevenLabs）
 

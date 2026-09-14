@@ -148,7 +148,9 @@ export function fridgeItemName(it: FridgeItem): string {
 }
 
 export function fridgeItemQty(it: { qty?: number }): number {
-  return Math.max(1, Math.floor(it.qty ?? 1));
+  const raw = it.qty ?? 1;
+  const n = Math.floor(Number(raw));
+  return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
 export function fridgeQtySum(items: readonly { qty?: number }[]): number {
@@ -418,7 +420,7 @@ function migrateFridgeItems(raw: unknown): FridgeItem[] {
     };
   });
   return compactFridge(
-    mapped.filter((it) => !!it && (it.kind === 'dish' || it.quality !== 'rotten')) as FridgeItem[],
+    mapped.filter((it) => !!it && fridgeItemQty(it) > 0 && (it.kind === 'dish' || it.quality !== 'rotten')) as FridgeItem[],
   );
 }
 
@@ -584,11 +586,36 @@ export function settleFridgeUnpack(
 
 function consumeFridgeQty(fridge: FridgeItem[], used: Map<string, number>): FridgeItem[] {
   const next: FridgeItem[] = [];
+  const left = new Map<string, number>();
+  for (const [uid, take] of used) left.set(uid, take);
   for (const it of fridge) {
-    const take = used.get(it.uid) ?? 0;
+    const take = Math.min(left.get(it.uid) ?? 0, fridgeItemQty(it));
+    if (take > 0) left.set(it.uid, (left.get(it.uid) ?? 0) - take);
     const qty = fridgeItemQty(it) - take;
     if (qty <= 0) continue;
     next.push(qty === fridgeItemQty(it) ? it : { ...it, qty });
+  }
+  return compactFridge(next);
+}
+
+/** 按格扣刚挑中的料，不按 uid 一把扣光。几格共用 uid 时，Map 扣法会多扣或扣空。 */
+function consumePickedFoods(fridge: FridgeItem[], picked: { defId: string }[]): FridgeItem[] {
+  const left = fridge.map((it) => fridgeItemQty(it));
+  for (const want of picked) {
+    let best = -1;
+    for (let i = 0; i < fridge.length; i++) {
+      if (left[i] <= 0) continue;
+      const it = fridge[i];
+      if (fridgeKind(it) === 'dish' || it.quality === 'rotten') continue;
+      if (it.defId !== want.defId) continue;
+      if (best < 0 || it.freshness > fridge[best].freshness) best = i;
+    }
+    if (best >= 0) left[best] -= 1;
+  }
+  const next: FridgeItem[] = [];
+  for (let i = 0; i < fridge.length; i++) {
+    if (left[i] <= 0) continue;
+    next.push(left[i] === fridgeItemQty(fridge[i]) ? fridge[i] : { ...fridge[i], qty: left[i] });
   }
   return compactFridge(next);
 }
@@ -833,11 +860,6 @@ function cookRecipeOnce(
   if (items.some((it) => it.quality === 'rotten')) return { save, error: '坏了，不能下锅' };
   if (!recipe.match(items)) return { save, error: `材料不对：${recipe.desc}` };
   const value = recipe.cook(items);
-  const used = new Map<string, number>();
-  for (const it of items) {
-    if (!it.uid) continue;
-    used.set(it.uid, (used.get(it.uid) ?? 0) + 1);
-  }
   const dish: FridgeItem = {
     uid: nextUid('d'),
     kind: 'dish',
@@ -848,7 +870,7 @@ function cookRecipeOnce(
     qty: 1,
     value,
   };
-  const fridge = putIntoFridge(consumeFridgeQty(save.fridge, used), dish);
+  const fridge = putIntoFridge(consumePickedFoods(save.fridge, items), dish);
   if (fridge.length > fridgeCap(save)) return { save, error: '冰箱满了，腾一格再做菜' };
   const first = !save.recipesCooked.includes(recipeId);
   const recipesCooked = first ? [...save.recipesCooked, recipeId] : save.recipesCooked;

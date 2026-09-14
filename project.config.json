@@ -143,6 +143,10 @@
       },
       {
         "type": "file",
+        "value": "subpkg_audio/cook_ready.mp3"
+      },
+      {
+        "type": "file",
         "value": "subpkg_audio/cook_sizzle.mp3"
       },
       {
@@ -224,6 +228,10 @@
       {
         "type": "file",
         "value": "subpkg_audio/walk.mp3"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_audio/xp_gain.mp3"
       },
       {
         "type": "file",

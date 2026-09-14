@@ -16,6 +16,7 @@ import { ensureRecipeUnlockPanel } from '@/gameobjects/ui/RecipeUnlockPanel';
 import { ensureCookLevelUpPanel } from '@/gameobjects/ui/CookLevelUpPanel';
 import { ensureTutorialGiftPanel } from '@/gameobjects/ui/TutorialGiftPanel';
 import { Platform } from '@/core/PlatformService';
+import { clearCookReadyFx, playCookReadyFx } from '@/utils/cookReadyFx';
 import {
   staminaMax,
   FURN_IDS,
@@ -93,17 +94,7 @@ export class KitchenScene implements Scene {
   private _offerTimer = 0;
   private _onChange = () => {
     const fx = KitchenManager.consumeCookFx();
-    if (fx && fx.levels <= 0) {
-      this._xpPop = {
-        text: `+${fx.xp} 经验`,
-        until: Date.now() + 1500,
-      };
-      globalThis.clearTimeout?.(this._xpPopTimer);
-      this._xpPopTimer = globalThis.setTimeout(() => {
-        this._xpPop = null;
-        if (this.container.parent) this.relayout();
-      }, 1500) as unknown as number;
-    }
+    if (fx) playCookReadyFx(fx);
     if (KitchenManager.consumeNudgeOffer()) this._queueNeighborOffer();
     this.relayout();
   };
@@ -120,9 +111,7 @@ export class KitchenScene implements Scene {
   private _gmHouse = 0;
   private _furnRoots = new Map<FurnId, PIXI.Container>();
   private _upgradePick: UpgradePick | null = null;
-  private _xpPop: { text: string; until: number } | null = null;
   private _spotRects = new Map<HotspotId, { x: number; y: number; w: number; h: number }>();
-  private _xpPopTimer = 0;
   private _wipeArmed = 0;
   private _onDown = (e: PIXI.FederatedPointerEvent) => {
     const p = this.container.toLocal(e.global);
@@ -226,8 +215,7 @@ export class KitchenScene implements Scene {
     this._gameClub.close(true);
     this._upgrade.close(true);
     this._upgradePick = null;
-    this._xpPop = null;
-    globalThis.clearTimeout?.(this._xpPopTimer);
+    clearCookReadyFx();
     TutorialOverlay.unregister('kitchen');
   }
 
@@ -552,11 +540,6 @@ export class KitchenScene implements Scene {
       this._ui.addChild(buff);
     }
 
-    if (this._xpPop && Date.now() < this._xpPop.until) {
-      const pop = makeLabel(this._xpPop.text, 22, 0xF2C14D, { fontWeight: '700' });
-      pop.position.set(12 + PLAYER_LEVEL_HUD.avatar + PLAYER_LEVEL_HUD.gap, y + 2);
-      this._ui.addChild(pop);
-    }
 
     const STEP = 128;
     const dexY = top + 208;

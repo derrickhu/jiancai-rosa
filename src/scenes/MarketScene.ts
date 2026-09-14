@@ -1328,6 +1328,7 @@ export class MarketScene implements Scene {
     } else if (TutorialGuard.block('takeLoot')) {
       return;
     }
+    Platform.vibrateShort('light');
     if (item.defId === GOD_PICK.id && !item.inspected) {
       this._playGodPick(uid);
       return;

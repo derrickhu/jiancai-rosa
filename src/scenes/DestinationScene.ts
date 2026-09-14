@@ -452,7 +452,17 @@ export class DestinationScene implements Scene {
       this._enterSpecial(market);
     });
     root.addChild(go);
-    root.addChild(this._dailyChip(textX + 180, btnY, used, market.dailyLimit));
+    const chipX = textX + 180;
+    root.addChild(this._dailyChip(chipX, btnY, used, market.dailyLimit));
+    const peek = 36;
+    const btn = this._peekBtn(peek);
+    btn.position.set(chipX + 118 + 10, btnY + Math.round((btnH - peek) / 2));
+    btn.on('pointertap', (e) => {
+      e.stopPropagation();
+      if (this._scroller.moved) return;
+      this._loot.openSpecial(market.id);
+    });
+    root.addChild(btn);
     return root;
   }
 

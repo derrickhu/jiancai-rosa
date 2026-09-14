@@ -81,6 +81,7 @@ export class CookPanel extends PIXI.Container {
     OverlayManager.container.addChild(this);
     this._scroller = new VerticalScroller(this, { visible: () => this._isOpen });
     EventBus.on(EV.tutorialCook, this._onTutorialCook);
+    EventBus.on(EV.kitchenChanged, this._scheduleRelayout);
   }
 
   open(recipeId?: RecipeId): void {

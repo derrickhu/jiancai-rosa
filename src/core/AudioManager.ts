@@ -1,7 +1,6 @@
 /**
  * 对齐花花：逻辑路径一律 `subpkg_audio/*.mp3`，整目录 CDN。
- * 播放前 resolveAudioSrc：真机用 wxfile 缓存，开发者工具 http://usr 改走 https。
- * 设 src 后等 onCanplay 再 play；本地读失败再回落 CDN https。
+ * 播放前 resolveAudioSrc：下载到用户目录，按文件真实所在路径播。
  */
 import { AUDIO_SETTINGS_KEY } from '@/config/CloudConfig';
 import { CdnAssetService } from '@/core/CdnAssetService';
@@ -18,6 +17,8 @@ export const SFX_IDS = [
   'fridge_open',
   'cook_sizzle',
   'cook_done',
+  'cook_ready',
+  'xp_gain',
   'eat',
   'level_up',
   'upgrade',
@@ -70,7 +71,7 @@ const REVEAL_VOL = 0.7;
 const PICKUP_SFX = new Set<SfxId>(['pickup_veg', 'pickup_wet']);
 const PICKUP_VOL = 0.46;
 /** 结算 / 神捡 / 升级：压过 BGM 的爽感短句 */
-const REWARD_SFX = new Set<SfxId>(['result_safe', 'result_dusk', 'pickup_god', 'level_up']);
+const REWARD_SFX = new Set<SfxId>(['result_safe', 'result_dusk', 'pickup_god', 'level_up', 'cook_ready']);
 const REWARD_VOL = 1;
 const TAG = '[Audio]';
 
@@ -302,7 +303,10 @@ class AudioManagerClass {
         }
         return;
       }
-      console.warn(TAG, `音效 "${name}" 播放失败`, error);
+      const msg = error && typeof error === 'object' && 'errMsg' in error
+        ? String((error as { errMsg?: string }).errMsg)
+        : String(error);
+      console.warn(TAG, `音效 "${name}" 播放失败`, msg);
       cleanup();
     });
     audio.onEnded?.(() => cleanup());

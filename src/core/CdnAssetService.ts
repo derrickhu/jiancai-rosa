@@ -93,23 +93,20 @@ class CdnAssetServiceClass {
     return this._getCdnUrl(this._normalize(path));
   }
 
-  /** 给 InnerAudio：优先本地 wxfile；开发者工具 http://usr 必须改走 https，否则 set src request:fail。 */
+  /**
+   * 给 InnerAudio。对齐花花：播 resolveOrDownload 拿到的那条路径。
+   * 真机 USER_DATA_PATH 已是 wxfile://usr。
+   * 开发者工具是 http://usr，文件也写在这儿；不要改成 wxfile://usr，
+   * Mac 3.17 两套路径不是同一份，改了就是 readFile no such file。
+   * 只有 wxfile 那边真有文件时才用 wxfile。
+   */
   async resolveAudioSrc(path: string): Promise<string> {
-    const logicalPath = this._normalize(path);
-    const resolved = await this.resolveOrDownload(logicalPath);
-    if (/^https?:\/\/usr\//.test(resolved) && this._config.baseUrl && this.isCdnPath(logicalPath)) {
-      return this.publicUrl(logicalPath);
-    }
-    const playable = this.toInnerAudioSrc(resolved);
-    if (
-      playable.startsWith('wxfile://')
-      || playable.startsWith('https://')
-      || playable.startsWith('http://tmp')
-    ) {
-      return playable;
-    }
-    if (this.isCdnPath(logicalPath) && this._config.baseUrl) return this.publicUrl(logicalPath);
-    return playable;
+    const resolved = await this.resolveOrDownload(path);
+    if (/^https?:\/\//.test(resolved) && !/^https?:\/\/usr\//.test(resolved)) return resolved;
+    if (this._fileReady(resolved)) return resolved;
+    const alt = this.toInnerAudioSrc(resolved);
+    if (alt !== resolved && this._fileReady(alt)) return alt;
+    return resolved;
   }
 
   invalidateCache(path: string): void {
@@ -185,12 +182,19 @@ class CdnAssetServiceClass {
     }
 
     let done = 0;
-    await Promise.race([
-      Promise.all(cdnPaths.map(async (p) => {
+    let cursor = 0;
+    const limit = 4;
+    const workers = Array.from({ length: Math.min(limit, cdnPaths.length) }, async () => {
+      while (cursor < cdnPaths.length) {
+        const p = cdnPaths[cursor];
+        cursor += 1;
         await this.download(p);
-        done++;
+        done += 1;
         onProgress?.(paths.length - cdnPaths.length + done, paths.length);
-      })),
+      }
+    });
+    await Promise.race([
+      Promise.all(workers),
       new Promise<void>(resolve => setTimeout(resolve, this._config.downloadTimeoutMs)),
     ]);
   }
@@ -300,6 +304,10 @@ class CdnAssetServiceClass {
     }
     if (!entry?.hash) return true;
     return this._readCachedHash(logicalPath) === entry.hash;
+  }
+
+  private _fileReady(path: string): boolean {
+    return Boolean(path) && this._getLocalFileSize(path) >= 64;
   }
 
   private _cacheFileExists(logicalPath: string): boolean {

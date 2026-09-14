@@ -32,7 +32,6 @@ import { basketPanelPaths } from '@/utils/panelAssets';
 const BG = 'subpkg_kitchen/ui_basket_panel.png';
 const TITLE_FONT = 'Songti SC, STSong, PingFang SC, serif';
 const INK = 0x2A2018;
-const WALNUT = 0x8B5A2B;
 const WET = 0x3A6A72;
 const FLEX = 0x8A9A4A;
 const OK = 0x5C8A3A;
@@ -545,35 +544,46 @@ export class BasketPanel extends PIXI.Container {
     const root = new PIXI.Container();
     const w = gridW - 3;
     const h = cell - 3;
-    const bg = new PIXI.Graphics();
-    bg.beginFill(0xFFF8F0, 0.92);
-    bg.lineStyle(2, 0xC46A3A, 0.88);
-    bg.drawRoundedRect(0, 0, w, h, 7);
-    bg.endFill();
-    root.addChild(bg);
-    if (h >= 36) {
-      const title = makeLabel('看广告解锁一行', Math.min(16, Math.floor(h * 0.38)), 0x8A3B32, { fontWeight: '700' });
-      title.anchor.set(0.5, 1);
-      title.position.set(w / 2, h * 0.52);
-      root.addChild(title);
-      const sub = makeLabel('当次 · 干湿都能放', Math.min(13, Math.floor(h * 0.28)), WALNUT, { fontWeight: '600' });
-      sub.anchor.set(0.5, 0);
-      sub.position.set(w / 2, h * 0.54);
-      root.addChild(sub);
-    } else {
-      const title = makeLabel('看广告解锁一行 · 当次通用', Math.min(14, Math.max(10, h - 8)), 0x8A3B32, { fontWeight: '700' });
-      title.anchor.set(0.5);
-      title.position.set(w / 2, h / 2);
-      root.addChild(title);
-    }
-    root.position.set(gridX, gridY);
-    root.eventMode = 'static';
-    root.cursor = 'pointer';
-    root.hitArea = new PIXI.Rectangle(0, 0, w, h);
-    root.on('pointertap', () => {
+    const btnH = Math.min(56, Math.max(40, h - 6));
+    const btnW = Math.max(160, w - 10);
+    const btn = makeSlicedButton({
+      label: '',
+      width: btnW,
+      height: btnH,
+      skin: 'terracotta',
+      onReady: () => {
+        if (this._isOpen && !this._drag) this.relayout();
+      },
+    });
+    const play = new PIXI.Graphics();
+    play.beginFill(0xFFF8F0);
+    play.moveTo(0, 0);
+    play.lineTo(0, 16);
+    play.lineTo(13, 8);
+    play.closePath();
+    play.endFill();
+    play.eventMode = 'none';
+
+    const title = makeLabel('看广告解锁一行', 20, 0xFFF8F0, { fontWeight: '700' });
+    const sub = makeLabel('当次 · 干湿都能放', 20, 0xF2C14D, { fontWeight: '700' });
+    title.anchor.set(0, 0.5);
+    sub.anchor.set(0, 0.5);
+    const gap = 12;
+    const lineW = 13 + 10 + title.width + gap + sub.width;
+    const lineX = Math.max(16, (btnW - lineW) / 2);
+    const midY = btnH / 2 + 1;
+    play.position.set(lineX, (btnH - 16) / 2);
+    title.position.set(lineX + 23, midY);
+    sub.position.set(title.x + title.width + gap, midY);
+    btn.addChild(play, title, sub);
+    btn.position.set((w - btnW) / 2, (h - btnH) / 2);
+    btn.on('pointertap', () => {
       if (this._scroller.moved || this._unlocking) return;
       this._watchFlexAd();
     });
+    root.addChild(btn);
+    root.position.set(gridX, gridY);
+    root.eventMode = 'none';
     return root;
   }
 

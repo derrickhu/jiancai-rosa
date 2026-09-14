@@ -29,7 +29,7 @@ export interface SpecialMarketDef {
 }
 
 export const SPECIAL_DAILY_LIMIT = 2;
-export const SPECIAL_ROUNDS = 5;
+export const SPECIAL_ROUNDS = 10;
 
 export const SPECIAL_TIMING = {
   idleMin: 0.55,
@@ -193,7 +193,17 @@ export function toSpecialExtracted(defId: string, quality: Quality): ExtractedIt
 }
 
 export function specialBootItems(def: SpecialMarketDef): string[] {
-  const ids = new Set<string>();
-  for (const it of [...def.targetPool, ...def.consolationPool]) ids.add(it.id);
-  return [...ids];
+  return specialLootIds(def);
+}
+
+/** 特殊摊能出的货：主池在前，安慰池只补还没有的。 */
+export function specialLootIds(def: SpecialMarketDef): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const it of [...def.targetPool, ...def.consolationPool]) {
+    if (seen.has(it.id)) continue;
+    seen.add(it.id);
+    ids.push(it.id);
+  }
+  return ids;
 }

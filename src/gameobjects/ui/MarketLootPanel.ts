@@ -6,8 +6,11 @@ import { KitchenManager } from '@/managers/KitchenManager';
 import {
   getItem,
   getMarket,
+  getSpecialMarket,
   marketLootRows,
+  specialLootIds,
   type MarketId,
+  type SpecialMarketId,
 } from '@/sim';
 import { VerticalScroller } from '@/utils/scroll';
 import { fitSpriteInBox, imgPath, isTextureReady, itemTexture, whenTextureReady } from '@/utils/assets';
@@ -27,6 +30,7 @@ export class MarketLootPanel extends PIXI.Container {
   private _root = new PIXI.Container();
   private _scroller: VerticalScroller;
   private _marketId: MarketId | null = null;
+  private _specialId: SpecialMarketId | null = null;
   private _inspect: ItemInspectView | null = null;
 
   constructor() {
@@ -40,7 +44,18 @@ export class MarketLootPanel extends PIXI.Container {
   }
 
   open(marketId: MarketId): void {
+    this._specialId = null;
+    this._present(marketId, null);
+  }
+
+  openSpecial(specialId: SpecialMarketId): void {
+    this._marketId = null;
+    this._present(null, specialId);
+  }
+
+  private _present(marketId: MarketId | null, specialId: SpecialMarketId | null): void {
     this._marketId = marketId;
+    this._specialId = specialId;
     this._inspect = null;
     if (!this._isOpen) AudioManager.play('ui_open');
     this._isOpen = true;
@@ -56,6 +71,7 @@ export class MarketLootPanel extends PIXI.Container {
     this._isOpen = false;
     this.visible = false;
     this._marketId = null;
+    this._specialId = null;
     this._inspect = null;
     this._scroller.disable();
     this._root.removeChildren();
@@ -64,7 +80,8 @@ export class MarketLootPanel extends PIXI.Container {
   relayout(): void {
     this._root.removeChildren();
     const marketId = this._marketId;
-    if (!this._isOpen || !marketId) return;
+    const specialId = this._specialId;
+    if (!this._isOpen || (!marketId && !specialId)) return;
 
     const w = Game.designWidth;
     const h = Game.logicHeight;
@@ -76,7 +93,9 @@ export class MarketLootPanel extends PIXI.Container {
     dim.on('pointertap', () => this.close());
     this._root.addChild(dim);
 
-    const rows = marketLootRows(marketId, KitchenManager.save.level);
+    const rows = specialId
+      ? specialLootIds(getSpecialMarket(specialId)).map((id) => ({ id }))
+      : marketLootRows(marketId!, KitchenManager.save.level);
     const gridW = COLS * CELL + (COLS - 1) * GAP;
     const cardW = Math.min(560, w - 56);
     const innerW = cardW - 48;
@@ -106,11 +125,15 @@ export class MarketLootPanel extends PIXI.Container {
     plate.endFill();
     card.addChild(plate);
 
-    const market = getMarket(marketId);
-    const title = makeLabel(market.name, 28, INK, { fontWeight: '700' });
+    const title = makeLabel(
+      specialId ? getSpecialMarket(specialId).name : getMarket(marketId!).name,
+      28,
+      INK,
+      { fontWeight: '700' },
+    );
     title.position.set(28, 26);
     card.addChild(title);
-    const hint = makeLabel('这摊能翻到这些。', 18, MUTED, { fontWeight: '600' });
+    const hint = makeLabel(specialId ? '这里能收到这些。' : '这摊能翻到这些。', 18, MUTED, { fontWeight: '600' });
     hint.position.set(28, 62);
     card.addChild(hint);
 

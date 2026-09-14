@@ -88,7 +88,7 @@ const SPECS: ItemSpec[] = [
   { id: 'spinach', name: '菠菜', w: 1, h: 2, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['leaf'], color: 0x3D7A3A, blurb: '红根还在，才像刚从筐里拔的。', blurbRotten: '叶子黑了，红根也救不回来。' },
   { id: 'chive', name: '韭菜', w: 1, h: 2, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['leaf'], color: 0x4A8A3A, blurb: '香味先到，河虾最肯跟它见面。', blurbRotten: '软成一撮青丝，香气先走了。' },
   { id: 'celery', name: '芹菜', w: 1, h: 3, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['leaf'], color: 0x7BB05A, blurb: '叶子也能吃，别只留下秆。', blurbRotten: '秆还硬，叶子已经认输。' },
-  { id: 'water_spinach', name: '空心菜', w: 1, h: 3, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['leaf'], color: 0x5A9A48, blurb: '空心管，灶上烫一下就软。', blurbRotten: '管子瘪了，只剩一缕湿绳。' },
+  { id: 'water_spinach', name: '空心菜', w: 1, h: 2, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['leaf'], color: 0x5A9A48, blurb: '空心管，灶上烫一下就软。', blurbRotten: '管子瘪了，只剩一缕湿绳。' },
   { id: 'lettuce', name: '生菜', w: 2, h: 2, zone: 'dry', rarity: 'rare', vegetable: true, stalls: ['leaf'], color: 0x8FCB6B, blurb: '一整个脆生生的脑袋，凉拌比炒更懂它。', blurbRotten: '边儿发红了，像熬夜熬过头。' },
   { id: 'rapeseed', name: '油菜', w: 2, h: 2, zone: 'dry', rarity: 'common', vegetable: true, stalls: ['leaf'], color: 0x6BA368, blurb: '油亮小棵，比白菜省位。', blurbRotten: '帮子发黏，油亮变成油腻。' },
   { id: 'cabbage', name: '白菜', w: 2, h: 2, zone: 'dry', rarity: 'rare', vegetable: true, bulky: true, stalls: ['leaf'], color: 0xC8E6A0, blurb: '层层叠叠能包一冬，也最擅长在菜篮里占座。', blurbRotten: '外帮黏了，里面还在装完好。' },
