@@ -110,71 +110,47 @@ function _requireKitchenEntry() {
   }
 }
 
+function _kickSubpackages() {
+  if (!_nativeApi || typeof _nativeApi.loadSubpackage !== 'function') {
+    if (_requireImagesEntry()) _diag('无 loadSubpackage,已 require 图片入口');
+    if (_requireKitchenEntry()) _diag('无 loadSubpackage,已 require 厨房入口');
+    return;
+  }
+  try {
+    _nativeApi.loadSubpackage({
+      name: 'images',
+      success: function () {
+        _diag('图片分包开始下载/已就绪');
+        try {
+          _nativeApi.loadSubpackage({
+            name: 'kitchen',
+            success: function () { _diag('厨房分包开始下载/已就绪'); },
+            fail: function (err) { _diag('厨房分包失败:' + _errText(err)); },
+          });
+        } catch (e) {
+          _diag('厨房 loadSubpackage 异常:' + e);
+        }
+      },
+      fail: function (err) {
+        _diag('图片分包失败:' + _errText(err));
+      },
+    });
+  } catch (e) {
+    _diag('loadSubpackage 异常:' + e);
+  }
+}
+
 function _loadImagesThenStart() {
-  // 开发者工具里 loadSubpackage 常挂起或不回调，本地文件已在磁盘，直接开游戏。
+  // 主包先出 Loading。images/kitchen 分包由这里并行踢下载，main 里等齐再预加载厨房图。
+  // 开发者工具里 loadSubpackage 常挂起，本地文件已在磁盘。
   if (_isDevtools()) {
     if (_requireImagesEntry()) _diag('devtools 已 require 图片分包入口');
     if (_requireKitchenEntry()) _diag('devtools 已 require 厨房分包入口');
     _startGame('devtools 跳过等待 loadSubpackage');
     return;
   }
-
-  if (!_nativeApi || typeof _nativeApi.loadSubpackage !== 'function') {
-    if (_requireImagesEntry()) _diag('无 loadSubpackage,已 require 图片入口');
-    if (_requireKitchenEntry()) _diag('无 loadSubpackage,已 require 厨房入口');
-    _startGame('无分包 API,直接启动');
-    return;
-  }
-
-  _diag('加载图片分包...');
-  var timer = setTimeout(function () {
-    _diag('分包 3s 未回调,继续启动');
-    if (_requireImagesEntry()) _diag('超时后 require 图片入口 OK');
-    if (_requireKitchenEntry()) _diag('超时后 require 厨房入口 OK');
-    _startGame('分包超时兜底');
-  }, 3000);
-
-  function loadKitchen() {
-    try {
-      _nativeApi.loadSubpackage({
-        name: 'kitchen',
-        success: function () {
-          clearTimeout(timer);
-          _startGame('厨房分包 OK');
-        },
-        fail: function (err) {
-          clearTimeout(timer);
-          _diag('厨房分包失败:' + _errText(err));
-          if (_requireKitchenEntry()) _diag('失败后 require 厨房入口 OK');
-          _startGame('厨房分包失败仍启动');
-        },
-      });
-    } catch (e) {
-      clearTimeout(timer);
-      _diag('厨房 loadSubpackage 异常:' + e);
-      if (_requireKitchenEntry()) _diag('异常后 require 厨房入口 OK');
-      _startGame('厨房分包异常仍启动');
-    }
-  }
-
-  try {
-    _nativeApi.loadSubpackage({
-      name: 'images',
-      success: function () {
-        _diag('图片分包 OK,加载厨房分包');
-        loadKitchen();
-      },
-      fail: function (err) {
-        _diag('图片分包失败:' + _errText(err));
-        if (_requireImagesEntry()) _diag('失败后 require 图片入口 OK');
-        loadKitchen();
-      },
-    });
-  } catch (e) {
-    clearTimeout(timer);
-    _diag('loadSubpackage 异常:' + e);
-    _startGame('分包异常仍启动');
-  }
+  _kickSubpackages();
+  _startGame('先出 loading，分包并行');
 }
 
 var _bootScheduled = false;

@@ -62,7 +62,8 @@ import {
 } from '@/sim';
 import { AudioManager } from '@/core/AudioManager';
 import { HUD_ICON, PLAYER_LEVEL_HUD, bindUiClick, fillRect, makeButton, makeLabel, makeMuteButton, makePlayerLevelHud, makeStatPill } from '@/utils/ui';
-import { applyFit, fitSpriteInBox, fitWidthBottom, gameTexture, isTextureFailed, isTextureReady, mapNorm, whenTextureReady } from '@/utils/assets';
+import { applyFit, fitSpriteInBox, fitWidthBottom, gameTexture, isTextureFailed, isTextureReady, mapNorm, retryTexture, watchTextures, whenTextureReady } from '@/utils/assets';
+import { kitchenBootPaths } from '@/utils/bootAssets';
 import { OutingCurtain } from '@/gameobjects/ui/OutingCurtain';
 import { destinationBootPaths } from '@/utils/outingAssets';
 import { RunManager } from '@/managers/RunManager';
@@ -112,6 +113,8 @@ export class KitchenScene implements Scene {
   private _furnRoots = new Map<FurnId, PIXI.Container>();
   private _upgradePick: UpgradePick | null = null;
   private _spotRects = new Map<HotspotId, { x: number; y: number; w: number; h: number }>();
+  private _bootRetryLeft = 8;
+  private _bootRetryTimer = 0;
   private _wipeArmed = 0;
   private _onDown = (e: PIXI.FederatedPointerEvent) => {
     const p = this.container.toLocal(e.global);
@@ -168,6 +171,7 @@ export class KitchenScene implements Scene {
     TutorialManager.start();
     TutorialOverlay.mount();
     TutorialOverlay.register('kitchen', () => this.tutorialRect());
+    this._bootRetryLeft = 8;
     this.relayout();
     AudioManager.playBgm('kitchen');
     if (!TutorialManager.isActive) {
@@ -205,6 +209,10 @@ export class KitchenScene implements Scene {
     try { Platform.api?.offTouchCancel?.(this._onUp); } catch (_) {}
     this._endDrag();
     this._clearOfferTimer();
+    if (this._bootRetryTimer) {
+      globalThis.clearTimeout(this._bootRetryTimer);
+      this._bootRetryTimer = 0;
+    }
     this._fridge.close(true);
     this._cook.close(true);
     ensureTutorialGiftPanel().close(true);
@@ -236,6 +244,9 @@ export class KitchenScene implements Scene {
     const house = this._viewHouse();
     const roomPath = this._roomPath(house);
     const tex = gameTexture(roomPath);
+    watchTextures(kitchenBootPaths(save), () => {
+      if (this.container.parent && !this._itemDrag) this.relayout();
+    });
     whenTextureReady(roomPath, () => {
       if (this.container.parent && !this._itemDrag) this.relayout();
     });
@@ -293,11 +304,32 @@ export class KitchenScene implements Scene {
     this._applyPan();
     this._drawHud(w);
     if (!this._gm && this._upgradePick) this._drawUpgradeCard(this._upgradePick);
+    this._scheduleBootRetry();
     if (TutorialManager.isStep(TutorialStep.COOK_DISH) && !this._cook._isOpen && !this._gm) {
       this._cook.open('stirfry');
       return;
     }
     TutorialOverlay.refresh();
+  }
+
+  /** 分包晚到时方框先出来，图到了立刻重画，不必杀进程重进。 */
+  private _scheduleBootRetry(): void {
+    if (this._itemDrag || this._bootRetryLeft <= 0) return;
+    const miss = kitchenBootPaths(KitchenManager.save).filter((path) => !isTextureReady(gameTexture(path)));
+    if (!miss.length) {
+      this._bootRetryLeft = 0;
+      return;
+    }
+    if (this._bootRetryTimer) return;
+    this._bootRetryLeft -= 1;
+    this._bootRetryTimer = globalThis.setTimeout(() => {
+      this._bootRetryTimer = 0;
+      if (!this.container.parent) return;
+      for (const path of miss) retryTexture(path);
+      watchTextures(miss, () => {
+        if (this.container.parent && !this._itemDrag) this.relayout();
+      });
+    }, 700) as unknown as number;
   }
 
   tutorialRect(): { x: number; y: number; w: number; h: number; r?: number } | null {

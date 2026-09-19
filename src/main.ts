@@ -17,8 +17,9 @@ import { MarketScene } from '@/scenes/MarketScene';
 import { SpecialMarketScene } from '@/scenes/SpecialMarketScene';
 import { AudioManager } from '@/core/AudioManager';
 import { CdnAssetService } from '@/core/CdnAssetService';
-import { gameTexture, isTextureFailed, isTextureReady, preloadTextures } from '@/utils/assets';
+import { gameTexture, isTextureReady, preloadTextures, retryTexture } from '@/utils/assets';
 import { kitchenBootPaths, kitchenCriticalPaths } from '@/utils/bootAssets';
+import { ensureBootSubpackages } from '@/utils/bootSubpackages';
 
 const BOOT_HOLD_MS = 480;
 const BOOT_HANG_MS = 40000;
@@ -75,6 +76,9 @@ async function main(): Promise<void> {
   });
 
   CloudSyncManager.prewarm();
+  const bootPacks = ensureBootSubpackages((done, total) => {
+    loading.setProgress(0.02 + done / Math.max(1, total) * 0.06);
+  });
   const startupSync = await CloudSyncManager.awaitStartupSync();
   console.log(
     `[jiancai] 云同步启动结果: ${startupSync.status}, reason=${startupSync.reason}, userId=${CloudSyncManager.userId || 'none'}`,
@@ -110,6 +114,7 @@ async function main(): Promise<void> {
   };
 
   await CdnAssetService.fetchManifest();
+  await bootPacks;
   const save = SaveManager.data;
   const paths = kitchenBootPaths(save);
   const critical = kitchenCriticalPaths(save);
@@ -121,13 +126,12 @@ async function main(): Promise<void> {
     globalThis.setTimeout(resolve, BOOT_HANG_MS);
   });
   await Promise.race([Promise.all([loaded, audioReady]), hang]);
+  for (const path of critical) {
+    if (!isTextureReady(gameTexture(path))) retryTexture(path);
+  }
   const deadline = Date.now() + 8000;
   while (Date.now() < deadline) {
-    const ready = critical.every((path) => {
-      const tex = gameTexture(path);
-      return isTextureReady(tex) || isTextureFailed(path);
-    });
-    if (ready) break;
+    if (critical.every((path) => isTextureReady(gameTexture(path)))) break;
     await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 200));
   }
   loading.setProgress(1);

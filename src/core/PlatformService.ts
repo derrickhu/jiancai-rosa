@@ -241,6 +241,31 @@ class PlatformServiceClass {
     return this._isDevtools();
   }
 
+  /**
+   * 微信/抖音资源分包。开发者工具里 loadSubpackage 常挂起，调用方应设超时。
+   * 不支持时 resolve('unsupported')，下载失败 reject。
+   */
+  loadSubpackage(name: string): Promise<'loaded' | 'unsupported'> {
+    return new Promise((resolve, reject) => {
+      if (typeof this._api?.loadSubpackage !== 'function') {
+        resolve('unsupported');
+        return;
+      }
+      try {
+        this._api.loadSubpackage({
+          name,
+          success: () => resolve('loaded'),
+          fail: (err: { errMsg?: string; message?: string } | undefined) => {
+            const errMsg = err?.errMsg || err?.message || 'unknown';
+            reject(new Error(`loadSubpackage(${name}) 失败: ${errMsg}`));
+          },
+        });
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error(String(e)));
+      }
+    });
+  }
+
   private _isDevtools(): boolean {
     if (!this.isMinigame) return false;
     try {

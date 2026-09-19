@@ -2,6 +2,7 @@ import * as PIXI from 'pixi.js';
 import { ImageResource } from '@pixi/core';
 import { CdnAssetService } from '@/core/CdnAssetService';
 import { Platform } from '@/core/PlatformService';
+import { ensureSubpackage, subpackageForPath } from '@/utils/bootSubpackages';
 
 const cache = new Map<string, PIXI.Texture>();
 const waiters = new Map<string, Array<() => void>>();
@@ -32,6 +33,25 @@ function flush(path: string): void {
   for (const cb of list) {
     try { cb(); } catch (e) { console.warn('[assets] ready cb', e); }
   }
+}
+
+function bindWhenValid(path: string, tex: PIXI.Texture): void {
+  if (isTextureReady(tex)) {
+    flush(path);
+    return;
+  }
+  const base = tex.baseTexture;
+  let armed = false;
+  const done = (): void => {
+    if (armed) return;
+    armed = true;
+    base.off('loaded', done);
+    base.off('update', done);
+    flush(path);
+  };
+  base.once('loaded', done);
+  base.once('update', done);
+  globalThis.setTimeout(done, 800);
 }
 
 /**
@@ -66,6 +86,8 @@ export function gameTexture(path: string): PIXI.Texture {
       imageRetries.delete(path);
       failed.delete(path);
       console.log('[assets] loaded', path, img.width, img.height);
+      bindWhenValid(path, tex);
+      return;
     } catch (e) {
       console.warn('[assets] bind 失败', path, e);
     }
@@ -78,16 +100,30 @@ export function gameTexture(path: string): PIXI.Texture {
       return;
     }
     const n = imageRetries.get(path) ?? 0;
-    if (n < IMAGE_RETRY && CdnAssetService.isCdnPath(path)) {
+    const pkg = subpackageForPath(path);
+    if (n < IMAGE_RETRY) {
       imageRetries.set(path, n + 1);
-      CdnAssetService.invalidateCache(path);
       globalThis.setTimeout(() => {
-        void CdnAssetService.resolveOrDownload(path).then(assignSrc).catch(finishFail);
+        void (async () => {
+          if (pkg) await ensureSubpackage(pkg);
+          if (CdnAssetService.isCdnPath(path)) {
+            CdnAssetService.invalidateCache(path);
+            try {
+              assignSrc(await CdnAssetService.resolveOrDownload(path));
+              return;
+            } catch (_) { /* 下面回落相对路径 */ }
+          }
+          assignSrc(path);
+        })().catch(finishFail);
       }, 600 * (n + 1));
       return;
     }
     finishFail(err);
   };
+  globalThis.setTimeout(() => {
+    if (isTextureReady(tex) || failed.has(path)) return;
+    img.onerror?.(new Error('decode timeout'));
+  }, 8000);
   void CdnAssetService.resolveOrDownload(path).then(assignSrc).catch((err) => {
     if (https) {
       assignSrc(https);
@@ -97,6 +133,14 @@ export function gameTexture(path: string): PIXI.Texture {
     assignSrc(path);
   });
   return tex;
+}
+
+/** 首屏分包未齐时失败的图，清掉占位后再拉一次。 */
+export function retryTexture(path: string): PIXI.Texture {
+  failed.delete(path);
+  imageRetries.delete(path);
+  cache.delete(path);
+  return gameTexture(path);
 }
 
 /** 微信分包根目录；勿再用 `images/`，开发者工具会把它当纯资源目录，导致 loadSubpackage module not found。 */
@@ -160,7 +204,6 @@ export function fitSpriteInBox(sprite: PIXI.Sprite, boxW: number, boxH: number, 
 
 /** 仅在贴图尚未就绪时回调，避免已加载时同步重绘死循环。 */
 export function whenTextureReady(path: string, onReady: () => void): void {
-  if (failed.has(path)) return;
   const tex = gameTexture(path);
   if (isTextureReady(tex)) return;
   const list = waiters.get(path) ?? [];
