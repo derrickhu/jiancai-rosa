@@ -9,6 +9,8 @@ export const RECIPE_TICKET_PER_BOARD = 1;
 export const RECIPE_GACHA_SKIP = new Set<RecipeId>(['wild_fish_soup']);
 /** 还有没开过的菜谱时，抽到菜谱的比例。其余出高级食材。 */
 export const RECIPE_GACHA_RECIPE_RATE = 0.4;
+export const GACHA_FOOD_QTY_MIN = 3;
+export const GACHA_FOOD_QTY_MAX = 5;
 
 const HIDDEN_POOL: RecipeId[] = [...HIDDEN_RECIPE_IDS].filter((id) => !RECIPE_GACHA_SKIP.has(id));
 
@@ -75,7 +77,12 @@ export function rollGachaPrize(view: GachaRollView, rng: Rng): GachaPrize {
   if (fresh.length && rng() < RECIPE_GACHA_RECIPE_RATE) {
     return { kind: 'recipe', recipeId: rollRecipeGacha(view, rng) };
   }
-  return { kind: 'food', defId: rollGachaFood(view, rng), qty: 1 };
+  const span = GACHA_FOOD_QTY_MAX - GACHA_FOOD_QTY_MIN + 1;
+  return {
+    kind: 'food',
+    defId: rollGachaFood(view, rng),
+    qty: GACHA_FOOD_QTY_MIN + Math.floor(rng() * span),
+  };
 }
 
 export function gachaRng(now = Date.now()): Rng {

@@ -6,9 +6,9 @@ import { Platform } from '@/core/PlatformService';
 import { Ease, TweenManager } from '@/core/TweenManager';
 import { KitchenManager } from '@/managers/KitchenManager';
 import { ensureRecipeUnlockPanel } from '@/gameobjects/ui/RecipeUnlockPanel';
-import { RECIPE_GACHA_COST, type RecipeId } from '@/sim';
+import { RECIPE_GACHA_COST, itemRarity, type RecipeId } from '@/sim';
 import { playRewardCollect } from '@/utils/coinCollect';
-import { fillRect, makeLabel } from '@/utils/ui';
+import { fillRect, makeLabel, makeRarityFlare } from '@/utils/ui';
 import {
   fitSpriteInBox,
   gameTexture,
@@ -23,6 +23,7 @@ import {
 const TICKET = 'subpkg_images/ui_menu_ticket.png';
 const BOX = 'subpkg_images/hud_gacha_box.png';
 const PAPER = 'subpkg_kitchen/ui_recipe_paper.png';
+const FLARE = 'subpkg_kitchen/ui_pickup_flare.png';
 const LACK_HINT = '完成小饭桌任务可以获得菜谱券';
 const TEASE = '箱子里不定是菜谱，也可能是好食材。';
 const TITLE_FONT = 'Songti SC, STSong, PingFang SC, serif';
@@ -33,6 +34,7 @@ const LAND_SEC = 0.18;
 type DrawResult = {
   recipeId?: RecipeId;
   foodDefId?: string;
+  foodQty?: number;
   foodFolded?: boolean;
   foldGold?: number;
   duplicate: boolean;
@@ -86,7 +88,7 @@ export class RecipeDrawPanel extends PIXI.Container {
     this._box = null;
     if (!this._isOpen) return;
 
-    watchTextures([BOX, TICKET, PAPER], () => {
+    watchTextures([BOX, TICKET, PAPER, FLARE], () => {
       if (this._isOpen && !this._playing) this.relayout();
     });
 
@@ -169,7 +171,7 @@ export class RecipeDrawPanel extends PIXI.Container {
       if (result.foodDefId) {
         this._waitPath(imgPath(`${result.foodDefId}.png`), () => {
           if (!this._playing) return;
-          this._spinItem(result.foodDefId!, () => {
+          this._spinItem(result.foodDefId!, result.foodQty ?? 1, () => {
             if (!this._playing) return;
             this._finishDraw();
           });
@@ -290,7 +292,7 @@ export class RecipeDrawPanel extends PIXI.Container {
     });
   }
 
-  private _spinItem(defId: string, done: () => void): void {
+  private _spinItem(defId: string, qty: number, done: () => void): void {
     const box = this._box;
     const tex = itemTexture(defId);
     if (!box || !isTextureReady(tex)) {
@@ -298,24 +300,48 @@ export class RecipeDrawPanel extends PIXI.Container {
       return;
     }
     if (this._paper && !this._paper.destroyed) this._paper.destroy({ children: true });
-    const spr = new PIXI.Sprite(tex);
-    fitSpriteInBox(spr, 240, 240);
-    spr.anchor.set(0.5);
-    spr.eventMode = 'none';
+    const face = 240;
     const wrap = new PIXI.Container();
     wrap.eventMode = 'none';
     wrap.position.set(box.x, box.y + 36);
     wrap.scale.set(0.08);
-    wrap.rotation = Math.PI * 1.65;
     wrap.alpha = 0;
-    wrap.addChild(spr);
+
+    const spin = new PIXI.Container();
+    spin.eventMode = 'none';
+    spin.rotation = Math.PI * 1.65;
+    const glow = makeRarityFlare(itemRarity(defId), 420);
+    const spr = new PIXI.Sprite(tex);
+    fitSpriteInBox(spr, face, face);
+    spr.anchor.set(0.5);
+    spr.eventMode = 'none';
+    spin.addChild(glow, spr);
+    wrap.addChild(spin);
+
+    if (qty > 1) {
+      const tag = makeLabel(`x${qty}`, 40, 0xFFF8F0, {
+        fontWeight: '700',
+        stroke: 0x2A2018,
+        strokeThickness: 6,
+      });
+      tag.anchor.set(1, 1);
+      tag.position.set(face / 2 - 2, face / 2 + 4);
+      wrap.addChild(tag);
+    }
+
     this._root.addChild(wrap);
     this._paper = wrap;
     AudioManager.play('event_pop');
     TweenManager.to({ target: wrap, props: { alpha: 1 }, duration: 0.08 });
     TweenManager.to({
       target: wrap,
-      props: { y: box.y - 80, rotation: 0 },
+      props: { y: box.y - 80 },
+      duration: SPIN_SEC,
+      ease: Ease.easeOutQuad,
+    });
+    TweenManager.to({
+      target: spin,
+      props: { rotation: 0 },
       duration: SPIN_SEC,
       ease: Ease.easeOutQuad,
     });
@@ -379,6 +405,7 @@ export class RecipeDrawPanel extends PIXI.Container {
     if (this._paper) {
       TweenManager.cancelTarget(this._paper);
       TweenManager.cancelTarget(this._paper.scale);
+      for (const child of this._paper.children) TweenManager.cancelTarget(child);
       if (!this._paper.destroyed) this._paper.destroy({ children: true });
       this._paper = null;
     }

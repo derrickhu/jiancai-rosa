@@ -432,6 +432,7 @@ class KitchenManagerClass {
     ok: boolean;
     recipeId?: RecipeId;
     foodDefId?: string;
+    foodQty?: number;
     foodFolded: boolean;
     foldGold: number;
     duplicate: boolean;
@@ -440,7 +441,7 @@ class KitchenManagerClass {
   } {
     const empty = { ok: false, duplicate: false, gold: 0, toast: '', foodFolded: false, foldGold: 0 };
     const {
-      save, error, toast, recipeUnlock, recipeId, duplicate, gold, foodDefId, foodFolded, foldGold,
+      save, error, toast, recipeUnlock, recipeId, duplicate, gold, foodDefId, foodQty, foodFolded, foldGold,
     } = drawRecipeGacha(this.save);
     if (error) {
       AudioManager.play('ui_deny');
@@ -455,6 +456,7 @@ class KitchenManagerClass {
       return {
         ok: true,
         foodDefId,
+        foodQty,
         foodFolded,
         foldGold,
         duplicate: false,

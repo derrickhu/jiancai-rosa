@@ -1378,6 +1378,7 @@ export function drawRecipeGacha(
   error?: string;
   recipeId?: RecipeId;
   foodDefId?: string;
+  foodQty?: number;
   foodFolded: boolean;
   foldGold: number;
   duplicate: boolean;
@@ -1406,11 +1407,14 @@ export function drawRecipeGacha(
     return {
       save: granted.save,
       foodDefId: granted.foodDefId ?? prize.defId,
+      foodQty: prize.qty,
       foodFolded: granted.foodFolded,
       foldGold: granted.foldGold,
       duplicate: false,
       gold: granted.gold,
-      toast: granted.foodFolded ? `${name}冰箱满了，折成 ${granted.foldGold} 金` : `开出了${name}`,
+      toast: granted.foodFolded
+        ? `${name}×${prize.qty}冰箱满了，折成 ${granted.foldGold} 金`
+        : `开出了${name}×${prize.qty}`,
     };
   }
   const recipeId = prize.recipeId;
