@@ -17,7 +17,7 @@ import {
   listedRecipes,
 } from '../src/sim/recipes';
 import { DAILY_MENU_RECIPES } from '../src/sim/dailyMenu';
-import { RECIPE_GACHA_POOL } from '../src/sim/recipeGacha';
+import { RECIPE_GACHA_FOODS, RECIPE_GACHA_POOL } from '../src/sim/recipeGacha';
 import { MARKETS } from '../src/sim/destinations';
 import { RARITY_ORDER, rarityLabel, type Rarity } from '../src/sim/rarity';
 let problems = 0;
@@ -140,7 +140,8 @@ for (const [id, from] of seen) {
 console.log(`  开局 ${START_RECIPES.length} 本 / 烹饪台 ${TABLE_UNLOCKS.flat().length} 本 ` +
   `/ 厨艺 ${Object.keys(COOK_UNLOCK_AT).flatMap((lv) => cookUnlocksAt(Number(lv))).length} 本 ` +
   `/ 市场池 ${new Set(Object.values(MARKET_RECIPE_POOL).flat()).size} 本 ` +
-  `/ 菜谱券活动 ${DAILY_MENU_RECIPES.length} 本 / 抽池 ${RECIPE_GACHA_POOL.length} 本`);
+  `/ 菜谱券活动 ${DAILY_MENU_RECIPES.length} 本 / 抽池 ${RECIPE_GACHA_POOL.length} 本` +
+  ` / 箱子食材 ${RECIPE_GACHA_FOODS.length} 种`);
 
 console.log('\n=== 菜场 ===');
 for (const m of MARKETS) {
