@@ -335,7 +335,11 @@ export class KitchenScene implements Scene {
   tutorialRect(): { x: number; y: number; w: number; h: number; r?: number } | null {
     if (!TutorialManager.isActive) return null;
     const step = TutorialManager.currentStep;
-    if (step === TutorialStep.GO_OUT || step === TutorialStep.HINT_DOOR) {
+    if (
+      step === TutorialStep.GO_OUT
+      || step === TutorialStep.PICK_XIANGKO
+      || step === TutorialStep.HINT_DOOR
+    ) {
       return worldRectToStage(this._world, this._spotRects.get('door') ?? { x: 20, y: 220, w: 160, h: 280 }, 12);
     }
     if (step === TutorialStep.COOK_TABLE || (step === TutorialStep.COOK_DISH && !this._cook._isOpen)) {
@@ -1414,7 +1418,6 @@ export class KitchenScene implements Scene {
     }
     if (OutingCurtain.busy) return;
     AudioManager.play('outing');
-    TutorialManager.advanceIf(TutorialStep.GO_OUT);
     TutorialManager.advanceIf(TutorialStep.HINT_DOOR);
     OutingCurtain.play({
       paths: destinationBootPaths(),

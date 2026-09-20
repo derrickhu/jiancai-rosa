@@ -48,7 +48,7 @@ const FREE_WALK: TutorialAction[] = [
 const ALLOWED: Partial<Record<TutorialStep, TutorialAction[]>> = {
   [TutorialStep.INTRO]: [],
   [TutorialStep.GO_OUT]: ['door'],
-  [TutorialStep.PICK_XIANGKO]: ['departXiangko'],
+  [TutorialStep.PICK_XIANGKO]: ['departXiangko', 'door'],
   [TutorialStep.CLICK_CARD]: ['walkCard'],
   [TutorialStep.CLICK_PILE]: ['drawPile'],
   [TutorialStep.TAKE_LOOT]: ['takeLoot'],

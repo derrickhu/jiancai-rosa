@@ -88,6 +88,7 @@ export class DestinationScene implements Scene {
     EventBus.on(EV.kitchenChanged, this._onKitchen);
     AudioManager.playBgm('outing');
     TutorialOverlay.register('dest', () => this.tutorialRect());
+    TutorialManager.advanceIf(TutorialStep.GO_OUT);
     this.relayout();
   }
 

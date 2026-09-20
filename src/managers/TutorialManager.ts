@@ -303,7 +303,7 @@ class TutorialManagerClass {
     if (hasCaitai && step >= TutorialStep.CLICK_CARD && step <= TutorialStep.WAIT_RESULT) {
       return TutorialStep.COOK_TABLE;
     }
-    if (step >= TutorialStep.CLICK_CARD && step <= TutorialStep.WAIT_RESULT) {
+    if (step >= TutorialStep.PICK_XIANGKO && step <= TutorialStep.WAIT_RESULT) {
       return TutorialStep.GO_OUT;
     }
     if (step >= TutorialStep.BASKET_DRY && step <= TutorialStep.FREE_WALK) {
