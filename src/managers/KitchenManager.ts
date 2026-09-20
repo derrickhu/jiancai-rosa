@@ -431,12 +431,17 @@ class KitchenManagerClass {
   drawRecipe(opts?: { reveal?: boolean }): {
     ok: boolean;
     recipeId?: RecipeId;
+    foodDefId?: string;
+    foodFolded: boolean;
+    foldGold: number;
     duplicate: boolean;
     gold: number;
     toast: string;
   } {
-    const empty = { ok: false, duplicate: false, gold: 0, toast: '' };
-    const { save, error, toast, recipeUnlock, recipeId, duplicate, gold } = drawRecipeGacha(this.save);
+    const empty = { ok: false, duplicate: false, gold: 0, toast: '', foodFolded: false, foldGold: 0 };
+    const {
+      save, error, toast, recipeUnlock, recipeId, duplicate, gold, foodDefId, foodFolded, foldGold,
+    } = drawRecipeGacha(this.save);
     if (error) {
       AudioManager.play('ui_deny');
       Platform.showToast(error);
@@ -445,18 +450,38 @@ class KitchenManagerClass {
     SaveManager.replace(save);
     this.emit();
     const reveal = opts?.reveal !== false;
+    if (foodDefId) {
+      if (reveal && toast) Platform.showToast(toast, 'success');
+      return {
+        ok: true,
+        foodDefId,
+        foodFolded,
+        foldGold,
+        duplicate: false,
+        gold,
+        toast,
+      };
+    }
     if (duplicate) {
       if (reveal) {
         AudioManager.play('coin_gain');
         if (toast) Platform.showToast(toast, 'success');
       }
-      return { ok: true, recipeId, duplicate: true, gold, toast };
+      return { ok: true, recipeId, duplicate: true, gold, toast, foodFolded: false, foldGold: 0 };
     }
     if (reveal) {
       AudioManager.play('recipe_paper');
       if (recipeUnlock) this.enqueueRecipeUnlocks([recipeUnlock], 200);
     }
-    return { ok: true, recipeId: recipeUnlock ?? recipeId, duplicate: false, gold: 0, toast };
+    return {
+      ok: true,
+      recipeId: recipeUnlock ?? recipeId,
+      duplicate: false,
+      gold: 0,
+      toast,
+      foodFolded: false,
+      foldGold: 0,
+    };
   }
 
   liveNeighborOrders(now = Date.now()): NeighborOrder[] {

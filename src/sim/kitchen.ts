@@ -24,7 +24,7 @@ import {
   gachaRng,
   recipeGachaDupGold,
   recipeGachaName,
-  rollRecipeGacha,
+  rollGachaPrize,
 } from './recipeGacha';
 import { displayName, getItem, GOD_PICK, initialFreshness, sellPrice, type Quality } from './items';
 import { migrateSeenMarketFoods, marketFoodKey } from './marketExploration';
@@ -1377,24 +1377,44 @@ export function drawRecipeGacha(
   save: KitchenSave;
   error?: string;
   recipeId?: RecipeId;
+  foodDefId?: string;
+  foodFolded: boolean;
+  foldGold: number;
   duplicate: boolean;
   gold: number;
   toast: string;
   recipeUnlock?: RecipeId;
 } {
+  const empty = { foodFolded: false as const, foldGold: 0, duplicate: false, gold: 0, toast: '' };
   if (save.recipeTickets < RECIPE_GACHA_COST) {
     return {
       save,
       error: '完成小饭桌任务可以获得菜谱券',
-      duplicate: false,
-      gold: 0,
-      toast: '',
+      ...empty,
     };
   }
-  const view = recipeUnlockView(save);
-  const recipeId = rollRecipeGacha(view, gachaRng(now));
-  const name = recipeGachaName(recipeId);
+  const view = {
+    ...recipeUnlockView(save),
+    dexSeen: save.dexSeen,
+    dexInspected: save.dexInspected,
+  };
+  const prize = rollGachaPrize(view, gachaRng(now));
   let next: KitchenSave = { ...save, recipeTickets: save.recipeTickets - RECIPE_GACHA_COST };
+  if (prize.kind === 'food') {
+    const granted = applyNeighborReward(next, { gold: 0, food: { defId: prize.defId, qty: prize.qty } });
+    const name = granted.foodName ?? getItem(prize.defId).name;
+    return {
+      save: granted.save,
+      foodDefId: granted.foodDefId ?? prize.defId,
+      foodFolded: granted.foodFolded,
+      foldGold: granted.foldGold,
+      duplicate: false,
+      gold: granted.gold,
+      toast: granted.foodFolded ? `${name}冰箱满了，折成 ${granted.foldGold} 金` : `开出了${name}`,
+    };
+  }
+  const recipeId = prize.recipeId;
+  const name = recipeGachaName(recipeId);
   if (isRecipeUnlocked(view, recipeId)) {
     const gold = recipeGachaDupGold(recipeId);
     next = { ...next, money: next.money + gold };
@@ -1404,6 +1424,8 @@ export function drawRecipeGacha(
       duplicate: true,
       gold,
       toast: `抽到重复的${name}，折成 ${gold} 金`,
+      foodFolded: false,
+      foldGold: 0,
     };
   }
   next = {
@@ -1419,5 +1441,7 @@ export function drawRecipeGacha(
     gold: 0,
     toast: `开了一本${name}`,
     recipeUnlock: recipeId,
+    foodFolded: false,
+    foldGold: 0,
   };
 }

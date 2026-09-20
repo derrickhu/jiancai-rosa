@@ -295,7 +295,7 @@ export class DailyMenuPanel extends PIXI.Container {
   private _ticketInspect(tickets: number, claimed: boolean): ItemInspectView {
     return {
       title: '菜谱券',
-      blurb: '小饭桌三道都交齐后自动发一张。去抽谱口花两张抽一本菜谱，活动菜少见，也可能开到藏谱。抽到已经会的折成金币。',
+      blurb: '小饭桌三道都交齐后自动发一张。去抽谱口花两张开一次箱子：可能是还没做过的菜谱，也可能是稀有以上的食材。',
       kind: 'food',
       defId: 'recipe_ticket',
       quality: 'fresh',

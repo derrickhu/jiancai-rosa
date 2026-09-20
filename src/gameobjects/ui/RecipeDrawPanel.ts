@@ -12,8 +12,10 @@ import { fillRect, makeLabel } from '@/utils/ui';
 import {
   fitSpriteInBox,
   gameTexture,
+  imgPath,
   isTextureFailed,
   isTextureReady,
+  itemTexture,
   watchTextures,
   whenTextureReady,
 } from '@/utils/assets';
@@ -22,7 +24,7 @@ const TICKET = 'subpkg_images/ui_menu_ticket.png';
 const BOX = 'subpkg_images/hud_gacha_box.png';
 const PAPER = 'subpkg_kitchen/ui_recipe_paper.png';
 const LACK_HINT = '完成小饭桌任务可以获得菜谱券';
-const TEASE = '抽一本吧，兴许是还没做过的菜。';
+const TEASE = '箱子里不定是菜谱，也可能是好食材。';
 const TITLE_FONT = 'Songti SC, STSong, PingFang SC, serif';
 const SHAKE_SEC = 0.4;
 const SPIN_SEC = 0.95;
@@ -30,6 +32,9 @@ const LAND_SEC = 0.18;
 
 type DrawResult = {
   recipeId?: RecipeId;
+  foodDefId?: string;
+  foodFolded?: boolean;
+  foldGold?: number;
   duplicate: boolean;
   gold: number;
   toast: string;
@@ -159,17 +164,29 @@ export class RecipeDrawPanel extends PIXI.Container {
     if (!result.ok) return;
     this._playing = true;
     this._pending = result;
-    gameTexture(PAPER);
-    this._shakeBox(() => {
+    const afterShake = (): void => {
       if (!this._playing) return;
-      this._waitPaper(() => {
+      if (result.foodDefId) {
+        this._waitPath(imgPath(`${result.foodDefId}.png`), () => {
+          if (!this._playing) return;
+          this._spinItem(result.foodDefId!, () => {
+            if (!this._playing) return;
+            this._finishDraw();
+          });
+        });
+        return;
+      }
+      this._waitPath(PAPER, () => {
         if (!this._playing) return;
         this._spinPaper(result.duplicate, () => {
           if (!this._playing) return;
           this._finishDraw();
         });
       });
-    });
+    };
+    if (result.foodDefId) itemTexture(result.foodDefId);
+    else gameTexture(PAPER);
+    this._shakeBox(afterShake);
   }
 
   private _shakeBox(done: () => void): void {
@@ -205,9 +222,9 @@ export class RecipeDrawPanel extends PIXI.Container {
     });
   }
 
-  private _waitPaper(done: () => void): void {
-    const tex = gameTexture(PAPER);
-    if (isTextureReady(tex) || isTextureFailed(PAPER)) {
+  private _waitPath(path: string, done: () => void): void {
+    const tex = gameTexture(path);
+    if (isTextureReady(tex) || isTextureFailed(path)) {
       done();
       return;
     }
@@ -217,7 +234,7 @@ export class RecipeDrawPanel extends PIXI.Container {
       settled = true;
       done();
     };
-    whenTextureReady(PAPER, finish);
+    whenTextureReady(path, finish);
     globalThis.setTimeout(finish, 800);
   }
 
@@ -273,6 +290,51 @@ export class RecipeDrawPanel extends PIXI.Container {
     });
   }
 
+  private _spinItem(defId: string, done: () => void): void {
+    const box = this._box;
+    const tex = itemTexture(defId);
+    if (!box || !isTextureReady(tex)) {
+      done();
+      return;
+    }
+    if (this._paper && !this._paper.destroyed) this._paper.destroy({ children: true });
+    const spr = new PIXI.Sprite(tex);
+    fitSpriteInBox(spr, 240, 240);
+    spr.anchor.set(0.5);
+    spr.eventMode = 'none';
+    const wrap = new PIXI.Container();
+    wrap.eventMode = 'none';
+    wrap.position.set(box.x, box.y + 36);
+    wrap.scale.set(0.08);
+    wrap.rotation = Math.PI * 1.65;
+    wrap.alpha = 0;
+    wrap.addChild(spr);
+    this._root.addChild(wrap);
+    this._paper = wrap;
+    AudioManager.play('event_pop');
+    TweenManager.to({ target: wrap, props: { alpha: 1 }, duration: 0.08 });
+    TweenManager.to({
+      target: wrap,
+      props: { y: box.y - 80, rotation: 0 },
+      duration: SPIN_SEC,
+      ease: Ease.easeOutQuad,
+    });
+    TweenManager.to({
+      target: wrap.scale,
+      props: { x: 1, y: 1 },
+      duration: SPIN_SEC,
+      ease: Ease.easeOutBack,
+      onComplete: () => {
+        TweenManager.to({
+          target: { t: 0 },
+          props: { t: 1 },
+          duration: LAND_SEC,
+          onComplete: done,
+        });
+      },
+    });
+  }
+
   private _finishDraw(): void {
     const pending = this._pending;
     this._playing = false;
@@ -283,12 +345,21 @@ export class RecipeDrawPanel extends PIXI.Container {
   }
 
   private _deliver(result: DrawResult): void {
+    const from = this._box
+      ? { x: this._box.x, y: this._box.y - 80 }
+      : { x: Game.designWidth / 2, y: Math.round(Game.logicHeight * 0.42) };
+    if (result.foodDefId) {
+      playRewardCollect({
+        gold: result.gold,
+        foldGold: result.foldGold,
+        foodDefId: result.foodDefId,
+        foodFolded: result.foodFolded,
+        from,
+      });
+      return;
+    }
     if (result.duplicate) {
       AudioManager.play('coin_gain');
-      if (result.toast) Platform.showToast(result.toast, 'success');
-      const from = this._box
-        ? { x: this._box.x, y: this._box.y }
-        : { x: Game.designWidth / 2, y: Math.round(Game.logicHeight * 0.42) };
       playRewardCollect({ gold: result.gold, from });
       return;
     }
