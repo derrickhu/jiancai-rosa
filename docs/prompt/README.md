@@ -10,13 +10,20 @@
 | `kitchen_scene_prompt.txt` | 旧：整屋厨房（已拆） | 9:16 |
 | `kitchen_room_prompt.txt` / `kitchen_room_wide_prompt.txt` | 旧：加宽横版空屋（已弃用） | 横版 |
 | `kitchen_room_0_shack_prompt.txt` | 陋屋空屋（镜头基准） | 竖版 3:4 |
-| `kitchen_room_1_modest_prompt.txt` | 精装屋空屋（锁陋屋机位，晨光奶油） | 竖版 3:4 |
-| `kitchen_room_2_refined_prompt.txt` | 雅致屋空屋（锁陋屋机位，暖白浅橡） | 竖版 3:4 |
+| `kitchen_room_1_modest_prompt.txt` | 旧：精装屋空屋（晨光奶油，偏白） | 竖版 3:4 |
+| `kitchen_room_2_refined_prompt.txt` | 旧：雅致屋空屋（暖白浅橡，偏白） | 竖版 3:4 |
+| `kitchen_room_1_color_prompt.txt` | 精装屋重画：晴空柠檬，格子窗帘，锁陋屋机位 | 竖版 3:4 |
+| `kitchen_room_2_color_prompt.txt` | 雅致屋重画：红陶金线，锁陋屋机位 | 竖版 3:4 |
 | `kitchen_fridge_*` / `cook` / `table` / `basket` / `foam` | 厨房独立设备 | 道具 |
 | `kitchen_table_island_lv6_10_prompt.txt` | 旧：桌子 6–10 级岛台 | 16:9 |
 | `kitchen_table_station_lv0_4_prompt.txt` | 旧：烹饪台 0–4 带腿木桌 | 5 格横条 |
 | `kitchen_table_camp_island_prompt.txt` | 烹饪台 4 级起：蛋卷桌→岛台→大理石 | 1:1 |
 | `kitchen_fridge_lv6_9_prompt.txt` | 冰箱 6–9：加大并换色（蓝/银对开） | 1:1 |
+| `kitchen_fridge_color_lv0_4_prompt.txt` | 冰箱换色候选 0–4：蛋黄方块 / 薄荷高瘦 / 奶油单门 / 陶土圆顶 / 青瓷上下门 | 16:9 |
+| `kitchen_fridge_color_lv5_9_prompt.txt` | 冰箱换色候选 5–9：拿铁上下门 / 杏橘法式 / 晴空法式 / 铝锅对开 / 铅笔芯法式 | 16:9 |
+| `kitchen_fridge_deco_lv0_4_prompt.txt` | 冰箱装饰候选 0–4：锁 4 级正面机位，加罐/磁贴/植物 | 16:9 |
+| `kitchen_fridge_deco_lv5_9_prompt.txt` | 冰箱装饰候选 5–9：同机位，法式/对开加果蔬装饰 | 16:9 |
+| `kitchen_fridge_lv9_terracotta_prompt.txt` | 冰箱 9 级重画：红陶法式对开，锁 4 级朝向 | 3:4 |
 | `hud_coin_prompt.txt` / `hud_stamina_prompt.txt` | 顶栏货币/体力图标 | 1:1 |
 | `hud_home_prompt.txt` | 选点页回家：小屋图标 | 1:1 |
 | `icon_wechat_shared.txt` / `icon_01`–`icon_05_*` | 微信小游戏头像《天黑请捡漏》五风格 | 1:1 |
@@ -62,6 +69,15 @@
 | `kitchen_dex_book_prompt.txt` | 旧：厨房左墙悬挂图鉴书（已改 HUD 图标） | 1:1 |
 | `hud_dex_prompt.txt` | 厨房左侧 HUD 图鉴图标（陶土书+奶油方块） | 1:1 |
 | `hud_gameclub_prompt.txt` | 厨房左侧 HUD 游戏圈图标（木告示牌，无白菜） | 1:1 |
+| `hud_table_prompt.txt` | 厨房左侧 HUD 小饭桌图标（方桌+三盘菜） | 1:1 |
+| `hud_ticket_prompt.txt` | 菜谱券奖券图标（红带青条奶油票根） | 1:1 |
+| `hud_gacha_prompt.txt` | 厨房左侧 HUD 抽谱图标（抽奖箱+彩票） | 1:1 |
+| `hud_buffs_prompt.txt` | 吃菜 buff HUD 图标 4×3（天色/运/费/筐/摊/售价/经验/双份） | 4:3 |
+| `ui_daily_menu_title_prompt.txt` | 今日菜单面板标题字（素净店招字，无牌匾） | 16:9 |
+| `ui_tutorial_gift_title_prompt.txt` | 新手礼金标题字（素净店招字，金币黄填） | 16:9 |
+| `ui_daily_done_stamp_prompt.txt` | 今日菜单已交行：完成印章 | 1:1 |
+| `ui_daily_clear_banner_prompt.txt` | 今日菜单全齐庆祝横幅（空心叠字） | 16:9 |
+| `ui_menu_ticket_prompt.txt` | 今日菜单进度条尾奖励：无框奖券 | 1:1 |
 | `ui_gameclub_panel_prompt.txt` | 游戏圈福利弹层空壳（木框油纸、白菜吉祥物） | 3:4 |
 | `dex_cat_icons_prompt.txt` | 图鉴分类方块 5×2（食材五类+菜品五组） | 1:1 |
 | `dex_cat_fruit_prompt.txt` | 水果分类方块：西瓜+桃，不要西红柿 | 1:1 |

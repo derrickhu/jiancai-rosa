@@ -1,4 +1,4 @@
-import { FURN_IDS, furnLevel, houseLevel, houseRoomCandidates, type KitchenSave } from '@/sim';
+import { FURN_IDS, furnLevel, houseLevel, houseRoomCandidates, hudBuffPaths, type KitchenSave } from '@/sim';
 import { HUD_ICON } from '@/utils/ui';
 import { OUTING_CURTAIN } from '@/utils/outingAssets';
 import { BOOT_BG, BOOT_FISH, BOOT_TITLE } from '@/scenes/LoadingScene';
@@ -15,12 +15,23 @@ export function kitchenBootPaths(save: KitchenSave): string[] {
     HUD_ICON.stamina,
     HUD_ICON.dex,
     HUD_ICON.gameClub,
+    HUD_ICON.gacha,
+    'subpkg_images/hud_gacha_box.png',
+    'subpkg_images/ui_menu_ticket.png',
+    HUD_ICON.dailyMenu,
+    HUD_ICON.ticket,
     HUD_ICON.player,
     HUD_ICON.fridge,
     HUD_ICON.basket,
+    ...hudBuffPaths(),
     'subpkg_kitchen/ui_kitchen_slip.png',
     'subpkg_kitchen/ui_recipe_paper.png',
     'subpkg_kitchen/ui_cook_level_title.png',
+    'subpkg_kitchen/ui_daily_menu_title.png',
+    'subpkg_kitchen/ui_tutorial_gift_title.png',
+    'subpkg_kitchen/ui_daily_done_stamp.png',
+    'subpkg_kitchen/ui_daily_clear_banner.png',
+    'subpkg_images/ui_menu_ticket.png',
     'subpkg_kitchen/tutorial_hand.png',
     'subpkg_kitchen/tutorial_cabbage.png',
     OUTING_CURTAIN,

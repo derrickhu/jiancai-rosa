@@ -60,7 +60,7 @@ import {
 } from '@/sim';
 import { KitchenManager } from './KitchenManager';
 import { TutorialManager } from './TutorialManager';
-import type { MarketId } from '@/sim';
+import { getMarket, type MarketId } from '@/sim';
 import { Platform } from '@/core/PlatformService';
 
 /** 路线页一张卡要显示的全部信息。 */
@@ -99,7 +99,7 @@ class RunManagerClass {
   }
 
   start(marketId: MarketId = 'xiangko'): boolean {
-    if (!KitchenManager.startRun()) return false;
+    if (!KitchenManager.startRun(getMarket(marketId).staminaCost)) return false;
     const seed = newSeed();
     this._rng = mulberry32((seed ^ 0x5BF03635) >>> 0);
     const outing = outingRunMods(KitchenManager.save);
@@ -147,7 +147,7 @@ class RunManagerClass {
     }
     this._outingStartedAt = 0;
     this.run = null;
-    KitchenManager.refundStamina();
+    KitchenManager.refundStamina(marketId ? getMarket(marketId).staminaCost : 1);
     this.emit();
   }
 

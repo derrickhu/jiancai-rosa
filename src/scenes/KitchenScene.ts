@@ -9,12 +9,15 @@ import { DexPanel } from '@/gameobjects/ui/DexPanel';
 import { FridgePanel } from '@/gameobjects/ui/FridgePanel';
 import { CookPanel } from '@/gameobjects/ui/CookPanel';
 import { OrderPanel } from '@/gameobjects/ui/OrderPanel';
+import { DailyMenuPanel } from '@/gameobjects/ui/DailyMenuPanel';
+import { RecipeDrawPanel } from '@/gameobjects/ui/RecipeDrawPanel';
 import { EventPanel } from '@/gameobjects/ui/EventPanel';
 import { GameClubPanel } from '@/gameobjects/ui/GameClubPanel';
 import { UpgradePanel } from '@/gameobjects/ui/UpgradePanel';
 import { ensureRecipeUnlockPanel } from '@/gameobjects/ui/RecipeUnlockPanel';
 import { ensureCookLevelUpPanel } from '@/gameobjects/ui/CookLevelUpPanel';
 import { ensureTutorialGiftPanel } from '@/gameobjects/ui/TutorialGiftPanel';
+import { ensureHudBuffPanel } from '@/gameobjects/ui/HudBuffPanel';
 import { Platform } from '@/core/PlatformService';
 import { clearCookReadyFx, playCookReadyFx } from '@/utils/cookReadyFx';
 import {
@@ -50,9 +53,9 @@ import {
   tableUnlockNext,
   computeFridgeSlip,
   computeKitchenSlip,
-  kitchenBuffLine,
+  dailyMenuRemain,
   kitchenSlipMissToast,
-  outingBuffLine,
+  liveHudBuffs,
   layoutFor,
   saveGmLayout,
   clampHouseLevel,
@@ -61,9 +64,11 @@ import {
   type KitchenSave,
 } from '@/sim';
 import { AudioManager } from '@/core/AudioManager';
-import { HUD_ICON, PLAYER_LEVEL_HUD, bindUiClick, fillRect, makeButton, makeLabel, makeMuteButton, makePlayerLevelHud, makeStatPill } from '@/utils/ui';
-import { applyFit, fitSpriteInBox, fitWidthBottom, gameTexture, isTextureFailed, isTextureReady, mapNorm, retryTexture, watchTextures, whenTextureReady } from '@/utils/assets';
+import { HUD_ICON, PLAYER_LEVEL_HUD, bindUiClick, fillRect, hudBuffRowY, hudPillsY, makeButton, makeLabel, makeMuteButton, makeHudBuffRow, makePlayerLevelHud, makeStatPill } from '@/utils/ui';
+import { applyFit, fitSpriteInBox, fitWidthBottom, gameTexture, isTextureFailed, isTextureReady, mapNorm, preloadTextures, retryTexture, watchTextures, whenTextureReady } from '@/utils/assets';
 import { kitchenBootPaths } from '@/utils/bootAssets';
+import { dailyMenuPanelPaths, orderPanelPaths } from '@/utils/panelAssets';
+import { setKitchenFridgeHudPos, setKitchenGachaHudPos } from '@/utils/coinCollect';
 import { OutingCurtain } from '@/gameobjects/ui/OutingCurtain';
 import { destinationBootPaths } from '@/utils/outingAssets';
 import { RunManager } from '@/managers/RunManager';
@@ -89,6 +94,8 @@ export class KitchenScene implements Scene {
   private _recipeBook = new RecipeBookPanel();
   private _dex = new DexPanel();
   private _orders = new OrderPanel();
+  private _daily = new DailyMenuPanel();
+  private _gacha = new RecipeDrawPanel();
   private _event = new EventPanel();
   private _gameClub = new GameClubPanel();
   private _upgrade = new UpgradePanel();
@@ -97,6 +104,7 @@ export class KitchenScene implements Scene {
     const fx = KitchenManager.consumeCookFx();
     if (fx) playCookReadyFx(fx);
     if (KitchenManager.consumeNudgeOffer()) this._queueNeighborOffer();
+    this._warmPanelArt();
     this.relayout();
   };
   private _worldSize = { w: 750, h: 1334 };
@@ -144,6 +152,14 @@ export class KitchenScene implements Scene {
     this._viewClip.eventMode = 'none';
     this._world.mask = this._viewClip;
     this._fridge.onChange = () => this.relayout();
+    this._daily.onCook = (recipeId) => {
+      this._daily.close();
+      this._cook.open(recipeId);
+    };
+    this._orders.onCook = (recipeId) => {
+      this._orders.close();
+      this._cook.open(recipeId);
+    };
     ensureRecipeUnlockPanel();
     ensureCookLevelUpPanel();
     ensureTutorialGiftPanel();
@@ -178,8 +194,14 @@ export class KitchenScene implements Scene {
       ensureCookLevelUpPanel().present();
       ensureRecipeUnlockPanel().present();
       KitchenManager.beginKitchenVisit();
+      this._warmPanelArt();
       this._queueNeighborOffer();
     }
+  }
+
+  private _warmPanelArt(): void {
+    void preloadTextures(dailyMenuPanelPaths(KitchenManager.save));
+    void preloadTextures(orderPanelPaths(KitchenManager.save, KitchenManager.liveNeighborOrders()));
   }
 
   private _overlayBlocking(): boolean {
@@ -189,11 +211,14 @@ export class KitchenScene implements Scene {
       || this._upgrade.visible
       || this._dex.visible
       || this._orders._isOpen
+      || this._daily._isOpen
+      || this._gacha._isOpen
       || this._event._isOpen
       || this._gameClub._isOpen
       || ensureRecipeUnlockPanel()._isOpen
       || ensureCookLevelUpPanel()._isOpen
-      || ensureTutorialGiftPanel()._isOpen;
+      || ensureTutorialGiftPanel()._isOpen
+      || ensureHudBuffPanel()._isOpen;
   }
 
   onExit(): void {
@@ -216,9 +241,12 @@ export class KitchenScene implements Scene {
     this._fridge.close(true);
     this._cook.close(true);
     ensureTutorialGiftPanel().close(true);
+    ensureHudBuffPanel().close(true);
     this._recipeBook.close(true);
     this._dex.close(true);
     this._orders.close(true);
+    this._daily.close(true);
+    this._gacha.close(true);
     this._event.close(true);
     this._gameClub.close(true);
     this._upgrade.close(true);
@@ -303,6 +331,11 @@ export class KitchenScene implements Scene {
 
     this._applyPan();
     this._drawHud(w);
+    const fridgeSpot = this._spotRects.get('fridge');
+    if (fridgeSpot) {
+      const rect = worldRectToStage(this._world, fridgeSpot, 0);
+      if (rect) setKitchenFridgeHudPos({ x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 });
+    }
     if (!this._gm && this._upgradePick) this._drawUpgradeCard(this._upgradePick);
     this._scheduleBootRetry();
     if (TutorialManager.isStep(TutorialStep.COOK_DISH) && !this._cook._isOpen && !this._gm) {
@@ -546,7 +579,8 @@ export class KitchenScene implements Scene {
     this._ui.addChild(profile);
 
     const pillH = 44;
-    const pillY = y + Math.round((PLAYER_LEVEL_HUD.avatar - pillH) / 2);
+    const buffs = liveHudBuffs(save);
+    const pillY = hudPillsY(y, pillH);
     const resX = 12 + PLAYER_LEVEL_HUD.avatar + PLAYER_LEVEL_HUD.gap + PLAYER_LEVEL_HUD.barW + 12;
     const money = makeStatPill({
       icon: 'subpkg_images/hud_coin.png',
@@ -568,12 +602,14 @@ export class KitchenScene implements Scene {
     sta.position.set(resX + 172, pillY);
     this._ui.addChild(sta);
 
-    const outing = outingBuffLine(save);
-    const kitchen = kitchenBuffLine(save);
-    if (outing || kitchen) {
-      const buff = makeLabel([outing, kitchen].filter(Boolean).join('  ·  '), 18, 0xF6EDE0, { fontWeight: '700' });
-      buff.position.set(resX, pillY + 48);
-      this._ui.addChild(buff);
+    if (buffs.length) {
+      const row = makeHudBuffRow({
+        buffs,
+        onReady: redraw,
+        onTap: () => ensureHudBuffPanel().open(),
+      });
+      row.position.set(resX, hudBuffRowY(pillY, pillH));
+      this._ui.addChild(row);
     }
 
 
@@ -584,6 +620,14 @@ export class KitchenScene implements Scene {
     slot += STEP;
     this._drawGameClubHud(redraw, slot);
     slot += STEP;
+    if (!TutorialManager.isActive && KitchenManager.save.dailyMenu) {
+      this._drawDailyMenuHud(redraw, slot);
+      slot += STEP;
+    }
+    if (!TutorialManager.isActive) {
+      this._drawGachaHud(redraw, slot);
+      slot += STEP;
+    }
     if (KitchenManager.liveNeighborOrders().length) {
       this._drawOrderHud(redraw, slot);
       slot += STEP;
@@ -663,6 +707,103 @@ export class KitchenScene implements Scene {
     this._ui.addChild(root);
   }
 
+  private _drawDailyMenuHud(redraw: () => void, y: number): void {
+    const path = HUD_ICON.dailyMenu;
+    whenTextureReady(path, redraw);
+    const size = 86;
+    const root = new PIXI.Container();
+    const tex = gameTexture(path);
+    if (isTextureReady(tex)) {
+      const spr = new PIXI.Sprite(tex);
+      fitSpriteInBox(spr, size, size);
+      spr.anchor.set(0.5);
+      spr.position.set(size / 2, size / 2);
+      spr.eventMode = 'none';
+      root.addChild(spr);
+    }
+    const chip = new PIXI.Graphics();
+    fillRect(chip, -4, size - 2, size + 8, 26, 0xFFF8F0, 12);
+    chip.alpha = 0.92;
+    const label = makeLabel('小饭桌', 16, 0x2A2018, { fontWeight: '700' });
+    label.anchor.set(0.5, 0);
+    label.position.set(size / 2, size);
+    root.addChild(chip, label);
+
+    const left = dailyMenuRemain(KitchenManager.save.dailyMenu);
+    if (left > 0) {
+      const badgeW = 22;
+      const badge = new PIXI.Graphics();
+      badge.beginFill(0xD94A3A, 1);
+      badge.drawRoundedRect(size - badgeW - 2, 2, badgeW, 22, 11);
+      badge.endFill();
+      const count = makeLabel(`${Math.min(9, left)}`, 13, 0xFFF8F0, { fontWeight: '700' });
+      count.anchor.set(0.5);
+      count.position.set(size - badgeW / 2 - 2, 13);
+      root.addChild(badge, count);
+    }
+
+    root.position.set(10, y);
+    root.eventMode = 'static';
+    root.cursor = 'pointer';
+    root.hitArea = new PIXI.Rectangle(-4, 0, size + 8, size + 28);
+    const stop = (e: PIXI.FederatedPointerEvent) => e.stopPropagation();
+    root.on('pointerdown', stop);
+    root.on('pointertap', (e) => {
+      e.stopPropagation();
+      this._daily.open();
+    });
+    this._ui.addChild(root);
+  }
+
+  private _drawGachaHud(redraw: () => void, y: number): void {
+    const path = HUD_ICON.gacha;
+    whenTextureReady(path, redraw);
+    const size = 86;
+    const root = new PIXI.Container();
+    const tex = gameTexture(path);
+    if (isTextureReady(tex)) {
+      const spr = new PIXI.Sprite(tex);
+      fitSpriteInBox(spr, size, size);
+      spr.anchor.set(0.5);
+      spr.position.set(size / 2, size / 2);
+      spr.eventMode = 'none';
+      root.addChild(spr);
+    }
+    const chip = new PIXI.Graphics();
+    fillRect(chip, 2, size - 2, size - 4, 26, 0xFFF8F0, 12);
+    chip.alpha = 0.92;
+    const label = makeLabel('抽谱', 16, 0x2A2018, { fontWeight: '700' });
+    label.anchor.set(0.5, 0);
+    label.position.set(size / 2, size);
+    root.addChild(chip, label);
+
+    const tickets = KitchenManager.save.recipeTickets;
+    if (tickets > 0) {
+      const badgeW = 22;
+      const badge = new PIXI.Graphics();
+      badge.beginFill(0xD94A3A, 1);
+      badge.drawRoundedRect(size - badgeW - 2, 2, badgeW, 22, 11);
+      badge.endFill();
+      const count = makeLabel(`${Math.min(9, tickets)}`, 13, 0xFFF8F0, { fontWeight: '700' });
+      count.anchor.set(0.5);
+      count.position.set(size - badgeW / 2 - 2, 13);
+      root.addChild(badge, count);
+    }
+
+    root.position.set(10, y);
+    setKitchenGachaHudPos({ x: 10 + size / 2, y: y + size / 2 });
+    root.eventMode = 'static';
+    root.cursor = 'pointer';
+    root.hitArea = new PIXI.Rectangle(0, 0, size, size + 28);
+    const stop = (e: PIXI.FederatedPointerEvent) => e.stopPropagation();
+    root.on('pointerdown', stop);
+    root.on('pointertap', (e) => {
+      e.stopPropagation();
+      this._gacha.open();
+    });
+    this._ui.addChild(root);
+  }
+
   private _queueNeighborOffer(): void {
     this._clearOfferTimer();
     const tick = () => {
@@ -677,7 +818,7 @@ export class KitchenScene implements Scene {
   }
 
   private _presentNeighborOffer(): void {
-    if (this._event._isOpen || this._orders._isOpen) return;
+    if (this._event._isOpen || this._orders._isOpen || this._daily._isOpen || this._gacha._isOpen) return;
     const draft = KitchenManager.considerNeighborOffer();
     if (!draft) return;
     this._event.open(neighborOfferLog(draft), (i) => {
@@ -863,6 +1004,12 @@ export class KitchenScene implements Scene {
     goldUp.on('pointertap', () => KitchenManager.gmAddMoney(100));
     this._ui.addChild(goldUp);
 
+    const ticketUp = makeButton('券+', 64, 44, 0x6B4A8A);
+    ticketUp.position.set(658, y - 52);
+    ticketUp.on('pointerdown', stop);
+    ticketUp.on('pointertap', () => KitchenManager.gmAddTickets(2));
+    this._ui.addChild(ticketUp);
+
     const wipe = makeButton('清档', 90, 44, 0x8A3B32);
     wipe.position.set(658, y);
     wipe.on('pointerdown', stop);
@@ -896,6 +1043,8 @@ export class KitchenScene implements Scene {
     this._recipeBook.close(true);
     this._dex.close(true);
     this._orders.close(true);
+    this._daily.close(true);
+    this._gacha.close(true);
     this._event.close(true);
     this._gameClub.close(true);
     this._upgrade.close(true);
@@ -903,6 +1052,7 @@ export class KitchenScene implements Scene {
     ensureRecipeUnlockPanel().close();
     ensureCookLevelUpPanel().close();
     ensureTutorialGiftPanel().close(true);
+    ensureHudBuffPanel().close(true);
     RunManager.clear();
     for (const id of FURN_IDS) this._gmView[id] = 0;
     this._gmHouse = 0;

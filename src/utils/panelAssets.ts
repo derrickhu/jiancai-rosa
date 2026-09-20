@@ -8,12 +8,14 @@ import {
   dishesInGroup,
   foodsInCat,
   fridgeKind,
+  neighborNpc,
   recipeNeeds,
   recipeUnlockView,
   unlockedRecipes,
   type DexFoodCat,
   type FridgeItem,
   type KitchenSave,
+  type NeighborOrder,
   type RecipeId,
 } from '@/sim';
 import { HUD_ICON } from '@/utils/ui';
@@ -61,10 +63,9 @@ export function dexViewPaths(save: KitchenSave, view: { kind: 'home'; tab: 'food
     }
     return paths;
   }
-  for (const it of dishesInGroup(view.group)) {
+  for (const it of dishesInGroup(view.group, save.recipesFound)) {
     paths.push(dishIconPath(it.id));
   }
-  void save;
   return paths;
 }
 
@@ -92,4 +93,41 @@ export function cookPanelPaths(save: KitchenSave, pick: RecipeId): string[] {
 
 export function basketPanelPaths(defIds: string[]): string[] {
   return [...PANEL_SHELL.basket, ...defIds.map((id) => itemIconPath(id))];
+}
+
+const DAILY_MENU_SHELL = [
+  'subpkg_kitchen/ui_daily_menu_title.png',
+  'subpkg_kitchen/ui_daily_done_stamp.png',
+  'subpkg_kitchen/ui_daily_clear_banner.png',
+  'subpkg_images/ui_menu_ticket.png',
+  HUD_ICON.coin,
+] as const;
+
+export function dailyMenuPanelPaths(save: KitchenSave): string[] {
+  const paths = [...DAILY_MENU_SHELL];
+  const menu = save.dailyMenu;
+  if (!menu) return paths;
+  const view = recipeUnlockView(save);
+  for (const line of menu.lines) {
+    paths.push(dishIconPath(line.recipeId));
+    for (const need of recipeNeeds(view, line.recipeId)) {
+      paths.push(itemIconPath(need.iconId));
+    }
+    if (line.food?.defId) paths.push(itemIconPath(line.food.defId));
+  }
+  return [...new Set(paths)];
+}
+
+export function orderPanelPaths(save: KitchenSave, orders: readonly NeighborOrder[]): string[] {
+  const paths = [HUD_ICON.coin];
+  const view = recipeUnlockView(save);
+  for (const order of orders) {
+    paths.push(neighborNpc(order.npcId).portrait);
+    paths.push(dishIconPath(order.recipeId));
+    for (const need of recipeNeeds(view, order.recipeId)) {
+      paths.push(itemIconPath(need.iconId));
+    }
+    if (order.reward?.food?.defId) paths.push(itemIconPath(order.reward.food.defId));
+  }
+  return [...new Set(paths)];
 }

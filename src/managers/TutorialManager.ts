@@ -230,6 +230,7 @@ class TutorialManagerClass {
   onSold(uid: string): void {
     if (!this.isStep(TutorialStep.SELL_DISH)) return;
     if (this._dishUid && uid !== this._dishUid) return;
+    // 礼金面板自己再顿一拍，先让卖出提示和关冰箱落下来。
     this.advanceTo(TutorialStep.CLAIM_GIFT);
   }
 

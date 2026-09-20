@@ -16,7 +16,8 @@ export type RecipeId =
   | 'yuxiang_pork' | 'spinach_ham' | 'celery_beef' | 'melon_cup'
   | 'garlic_shrimp' | 'ginger_crab' | 'steam_yellowfish' | 'braised_eel' | 'wild_fish_soup'
   | 'radish_ribs' | 'cabbage_belly' | 'braised_beef' | 'ham_melon_soup' | 'matsutake_chicken'
-  | 'yandu_xian' | 'maoxuewang';
+  | 'yandu_xian' | 'maoxuewang'
+  | 'garlic_water_spinach' | 'rape_tofu' | 'corn_egg';
 
 export interface RecipeFood {
   uid?: string;
@@ -148,12 +149,12 @@ export const RECIPES: RecipeDef[] = [
   dish('stirfry', '炒菜苔', '家常', 'common', '细秆进锅，花还在。只吃菜苔，别的绿叶子一棵不动。', ['caitai']),
   dish('tomato_egg', '番茄炒蛋', '家常', 'common', '中式厨房的起手式。红黄一碰，连外卖都要让路。', ['tomato', 'egg', 'egg']),
   dish('scallion_tofu', '小葱拌豆腐', '凉菜', 'common', '不用开火，一清二白，端上桌全靠那把葱花。', ['scallion', 'tofu']),
-  dish('smashed_cucumber', '凉拌黄瓜', '凉菜', 'common', '不用开火。拍一下，蒜和香菜负责像一盘菜。', ['cucumber', 'garlic', 'cilantro']),
+  dish('smashed_cucumber', '凉拌黄瓜', '凉菜', 'rare', '不用开火。拍一下，蒜和香菜负责像一盘菜。', ['cucumber', 'garlic', 'cilantro']),
   dish('vinegar_potato', '清炒土豆丝', '家常', 'common', '切丝是玩家脑内完成的，锅里只见两块变一盘。', ['potato', 'potato']),
   dish('garlic_bokchoy', '蒜蓉小白菜', '家常', 'common', '蒜末一响，小白菜就肯软下来。两棵才够一盘。', ['bokchoy', 'bokchoy', 'garlic']),
   dish('vinegar_cabbage', '醋溜白菜', '家常', 'common', '外帮也能炒，酸一下才像晚饭。', ['cabbage', 'ginger']),
   dish('qianlong_cabbage', '乾隆白菜', '家常', 'rare', '一棵白菜进锅，汤色清白，端上来像有人会过日子。', ['cabbage']),
-  dish('stir_beans', '素炒豆角', '家常', 'common', '一把绿筷子过热锅，比干煸省事。', ['greenbean', 'garlic']),
+  dish('stir_beans', '素炒豆角', '家常', 'rare', '一把绿筷子过热锅，比干煸省事。', ['greenbean', 'garlic']),
   dish('blistered_pepper', '虎皮青椒', '家常', 'common', '皮起泡才算数，蒜是收尾。', ['pepper', 'pepper', 'garlic']),
   dish('spinach_egg_soup', '菠菜蛋花汤', '汤', 'common', '红根还可以留，汤绿了就算成功。', ['spinach', 'egg']),
   dish('celery_dried_tofu', '芹菜香干', '家常', 'common', '俩都耐造，适合冰箱快满时清位。香干得切够两块。', ['celery', 'dried_tofu', 'dried_tofu']),
@@ -162,7 +163,10 @@ export const RECIPES: RecipeDef[] = [
   dish('lettuce_salad', '生菜沙拉', '凉菜', 'common', '整棵脑袋撕开，番茄和黄瓜负责像一盘西餐。', ['lettuce', 'tomato', 'cucumber']),
   dish('harvard_veg_soup', '哈佛蔬菜汤', '汤', 'rare', '名字唬人，其实就是卷心菜洋葱胡萝卜南瓜一锅炖。', ['round_cabbage', 'onion', 'carrot', 'pumpkin']),
   dish('candied_taro', '拔丝芋头', '家常', 'common', '两块芋头，糖在玩家脑内完成，出锅还能拉丝。', ['taro', 'taro']),
-  dish('ants_tree', '蚂蚁上树', '荤', 'common', '粉丝是树，肉末是蚁，一盘里挤满了故事。', ['vermicelli', 'pork', 'pork']),
+  dish('ants_tree', '蚂蚁上树', '荤', 'rare', '粉丝是树，肉末是蚁，一盘里挤满了故事。', ['vermicelli', 'pork', 'pork']),
+  dish('garlic_water_spinach', '蒜蓉空心菜', '家常', 'rare', '空心管烫软，两棵才够一盘，蒜末负责出声。', ['water_spinach', 'water_spinach', 'garlic']),
+  dish('rape_tofu', '油菜豆腐', '家常', 'rare', '油亮小棵配白豆腐，汤色清白才像晚饭。', ['rapeseed', 'tofu']),
+  dish('corn_egg', '玉米炒蛋', '家常', 'rare', '金钉子撞上金窝，一盘里全是黄。', ['corn', 'egg', 'egg']),
   dish('oyster_egg', '蚝仔煎', '水产', 'rare', '壳里的人下了蛋，金黄把腥按住。', ['oyster', 'egg', 'egg']),
   dish('stir_liver', '小炒猪肝', '荤', 'common', '火要大，肝要嫩，青椒负责叫。', ['pork_liver', 'pepper', 'garlic']),
   dish('pepper_pork', '青椒炒肉', '荤', 'common', '肉摊开门第一道，姜负责去腥。', ['pork', 'pork', 'pepper', 'pepper', 'ginger']),
@@ -236,28 +240,34 @@ export const START_RECIPES: RecipeId[] = ['stirfry', 'tomato_egg', 'scallion_tof
 
 /** 还留在表里，图鉴 / 菜谱本 / 下锅都不露。 */
 export const HIDDEN_RECIPE_IDS: ReadonlySet<RecipeId> = new Set([
+  'smashed_cucumber',
+  'stir_beans',
+  'ants_tree',
+  'garlic_water_spinach',
+  'rape_tofu',
+  'corn_egg',
   'garlic_bokchoy',
   'qianlong_cabbage',
-  'smashed_cucumber',
   'carrot_mushroom',
   'lotus_pepper',
   'pepper_pork',
   'vinegar_cabbage',
   'blistered_pepper',
   'celery_dried_tofu',
-  'ants_tree',
   'onion_wood_ear',
   'yuxiang_eggplant',
   'wood_ear_egg',
   'bamboo_pork',
-  'stir_beans',
   'spinach_egg_soup',
   'ham_melon_soup',
   'wild_fish_soup',
 ]);
 
-export function listedRecipes(recipes: readonly RecipeDef[] = RECIPES): RecipeDef[] {
-  return recipes.filter((r) => !HIDDEN_RECIPE_IDS.has(r.id));
+export function listedRecipes(
+  recipes: readonly RecipeDef[] = RECIPES,
+  found: readonly RecipeId[] = [],
+): RecipeDef[] {
+  return recipes.filter((r) => !HIDDEN_RECIPE_IDS.has(r.id) || found.includes(r.id));
 }
 
 /**
@@ -367,9 +377,9 @@ export interface RecipeUnlockView {
 }
 
 export function isRecipeUnlocked(save: RecipeUnlockView, id: RecipeId): boolean {
+  if (save.recipesFound.includes(id)) return true;
   if (HIDDEN_RECIPE_IDS.has(id)) return false;
   if (START_RECIPES.includes(id)) return true;
-  if (save.recipesFound.includes(id)) return true;
   const table = Math.max(0, Math.floor(save.tableLevel));
   for (let i = 0; i < table && i < TABLE_UNLOCKS.length; i++) {
     if (TABLE_UNLOCKS[i].includes(id)) return true;

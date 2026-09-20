@@ -1,21 +1,45 @@
 import {
   applyEatEffects,
   clearOutingBuff,
+  consumeCookDoubleBuff,
   consumeCookXpBuff,
   kitchenCookXpMul,
+  kitchenHasCookDouble,
   kitchenSellMul,
-  migrateKitchenBuff,
-  migrateOutingBuff,
+  migrateKitchenBuffs,
+  migrateOutingBuffs,
   recipeEatStaminaGain,
   type KitchenBuff,
   type OutingBuff,
 } from './dishEffects';
+import {
+  dailyMenuComplete,
+  ensureDailyMenuState,
+  migrateDailyMenu,
+  type DailyMenuRollView,
+  type DailyMenuState,
+} from './dailyMenu';
+import {
+  RECIPE_GACHA_COST,
+  gachaRng,
+  recipeGachaDupGold,
+  recipeGachaName,
+  rollRecipeGacha,
+} from './recipeGacha';
 import { displayName, getItem, GOD_PICK, initialFreshness, sellPrice, type Quality } from './items';
 import { migrateSeenMarketFoods, marketFoodKey } from './marketExploration';
 import type { MarketId } from './destinations';
 import { VEHICLES, migrateVehicles, ownsVehicle, vehicleById, vehicleIndex, vehicleOffer, type VehicleId } from './vehicles';
 import { nextUid, type ExtractedItem } from './run';
-import { isNeighborRewardFood, migrateNeighborOrders, type NeighborOrder, type NeighborReward } from './neighborOrders';
+import {
+  isNeighborRewardFood,
+  liveNeighborOrders,
+  migrateNeighborOrders,
+  NEIGHBOR_COOLDOWN,
+  neighborOrderBonus,
+  type NeighborOrder,
+  type NeighborReward,
+} from './neighborOrders';
 import {
   RECIPES,
   TABLE_UNLOCKS,
@@ -163,7 +187,7 @@ export function fridgeStackKey(it: FridgeDraft): string {
   return `${kind}|${it.defId}`;
 }
 
-export function fridgeItemUnitPrice(it: FridgeItem, save?: Pick<KitchenSave, 'kitchenBuff'>, now = Date.now()): number {
+export function fridgeItemUnitPrice(it: FridgeItem, save?: Pick<KitchenSave, 'kitchenBuffs'>, now = Date.now()): number {
   const base = fridgeKind(it) === 'dish'
     ? Math.max(0, it.value ?? 0)
     : sellPrice(it.defId, it.quality, it.inspected, it.freshness);
@@ -171,7 +195,7 @@ export function fridgeItemUnitPrice(it: FridgeItem, save?: Pick<KitchenSave, 'ki
   return Math.round(base * kitchenSellMul(save, now));
 }
 
-export function fridgeItemPrice(it: FridgeItem, save?: Pick<KitchenSave, 'kitchenBuff'>, now = Date.now()): number {
+export function fridgeItemPrice(it: FridgeItem, save?: Pick<KitchenSave, 'kitchenBuffs'>, now = Date.now()): number {
   return fridgeItemUnitPrice(it, save, now) * fridgeItemQty(it);
 }
 
@@ -224,10 +248,18 @@ export interface KitchenSave {
   neighborOrders: NeighborOrder[];
   /** 下次最早能再弹点菜的时间。 */
   neighborOfferAt: number;
-  /** 下一趟菜场，收工清。 */
-  outingBuff?: OutingBuff;
-  /** 厨房限时：售价或下一锅经验。后吃替换。 */
-  kitchenBuff?: KitchenBuff;
+  /** 下一趟菜场，收工清。不同族可并存。 */
+  outingBuffs: OutingBuff[];
+  /** 厨房加成。不同族可并存，下锅只摘用掉的那条。 */
+  kitchenBuffs: KitchenBuff[];
+  /** 本地 0 点换的今日菜单。 */
+  dailyMenu?: DailyMenuState;
+  /** 每日菜单已经发过的活动菜谱。抽谱改走 recipesFound，不再写入。 */
+  dailyMenuRewards: RecipeId[];
+  /** 菜谱券。交齐今日菜单 +1，抽一次 -2。 */
+  recipeTickets: number;
+  /** 今日菜单大奖已领的日期，防止同一天又重掷。 */
+  dailyMenuClaimedOn: string;
   /** 游戏圈每日发帖奖励已领的日期，跟 todayKey 对齐。 */
   gameClubRewardDate: string;
   /** 新手指引步骤。新号 0；老档缺字段时 normalize 写成 99，不重播。 */
@@ -253,7 +285,7 @@ function migrateSpecialVisits(raw: unknown): Record<string, { date: string; coun
 
 export function specialVisitCount(save: KitchenSave, id: string, now = Date.now()): number {
   const rec = save.specialVisits[id];
-  if (!rec || rec.date !== todayKey(now)) return 0;
+  if (!rec || !sameDayKey(rec.date, todayKey(now))) return 0;
   return rec.count;
 }
 
@@ -264,7 +296,7 @@ export function canVisitSpecial(save: KitchenSave, id: string, limit: number, no
 export function markSpecialVisit(save: KitchenSave, id: string, now = Date.now()): KitchenSave {
   const date = todayKey(now);
   const rec = save.specialVisits[id];
-  const count = rec && rec.date === date ? rec.count + 1 : 1;
+  const count = rec && sameDayKey(rec.date, date) ? rec.count + 1 : 1;
   return {
     ...save,
     specialVisits: { ...save.specialVisits, [id]: { date, count } },
@@ -273,11 +305,22 @@ export function markSpecialVisit(save: KitchenSave, id: string, now = Date.now()
 
 export function todayKey(now = Date.now()): string {
   const d = new Date(now);
-  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  return normalizeDayKey(`${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`);
+}
+
+export function normalizeDayKey(raw: string): string {
+  const parts = String(raw || '').split('-').map((n) => Number(n));
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return raw;
+  const [y, m, d] = parts;
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+export function sameDayKey(a?: string, b?: string): boolean {
+  return !!a && !!b && normalizeDayKey(a) === normalizeDayKey(b);
 }
 
 export function hasClaimedGameClubToday(save: KitchenSave, now = Date.now()): boolean {
-  return save.gameClubRewardDate === todayKey(now);
+  return sameDayKey(save.gameClubRewardDate, todayKey(now));
 }
 
 export function canClaimGameClubReward(save: KitchenSave, postCount: number, now = Date.now()): boolean {
@@ -334,8 +377,12 @@ export function defaultSave(now = Date.now()): KitchenSave {
     specialVisits: {},
     neighborOrders: [],
     neighborOfferAt: 0,
-    outingBuff: undefined,
-    kitchenBuff: undefined,
+    outingBuffs: [],
+    kitchenBuffs: [],
+    dailyMenu: undefined,
+    dailyMenuRewards: [],
+    recipeTickets: 0,
+    dailyMenuClaimedOn: '',
     gameClubRewardDate: '',
     tutorialStep: 0,
     tutorialGiftClaimed: false,
@@ -371,8 +418,26 @@ export function normalizeSave(raw: Partial<KitchenSave> | null, now = Date.now()
       && Number.isFinite((raw as KitchenSave).neighborOfferAt)
       ? Math.max(0, Math.floor((raw as KitchenSave).neighborOfferAt))
       : 0,
-    outingBuff: migrateOutingBuff((raw as KitchenSave).outingBuff),
-    kitchenBuff: migrateKitchenBuff((raw as KitchenSave).kitchenBuff),
+    outingBuffs: migrateOutingBuffs(
+      (raw as KitchenSave).outingBuffs,
+      (raw as { outingBuff?: unknown }).outingBuff,
+    ),
+    kitchenBuffs: migrateKitchenBuffs(
+      (raw as KitchenSave).kitchenBuffs,
+      (raw as { kitchenBuff?: unknown }).kitchenBuff,
+    ),
+    dailyMenu: migrateDailyMenu((raw as KitchenSave).dailyMenu),
+    dailyMenuRewards: migrateRecipeIds((raw as KitchenSave).dailyMenuRewards),
+    recipeTickets: typeof (raw as KitchenSave).recipeTickets === 'number'
+      && Number.isFinite((raw as KitchenSave).recipeTickets)
+      ? Math.max(0, Math.floor((raw as KitchenSave).recipeTickets))
+      : 0,
+    dailyMenuClaimedOn: (() => {
+      const rawClaim = (raw as KitchenSave).dailyMenuClaimedOn;
+      if (typeof rawClaim === 'string' && rawClaim) return normalizeDayKey(rawClaim);
+      const menu = migrateDailyMenu((raw as KitchenSave).dailyMenu);
+      return menu?.boardClaimed ? normalizeDayKey(menu.date) : '';
+    })(),
     gameClubRewardDate: typeof (raw as KitchenSave).gameClubRewardDate === 'string'
       ? (raw as KitchenSave).gameClubRewardDate
       : '',
@@ -640,16 +705,19 @@ export function applyNeighborReward(save: KitchenSave, reward: NeighborReward): 
   save: KitchenSave;
   gold: number;
   foodName?: string;
+  foodDefId?: string;
   foodFolded: boolean;
   foldGold: number;
 } {
   let next: KitchenSave = { ...save, money: save.money + reward.gold };
   let foodName: string | undefined;
+  let foodDefId: string | undefined;
   let foodFolded = false;
   let foldGold = 0;
   const food = reward.food;
   if (food && isNeighborRewardFood(food.defId)) {
     const qty = Math.max(1, Math.floor(food.qty || 1));
+    foodDefId = food.defId;
     foodName = getItem(food.defId).name;
     const draft: FridgeDraft = {
       defId: food.defId,
@@ -671,7 +739,7 @@ export function applyNeighborReward(save: KitchenSave, reward: NeighborReward): 
       foodFolded = true;
     }
   }
-  return { save: next, gold: reward.gold, foodName, foodFolded, foldGold };
+  return { save: next, gold: reward.gold, foodName, foodDefId, foodFolded, foldGold };
 }
 
 /** 第一次见到这味可用食材：写进图鉴并返回 true。坏了的不算见过。 */
@@ -824,12 +892,22 @@ export function cookRecipe(
   recipeId: RecipeId,
   times = 1,
   uids?: string[],
-): { save: KitchenSave; error?: string; xp?: number; levels?: number; cooked?: number } {
+): {
+  save: KitchenSave;
+  error?: string;
+  xp?: number;
+  levels?: number;
+  cooked?: number;
+  doubled?: boolean;
+  foldGold?: number;
+} {
   const want = Math.max(1, Math.floor(times));
   let next = save;
   let xp = 0;
   let levels = 0;
   let cooked = 0;
+  let doubled = false;
+  let foldGold = 0;
   for (let i = 0; i < want; i++) {
     const once = cookRecipeOnce(next, recipeId, uids);
     if (once.error) {
@@ -840,15 +918,24 @@ export function cookRecipe(
     xp += once.xp ?? 0;
     levels += once.levels ?? 0;
     cooked += 1;
+    if (once.doubled) doubled = true;
+    foldGold += once.foldGold ?? 0;
   }
-  return { save: next, xp, levels, cooked };
+  return { save: next, xp, levels, cooked, doubled, foldGold };
 }
 
 function cookRecipeOnce(
   save: KitchenSave,
   recipeId: RecipeId,
   uids?: string[],
-): { save: KitchenSave; error?: string; xp?: number; levels?: number } {
+): {
+  save: KitchenSave;
+  error?: string;
+  xp?: number;
+  levels?: number;
+  doubled?: boolean;
+  foldGold?: number;
+} {
   const recipe = recipeById(recipeId);
   if (!recipe) return { save, error: '未知菜谱' };
   const view = recipeUnlockView(save);
@@ -870,13 +957,32 @@ function cookRecipeOnce(
     qty: 1,
     value,
   };
-  const fridge = putIntoFridge(consumePickedFoods(save.fridge, items), dish);
+  let fridge = putIntoFridge(consumePickedFoods(save.fridge, items), dish);
   if (fridge.length > fridgeCap(save)) return { save, error: '冰箱满了，腾一格再做菜' };
+  const doubled = kitchenHasCookDouble(save);
+  let foldGold = 0;
+  if (doubled) {
+    const extra: FridgeItem = { ...dish, uid: nextUid('d') };
+    const after: KitchenSave = { ...save, fridge };
+    if (fridgeCanFit(after, [extra])) {
+      fridge = putIntoFridge(fridge, extra);
+    } else {
+      foldGold = value;
+    }
+  }
   const first = !save.recipesCooked.includes(recipeId);
   const recipesCooked = first ? [...save.recipesCooked, recipeId] : save.recipesCooked;
   const gained = Math.round((recipe.xp + (first ? recipe.firstXp : 0)) * kitchenCookXpMul(save));
-  const granted = grantCookXp({ ...save, fridge, recipesCooked }, gained);
-  return { save: consumeCookXpBuff(granted.save), xp: granted.gained, levels: granted.levels };
+  let granted = grantCookXp({ ...save, fridge, recipesCooked, money: save.money + foldGold }, gained);
+  granted = { ...granted, save: consumeCookXpBuff(granted.save) };
+  if (doubled) granted = { ...granted, save: consumeCookDoubleBuff(granted.save) };
+  return {
+    save: granted.save,
+    xp: granted.gained,
+    levels: granted.levels,
+    doubled,
+    foldGold,
+  };
 }
 
 export function upgradeCost(id: FurnId, fromLevel: number): number {
@@ -1089,10 +1195,15 @@ export function selectVehicle(save: KitchenSave, id: VehicleId): KitchenSave {
   return { ...save, vehicle: id };
 }
 
-export function spendStamina(save: KitchenSave, now = Date.now()): { save: KitchenSave; error?: string } {
+export function spendStamina(
+  save: KitchenSave,
+  amount = 1,
+  now = Date.now(),
+): { save: KitchenSave; error?: string } {
   const next = regenStamina(save, now);
-  if (next.stamina <= 0) return { save: next, error: '没有体力了' };
-  const stamina = next.stamina - 1;
+  const cost = Math.max(1, Math.floor(amount));
+  if (next.stamina < cost) return { save: next, error: '没有体力了' };
+  const stamina = next.stamina - cost;
   const cap = staminaMax(next);
   return { save: { ...next, stamina, staminaAt: stamina >= cap ? now : next.staminaAt } };
 }
@@ -1101,4 +1212,212 @@ export function addStamina(save: KitchenSave, n = 1, now = Date.now()): KitchenS
   const next = regenStamina(save, now);
   const cap = staminaMax(next);
   return { ...next, stamina: Math.min(cap, next.stamina + n) };
+}
+
+export function dailyMenuView(save: KitchenSave, now = Date.now()): DailyMenuRollView {
+  return {
+    tutorialStep: save.tutorialStep,
+    level: save.level,
+    recipesFound: save.recipesFound,
+    recipesCooked: save.recipesCooked,
+    fridge: save.fridge,
+    tableLevel: furnLevel(save, 'table'),
+    dexSeen: save.dexSeen,
+    dexInspected: save.dexInspected,
+    hangingRecipeIds: liveNeighborOrders(save.neighborOrders, now).map((order) => order.recipeId),
+    dailyMenu: save.dailyMenu,
+    dailyMenuRewards: save.dailyMenuRewards,
+    dailyMenuClaimedOn: save.dailyMenuClaimedOn,
+  };
+}
+
+export function claimDailyMenuBoardIfReady(save: KitchenSave): { save: KitchenSave; tickets: number } {
+  const menu = save.dailyMenu;
+  if (!menu || !dailyMenuComplete(menu) || menu.boardClaimed) return { save, tickets: 0 };
+  const tickets = Math.max(1, menu.board?.tickets ?? 1);
+  return {
+    save: {
+      ...save,
+      recipeTickets: save.recipeTickets + tickets,
+      dailyMenuClaimedOn: menu.date,
+      dailyMenu: { ...menu, board: { tickets }, boardClaimed: true },
+    },
+    tickets,
+  };
+}
+
+export function ensureDailyMenu(save: KitchenSave, now = Date.now()): KitchenSave {
+  const date = todayKey(now);
+  const menu = ensureDailyMenuState(dailyMenuView(save, now), date);
+  let next: KitchenSave = menu === save.dailyMenu ? save : { ...save, dailyMenu: menu };
+  if (menu?.boardClaimed && sameDayKey(menu.date, date) && !sameDayKey(next.dailyMenuClaimedOn, date)) {
+    next = { ...next, dailyMenuClaimedOn: date };
+  }
+  return claimDailyMenuBoardIfReady(next).save;
+}
+
+export function consumeFridgeDish(
+  save: KitchenSave,
+  recipeId: RecipeId,
+  qty = 1,
+): { save: KitchenSave; error?: string; consumed: number } {
+  const want = Math.max(1, Math.floor(qty));
+  const used = new Map<string, number>();
+  let left = want;
+  for (const it of save.fridge) {
+    if (left <= 0) break;
+    if (fridgeKind(it) !== 'dish' || it.defId !== recipeId) continue;
+    const take = Math.min(fridgeItemQty(it), left);
+    if (take <= 0) continue;
+    used.set(it.uid, take);
+    left -= take;
+  }
+  if (left > 0) return { save, error: '冰箱里没有这道菜', consumed: 0 };
+  return { save: { ...save, fridge: consumeFridgeQty(save.fridge, used) }, consumed: want };
+}
+
+export function submitDailyMenu(
+  save: KitchenSave,
+  recipeId: RecipeId,
+  now = Date.now(),
+): {
+  save: KitchenSave;
+  error?: string;
+  foodName?: string;
+  foodDefId?: string;
+  foodFolded: boolean;
+  foldGold: number;
+  gold: number;
+  tickets: number;
+} {
+  const empty = { foodFolded: false as const, foldGold: 0, gold: 0, tickets: 0 };
+  const nextSave = ensureDailyMenu(save, now);
+  const menu = nextSave.dailyMenu;
+  const line = menu?.lines.find((row) => row.recipeId === recipeId);
+  if (!menu || !line) return { save: nextSave, error: '今天没有这道菜单', ...empty };
+  if (line.done >= line.need) {
+    return { save: nextSave, error: '这道已经交过了', ...empty };
+  }
+  const taken = consumeFridgeDish(nextSave, recipeId, 1);
+  if (taken.error) return { save: nextSave, error: taken.error, ...empty };
+
+  const lines = menu.lines.map((row) => (
+    row.recipeId === recipeId ? { ...row, done: row.done + 1 } : row
+  ));
+  const updated = lines.find((row) => row.recipeId === recipeId)!;
+  let next: KitchenSave = { ...taken.save, dailyMenu: { ...menu, lines } };
+  let gold = 0;
+  let foodName: string | undefined;
+  let foodDefId: string | undefined;
+  let foodFolded = false;
+  let foldGold = 0;
+
+  if (updated.done >= updated.need) {
+    const granted = applyNeighborReward(next, { gold: line.gold, food: line.food });
+    next = granted.save;
+    gold += granted.gold;
+    foodName = granted.foodName;
+    foodDefId = granted.foodDefId;
+    foodFolded = granted.foodFolded;
+    foldGold += granted.foldGold;
+  }
+
+  const claimed = claimDailyMenuBoardIfReady(next);
+  if (claimed.tickets > 0) next = claimed.save;
+
+  return {
+    save: next,
+    foodName,
+    foodDefId,
+    foodFolded,
+    foldGold,
+    gold,
+    tickets: claimed.tickets,
+  };
+}
+
+export function submitNeighborOrder(
+  save: KitchenSave,
+  orderId: string,
+  now = Date.now(),
+): {
+  save: KitchenSave;
+  error?: string;
+  foodName?: string;
+  foodDefId?: string;
+  foodFolded: boolean;
+  foldGold: number;
+  gold: number;
+} {
+  const empty = { foodFolded: false as const, foldGold: 0, gold: 0 };
+  const match = liveNeighborOrders(save.neighborOrders, now).find((order) => order.id === orderId);
+  if (!match) return { save, error: '这单没了', ...empty };
+  const taken = consumeFridgeDish(save, match.recipeId, 1);
+  if (taken.error) return { save, error: taken.error, ...empty };
+  const reward = match.reward ?? { gold: neighborOrderBonus(match.recipeId) };
+  const granted = applyNeighborReward(taken.save, reward);
+  return {
+    save: {
+      ...granted.save,
+      neighborOrders: liveNeighborOrders(granted.save.neighborOrders, now).filter((order) => order.id !== match.id),
+      neighborOfferAt: Math.max(granted.save.neighborOfferAt, now + NEIGHBOR_COOLDOWN.accept),
+    },
+    foodName: granted.foodName,
+    foodDefId: granted.foodDefId,
+    foodFolded: granted.foodFolded,
+    foldGold: granted.foldGold,
+    gold: granted.gold,
+  };
+}
+
+export function drawRecipeGacha(
+  save: KitchenSave,
+  now = Date.now(),
+): {
+  save: KitchenSave;
+  error?: string;
+  recipeId?: RecipeId;
+  duplicate: boolean;
+  gold: number;
+  toast: string;
+  recipeUnlock?: RecipeId;
+} {
+  if (save.recipeTickets < RECIPE_GACHA_COST) {
+    return {
+      save,
+      error: '完成小饭桌任务可以获得菜谱券',
+      duplicate: false,
+      gold: 0,
+      toast: '',
+    };
+  }
+  const view = recipeUnlockView(save);
+  const recipeId = rollRecipeGacha(view, gachaRng(now));
+  const name = recipeGachaName(recipeId);
+  let next: KitchenSave = { ...save, recipeTickets: save.recipeTickets - RECIPE_GACHA_COST };
+  if (isRecipeUnlocked(view, recipeId)) {
+    const gold = recipeGachaDupGold(recipeId);
+    next = { ...next, money: next.money + gold };
+    return {
+      save: next,
+      recipeId,
+      duplicate: true,
+      gold,
+      toast: `抽到重复的${name}，折成 ${gold} 金`,
+    };
+  }
+  next = {
+    ...next,
+    recipesFound: next.recipesFound.includes(recipeId)
+      ? next.recipesFound
+      : [...next.recipesFound, recipeId],
+  };
+  return {
+    save: next,
+    recipeId,
+    duplicate: false,
+    gold: 0,
+    toast: `开了一本${name}`,
+    recipeUnlock: recipeId,
+  };
 }

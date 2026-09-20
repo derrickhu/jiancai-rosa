@@ -57,6 +57,9 @@ export interface ItemInspectView {
   eatLabel?: string;
   /** 占格、干湿等，跟在品质后面。 */
   note?: string;
+  iconPath?: string;
+  /** 有值就替代售价行。空字符串则不画售价。 */
+  priceLine?: string;
 }
 
 export function inspectFromFridge(it: FridgeItem): ItemInspectView {
@@ -147,9 +150,12 @@ export function makeItemInspectCard(opts: {
   root.addChild(dim);
 
   const canEat = view.kind === 'dish' && !!view.eatLabel;
+  const showUsage = !!view.eatLabel;
   const showStepper = opts.actions && view.maxQty > 1;
   const cardW = Math.min(520, w - 64);
-  const cardH = opts.actions ? (showStepper || canEat ? 428 : 388) : 320;
+  const cardH = opts.actions
+    ? (showStepper || canEat ? 428 : 388)
+    : (showUsage ? 356 : 320);
   const card = new PIXI.Container();
   card.position.set((w - cardW) / 2, (h - cardH) / 2);
   card.eventMode = 'static';
@@ -175,7 +181,17 @@ export function makeItemInspectCard(opts: {
   iconBg.endFill();
   drawRarityFrame(iconBg, 2, 2, iconBox - 4, iconBox - 4, view.rarity, { radius: 16 });
   iconHost.addChild(iconBg);
-  if (view.kind === 'dish') {
+  if (view.iconPath) {
+    whenTextureReady(view.iconPath, () => opts.onReady?.());
+    const tex = gameTexture(view.iconPath);
+    if (isTextureReady(tex)) {
+      const icon = new PIXI.Sprite(tex);
+      fitSpriteInBox(icon, iconBox - 16, iconBox - 16);
+      icon.anchor.set(0.5);
+      icon.position.set(iconBox / 2, iconBox / 2);
+      iconHost.addChild(icon);
+    }
+  } else if (view.kind === 'dish') {
     const path = `subpkg_images/dish_${view.defId}.png`;
     whenTextureReady(path, () => opts.onReady?.());
     const tex = dishTexture(view.defId);
@@ -222,7 +238,13 @@ export function makeItemInspectCard(opts: {
 
   const unit = view.unitPrice;
   const goldN = unit * qty;
-  if (unit > 0) {
+  if (view.priceLine !== undefined) {
+    if (view.priceLine) {
+      const gold = makeLabel(view.priceLine, 22, TERRACOTTA, { fontWeight: '700' });
+      gold.position.set(132, 90);
+      card.addChild(gold);
+    }
+  } else if (unit > 0) {
     const gold = makeLabel(`售价  ${unit}`, 22, TERRACOTTA, { fontWeight: '700' });
     gold.position.set(132, 90);
     card.addChild(gold);
@@ -257,7 +279,7 @@ export function makeItemInspectCard(opts: {
   card.addChild(blurb);
 
   let y = 136 + Math.min(88, blurb.height) + 16;
-  if (canEat) {
+  if (showUsage) {
     const eat = makeLabel(view.eatLabel ?? '吃', 24, INDIGO, {
       fontFamily: 'Kaiti SC, STKaiti, Songti SC, STSong, serif',
       fontWeight: '700',

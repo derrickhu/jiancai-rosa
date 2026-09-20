@@ -2,6 +2,7 @@ import * as PIXI from 'pixi.js';
 import { AudioManager } from '@/core/AudioManager';
 import { Ease, TweenManager } from '@/core/TweenManager';
 import { RARITY_STYLE, type Rarity } from '@/sim/rarity';
+import { buffIconPath, type HudBuff } from '@/sim/dishEffects';
 import { fitSpriteInBox, gameTexture, imgPath, isTextureReady, itemTexture, whenTextureReady } from './assets';
 
 export const FONT = 'PingFang SC, sans-serif';
@@ -436,6 +437,9 @@ export const HUD_ICON = {
   basket: 'subpkg_images/hud_basket.png',
   dex: 'subpkg_images/hud_dex.png',
   gameClub: 'subpkg_images/hud_gameclub.png',
+  dailyMenu: 'subpkg_images/hud_table.png',
+  gacha: 'subpkg_images/hud_gacha.png',
+  ticket: 'subpkg_images/hud_ticket.png',
   destBanner: 'subpkg_images/ui_dest_banner.png',
   home: 'subpkg_images/hud_home.png',
   leave: 'subpkg_images/hud_leave.png',
@@ -810,6 +814,50 @@ export function makeMuteButton(size = 44): PIXI.Container {
     AudioManager.play('ui_click');
     AudioManager.toggleMuted();
     paint();
+  });
+  return root;
+}
+
+export const HUD_BUFF = { size: 36, gap: 8, pad: 6 } as const;
+
+export function hudPillsY(profileY: number, pillH = 44): number {
+  return profileY + Math.round((PLAYER_LEVEL_HUD.avatar - pillH) / 2);
+}
+
+export function hudBuffRowY(pillY: number, pillH = 44): number {
+  return pillY + pillH + HUD_BUFF.pad;
+}
+
+export function makeHudBuffRow(opts: {
+  buffs: readonly HudBuff[];
+  onReady?: () => void;
+  onTap?: (buff: HudBuff) => void;
+}): PIXI.Container {
+  const root = new PIXI.Container();
+  const size = HUD_BUFF.size;
+  opts.buffs.forEach((buff, i) => {
+    const path = buffIconPath(buff.icon);
+    whenTextureReady(path, () => opts.onReady?.());
+    const cell = new PIXI.Container();
+    const tex = gameTexture(path);
+    if (isTextureReady(tex)) {
+      const spr = new PIXI.Sprite(tex);
+      fitSpriteInBox(spr, size, size);
+      spr.anchor.set(0.5);
+      spr.position.set(size / 2, size / 2);
+      spr.eventMode = 'none';
+      cell.addChild(spr);
+    }
+    cell.position.set(i * (size + HUD_BUFF.gap), 0);
+    cell.eventMode = 'static';
+    cell.cursor = 'pointer';
+    cell.hitArea = new PIXI.Rectangle(0, 0, size, size);
+    cell.on('pointertap', (e) => {
+      e.stopPropagation();
+      AudioManager.play('ui_click');
+      opts.onTap?.(buff);
+    });
+    root.addChild(cell);
   });
   return root;
 }

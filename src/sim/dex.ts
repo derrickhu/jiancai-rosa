@@ -71,8 +71,11 @@ export function dishGroups(): string[] {
   ];
 }
 
-export function dishesInGroup(group: string): RecipeDef[] {
-  return RECIPES.filter((r) => r.group === group && !HIDDEN_RECIPE_IDS.has(r.id));
+export function dishesInGroup(group: string, found: readonly RecipeId[] = []): RecipeDef[] {
+  return RECIPES.filter((r) => (
+    r.group === group
+    && (!HIDDEN_RECIPE_IDS.has(r.id) || found.includes(r.id))
+  ));
 }
 
 export function dishGroupCatIcon(group: string): string {

@@ -1,0 +1,17 @@
+9:16 vertical WeChat mini-game VIDEO COVER.
+
+The attached image has TWO parts:
+TOP: the official game logo. Place a large version of that logo in the UPPER third of the cover.
+Copy the four Chinese characters as closely as you can: 扫荡菜场
+- 扫荡 = chunky orange 3D letters
+- 菜 = a character built from bok choy, cucumber, tomato, celery, potatoes
+- 场 = a wooden stall-shaped character
+Small differences are OK. Do NOT invent other words. Do NOT keep any green or colored box behind the logo. The logo sits on the scene with no plate.
+
+BOTTOM of the attached image is only a style + furniture dictionary. Do not copy its UI arrows.
+
+THEME: earn coins and renovate a rundown kitchen.
+One continuous vertical room. Upper scene around the logo: poor kitchen (plastic bag, mini fridge, bucket, lonely wok). Lower scene: the upgraded kitchen (woven basket, tall cream fridge full of whole vegetables, nicer wok) with gold coins and sparkles.
+
+NO person, NO boy, NO girl, NO hands, NO HUD, NO buttons, NO cards, NO arrows, NO numbers.
+NO extra Chinese besides the logo. NO English. NO ribbon titles.

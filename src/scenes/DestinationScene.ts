@@ -24,10 +24,11 @@ import {
   type VehicleId,
   explorePercent,
   marketExploration,
-  outingBuffLine,
+  liveHudBuffs,
 } from '@/sim';
 import { AudioManager } from '@/core/AudioManager';
-import { HUD_ICON, PLAYER_LEVEL_HUD, bindUiClick, fillRect, makeLabel, makeMuteButton, makePlayerLevelHud, makeSlicedButton, makeStatPill } from '@/utils/ui';
+import { ensureHudBuffPanel } from '@/gameobjects/ui/HudBuffPanel';
+import { HUD_ICON, PLAYER_LEVEL_HUD, bindUiClick, fillRect, hudBuffRowY, hudPillsY, makeLabel, makeMuteButton, makeHudBuffRow, makePlayerLevelHud, makeSlicedButton, makeStatPill } from '@/utils/ui';
 import { VerticalScroller } from '@/utils/scroll';
 import { applyGray, applyFit, fitCover, fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from '@/utils/assets';
 import { OutingCurtain } from '@/gameobjects/ui/OutingCurtain';
@@ -148,7 +149,8 @@ export class DestinationScene implements Scene {
     this._ui.addChild(profile);
 
     const pillH = 44;
-    const pillY = pillsY + Math.round((PLAYER_LEVEL_HUD.avatar - pillH) / 2);
+    const buffs = liveHudBuffs(KitchenManager.save);
+    const pillY = hudPillsY(pillsY, pillH);
     const resX = 12 + PLAYER_LEVEL_HUD.avatar + PLAYER_LEVEL_HUD.gap + PLAYER_LEVEL_HUD.barW + 12;
     const money = makeStatPill({
       icon: HUD_ICON.coin,
@@ -170,18 +172,21 @@ export class DestinationScene implements Scene {
     staPill.position.set(resX + 172, pillY);
     this._ui.addChild(staPill);
 
-    const outing = outingBuffLine(KitchenManager.save);
-    if (outing) {
-      const line = makeLabel(outing, 20, 0xFFF3C4, { fontWeight: '700' });
-      line.position.set(12, pillsY + PLAYER_LEVEL_HUD.height - 2);
-      this._ui.addChild(line);
+    if (buffs.length) {
+      const row = makeHudBuffRow({
+        buffs,
+        onReady: redraw,
+        onTap: () => ensureHudBuffPanel().open(),
+      });
+      row.position.set(resX, hudBuffRowY(pillY, pillH));
+      this._ui.addChild(row);
     }
 
     const mute = makeMuteButton(44);
     mute.position.set(w - 64, pillY);
     this._ui.addChild(mute);
 
-    const listTop = pillsY + PLAYER_LEVEL_HUD.height + (outing ? 28 : 8);
+    const listTop = pillsY + PLAYER_LEVEL_HUD.height + 8;
     const bottomPad = Math.max(
       HOME_BOTTOM,
       (Number.isFinite(Game.safeBottom) ? Game.safeBottom : 0) + 24,
@@ -786,7 +791,7 @@ export class DestinationScene implements Scene {
       Platform.showToast(`${market.name} · 厨艺 ${market.unlockLevel} 解锁`);
       return;
     }
-    if (!KitchenManager.canGoMarket()) {
+    if (!KitchenManager.canGoMarket(market.staminaCost)) {
       AudioManager.play('ui_deny');
       void KitchenManager.offerShareStamina();
       return;

@@ -1,0 +1,19 @@
+Cozy casual mobile-game cartoon HUD icons, medium-thick #2A2018 outlines, soft cel shading, same sticker look as a gold coin and a steamed bun. One 4-column by 3-row grid, 12 equal square cells, each cell one icon filling most of the cell. Isolated on SOLID MAGENTA #FF00FF. NO TEXT, no labels, no numbers, no captions, no watermark.
+
+Row 1 left to right:
+1. A ripe-persimmon orange sun with short rays. Reads as longer daylight.
+2. A celadon-teal four-leaf clover with one gold-coin spark. Reads as lucky rare finds.
+3. A purple amethyst crystal with two gold-coin sparks. Reads as lucky epic finds.
+4. A gold-coin disc with a celadon-green down-pointing chevron. Reads as cheaper entry fee.
+
+Row 2 left to right:
+5. A small light-oak dry crate, empty and open. Reads as extra dry-bag space.
+6. A sky-blue enamel washbasin. Reads as extra wet-bag space.
+7. A single bright green leafy vegetable. Reads as leaf stall.
+8. A simple side-view river fish, scale-blue. Reads as fish stall.
+
+Row 3 left to right:
+9. A pink-red ham hock. Reads as meat stall.
+10. A gold-coin disc with a red-envelope red up-pointing chevron. Reads as higher sell price.
+11. A terracotta cooking pot with a gold-coin star rising as steam. Reads as extra cook XP.
+12. Two cream bowls side by side. Reads as the next pot making two dishes.

@@ -5,7 +5,7 @@ import { EventBus } from '@/core/EventBus';
 import { OverlayManager } from '@/core/OverlayManager';
 import { EV } from '@/config/events';
 import { KitchenManager } from '@/managers/KitchenManager';
-import { recipeById } from '@/sim';
+import { recipeById, recipeEatLabel } from '@/sim';
 import { FONT, fillRect, makeLabel, makeSlicedButton } from '@/utils/ui';
 import { dishTexture, fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from '@/utils/assets';
 
@@ -27,9 +27,10 @@ export class RecipeUnlockPanel extends PIXI.Container {
     EventBus.on(EV.recipeUnlocked, () => this.present());
   }
 
-  present(forceSound = false): void {
+  present(forceSound: boolean | { silent?: boolean } = false): void {
     if (!KitchenManager.peekRecipeUnlock()) return;
-    if (forceSound || !this._isOpen) AudioManager.play('recipe_paper');
+    const silent = typeof forceSound === 'object' && !!forceSound.silent;
+    if (!silent && (forceSound === true || !this._isOpen)) AudioManager.play('recipe_paper');
     this._isOpen = true;
     this.visible = true;
     this.relayout();
@@ -120,8 +121,21 @@ export class RecipeUnlockPanel extends PIXI.Container {
     });
     name.anchor.set(0.5);
     name.eventMode = 'none';
-    name.position.set(0, ph * 0.72);
+    name.position.set(0, ph * 0.70);
     paper.addChild(name);
+
+    const eat = new PIXI.Text(recipeEatLabel(recipe.id), {
+      fontFamily: TITLE_FONT,
+      fontSize: 20,
+      fill: WALNUT,
+      fontWeight: '700',
+      stroke: '#F6EDE0',
+      strokeThickness: 4,
+    });
+    eat.anchor.set(0.5);
+    eat.eventMode = 'none';
+    eat.position.set(0, ph * 0.80);
+    paper.addChild(eat);
 
     paper.eventMode = 'static';
     paper.hitArea = new PIXI.Rectangle(-pw / 2, 0, pw, ph);

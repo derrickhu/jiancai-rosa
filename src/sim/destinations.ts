@@ -8,7 +8,7 @@ export interface MarketDef {
   name: string;
   hint: string;
   unlockLevel: number;
-  /** 出门扣几口包子。现在各场一律 1。 */
+  /** 出门扣几口包子。每两个菜场 +1：前两场 1，再两场 2，以此类推。 */
   staminaCost: number;
   thumb: string;
 }
@@ -39,7 +39,7 @@ export const MARKETS: MarketDef[] = [
     name: '桥头早市',
     hint: '过了石桥，田头货和案板都在这边。',
     unlockLevel: 5,
-    staminaCost: 1,
+    staminaCost: 2,
     thumb: 'subpkg_images/dest_qiaotou.jpg',
   },
   {
@@ -47,7 +47,7 @@ export const MARKETS: MarketDef[] = [
     name: '山坞早集',
     hint: '翻过一道坡，栗子和菌子还带着土。',
     unlockLevel: 7,
-    staminaCost: 1,
+    staminaCost: 2,
     thumb: 'subpkg_images/dest_shanwu.jpg',
   },
   {
@@ -55,7 +55,7 @@ export const MARKETS: MarketDef[] = [
     name: '江边渔市',
     hint: '潮水刚退，黄鱼带鱼还搁在冰上。',
     unlockLevel: 9,
-    staminaCost: 1,
+    staminaCost: 3,
     thumb: 'subpkg_images/dest_jiangbian.jpg',
   },
   {
@@ -63,7 +63,7 @@ export const MARKETS: MarketDef[] = [
     name: '南门菜市',
     hint: '城门里的豆干、禽和酱，和江边不是一路货。',
     unlockLevel: 11,
-    staminaCost: 1,
+    staminaCost: 3,
     thumb: 'subpkg_images/dest_nanshi.jpg',
   },
   {
@@ -71,7 +71,7 @@ export const MARKETS: MarketDef[] = [
     name: '老城菜行',
     hint: '青石板的老字号，牛腩和五花挂在梁上。',
     unlockLevel: 12,
-    staminaCost: 1,
+    staminaCost: 4,
     thumb: 'subpkg_images/dest_laocheng.jpg',
   },
   {
@@ -79,7 +79,7 @@ export const MARKETS: MarketDef[] = [
     name: '渡口渔行',
     hint: '石埠上的海鲜行，干货篓搁在船舱一角。',
     unlockLevel: 13,
-    staminaCost: 1,
+    staminaCost: 4,
     thumb: 'subpkg_images/dest_dukou.jpg',
   },
   {
@@ -87,7 +87,7 @@ export const MARKETS: MarketDef[] = [
     name: '山珍行',
     hint: '蟹篓、松茸和梁上火腿，不是随便逛的场。',
     unlockLevel: 14,
-    staminaCost: 1,
+    staminaCost: 5,
     thumb: 'subpkg_images/dest_shanzhen.jpg',
   },
 ];

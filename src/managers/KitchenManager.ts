@@ -2,6 +2,7 @@ import { AudioManager } from '@/core/AudioManager';
 import { EventBus } from '@/core/EventBus';
 import { Platform } from '@/core/PlatformService';
 import { showPrompt } from '@/gameobjects/ui/PromptPanel';
+import type { RewardCollectGain } from '@/utils/coinCollect';
 import { EV } from '@/config/events';
 import { warmupRewardedAds } from '@/services/RewardedAdService';
 import { CloudSyncManager } from './CloudSyncManager';
@@ -21,7 +22,6 @@ import {
   staminaMax,
   buyFurnUpgrade,
   buyHouseUpgrade,
-  applyNeighborReward,
   cookRecipe,
   eatDish,
   sellFridgeQty,
@@ -48,7 +48,12 @@ import {
   spendStamina,
   buyVehicle as purchaseVehicle,
   todayKey,
+  sameDayKey,
   msUntilLocalMidnight,
+  ensureDailyMenu as rollDailyMenu,
+  submitDailyMenu as applySubmitDailyMenu,
+  submitNeighborOrder as applySubmitNeighborOrder,
+  drawRecipeGacha,
   canVisitSpecial as saveCanVisitSpecial,
   markSpecialVisit as saveMarkSpecialVisit,
   specialVisitCount as saveSpecialVisitCount,
@@ -67,7 +72,6 @@ import {
   neighborNpc,
   neighborOfferReady,
   neighborOfferRng,
-  neighborOrderBonus,
   rollNeighborOffer,
   type NeighborOfferDraft,
   type NeighborOrder,
@@ -109,6 +113,7 @@ class KitchenManagerClass {
   constructor() {
     this._armDayRollover();
     this._bindShare();
+    EventBus.on(EV.tutorialCompleted, () => this.ensureDailyMenu());
     warmupRewardedAds();
   }
 
@@ -133,6 +138,7 @@ class KitchenManagerClass {
       const key = todayKey();
       if (key !== this._dayKey) {
         this._dayKey = key;
+        this.ensureDailyMenu();
         this.emit();
       }
       this._armDayRollover();
@@ -153,12 +159,12 @@ class KitchenManagerClass {
     EventBus.emit(EV.kitchenChanged, this.save);
   }
 
-  canGoMarket(): boolean {
-    return regenNow().stamina > 0;
+  canGoMarket(cost = 1): boolean {
+    return regenNow().stamina >= cost;
   }
 
-  startRun(): boolean {
-    const { save, error } = spendStamina(this.save);
+  startRun(cost = 1): boolean {
+    const { save, error } = spendStamina(this.save, cost);
     if (error) {
       Platform.showToast(error);
       return false;
@@ -168,8 +174,8 @@ class KitchenManagerClass {
     return true;
   }
 
-  refundStamina(): void {
-    SaveManager.replace(addStamina(this.save, 1));
+  refundStamina(cost = 1): void {
+    SaveManager.replace(addStamina(this.save, cost));
     this.emit();
   }
 
@@ -355,7 +361,7 @@ class KitchenManagerClass {
   cook(recipeId: RecipeId, times = 1): void {
     this.sweepNeighborOrders();
     const fromLevel = this.save.level;
-    const { save, error, xp, levels, cooked } = cookRecipe(this.save, recipeId, times);
+    const { save, error, xp, levels, cooked, doubled, foldGold } = cookRecipe(this.save, recipeId, times);
     if (error) {
       AudioManager.play('ui_deny');
       Platform.showToast(error);
@@ -369,21 +375,16 @@ class KitchenManagerClass {
       levels: levels ?? 0,
       rarity: recipeById(recipeId)?.rarity ?? 'common',
     };
-    const paid = this._fulfillNeighborOrder(save, recipeId);
-    SaveManager.replace(paid.save);
+    SaveManager.replace(save);
     this.emit();
-    if (paid.bonus > 0) {
-      AudioManager.play('coin_gain');
-      let msg = `${paid.npc}要的${paid.dish}好了，多给了 ${paid.bonus} 金`;
-      if (paid.foodFolded && paid.foodName) {
-        msg += `。冰箱满了，${paid.foodName}折成 ${paid.foldGold} 金`;
-      } else if (paid.foodName) {
-        msg += `，还塞来一份${paid.foodName}`;
-      }
-      Platform.showToast(msg, 'success');
+    if (doubled) {
+      Platform.showToast(
+        foldGold ? `出了两份，冰箱满了第二份折成 ${foldGold} 金` : '出了两份',
+        'success',
+      );
     }
     if ((levels ?? 0) > 0) {
-      this.enqueueCookLevelUp(fromLevel, paid.save.level, true);
+      this.enqueueCookLevelUp(fromLevel, save.level, true);
     }
   }
 
@@ -391,6 +392,71 @@ class KitchenManagerClass {
     this._visitOfferDone = false;
     this.pendingOffer = null;
     this.sweepNeighborOrders();
+    this.ensureDailyMenu();
+  }
+
+  ensureDailyMenu(): void {
+    const next = rollDailyMenu(this.save);
+    if (next === this.save) return;
+    SaveManager.replace(next);
+    this.emit();
+  }
+
+  submitDailyMenu(recipeId: RecipeId): RewardCollectGain | null {
+    this.ensureDailyMenu();
+    const { save, error, gold, foldGold, foodDefId, foodFolded, tickets } = applySubmitDailyMenu(this.save, recipeId);
+    if (error) {
+      AudioManager.play('ui_deny');
+      Platform.showToast(error);
+      return null;
+    }
+    SaveManager.replace(save);
+    this.emit();
+    return { gold, foldGold, foodDefId, foodFolded, tickets };
+  }
+
+  submitNeighborOrder(orderId: string): RewardCollectGain | null {
+    this.sweepNeighborOrders(false);
+    const { save, error, gold, foldGold, foodDefId, foodFolded } = applySubmitNeighborOrder(this.save, orderId);
+    if (error) {
+      AudioManager.play('ui_deny');
+      Platform.showToast(error);
+      return null;
+    }
+    SaveManager.replace(save);
+    this.emit();
+    return { gold, foldGold, foodDefId, foodFolded };
+  }
+
+  drawRecipe(opts?: { reveal?: boolean }): {
+    ok: boolean;
+    recipeId?: RecipeId;
+    duplicate: boolean;
+    gold: number;
+    toast: string;
+  } {
+    const empty = { ok: false, duplicate: false, gold: 0, toast: '' };
+    const { save, error, toast, recipeUnlock, recipeId, duplicate, gold } = drawRecipeGacha(this.save);
+    if (error) {
+      AudioManager.play('ui_deny');
+      Platform.showToast(error);
+      return empty;
+    }
+    SaveManager.replace(save);
+    this.emit();
+    const reveal = opts?.reveal !== false;
+    if (duplicate) {
+      if (reveal) {
+        AudioManager.play('coin_gain');
+        if (toast) Platform.showToast(toast, 'success');
+      }
+      return { ok: true, recipeId, duplicate: true, gold, toast };
+    }
+    if (reveal) {
+      AudioManager.play('recipe_paper');
+      if (recipeUnlock) this.enqueueRecipeUnlocks([recipeUnlock], 200);
+    }
+    return { ok: true, recipeId: recipeUnlock ?? recipeId, duplicate: false, gold: 0, toast };
   }
 
   liveNeighborOrders(now = Date.now()): NeighborOrder[] {
@@ -483,40 +549,6 @@ class KitchenManagerClass {
     if (this.save.neighborOfferAt === at) return;
     SaveManager.replace({ ...this.save, neighborOfferAt: at });
     this.emit();
-  }
-
-  private _fulfillNeighborOrder(
-    save: KitchenSave,
-    recipeId: RecipeId,
-    now = Date.now(),
-  ): {
-    save: KitchenSave;
-    bonus: number;
-    npc: string;
-    dish: string;
-    foodName?: string;
-    foodFolded: boolean;
-    foldGold: number;
-  } {
-    const match = liveNeighborOrders(save.neighborOrders, now)
-      .filter((o) => o.recipeId === recipeId)
-      .sort((a, b) => a.expiresAt - b.expiresAt)[0];
-    if (!match) return { save, bonus: 0, npc: '', dish: '', foodFolded: false, foldGold: 0 };
-    const reward = match.reward ?? { gold: neighborOrderBonus(recipeId) };
-    const granted = applyNeighborReward(save, reward);
-    return {
-      save: {
-        ...granted.save,
-        neighborOrders: liveNeighborOrders(granted.save.neighborOrders, now).filter((o) => o.id !== match.id),
-        neighborOfferAt: Math.max(granted.save.neighborOfferAt, now + NEIGHBOR_COOLDOWN.accept),
-      },
-      bonus: granted.gold,
-      npc: neighborNpc(match.npcId).name,
-      dish: recipeById(recipeId)?.name ?? '菜',
-      foodName: granted.foodName,
-      foodFolded: granted.foodFolded,
-      foldGold: granted.foldGold,
-    };
   }
 
   discoverFood(defId: string, quality?: Quality, marketId?: MarketId): boolean {
@@ -641,6 +673,13 @@ class KitchenManagerClass {
     Platform.showToast(`金币 +${n} · 现有 ${money}`);
   }
 
+  gmAddTickets(n = 2): void {
+    const recipeTickets = this.save.recipeTickets + Math.max(0, Math.floor(n));
+    SaveManager.replace({ ...this.save, recipeTickets });
+    this.emit();
+    Platform.showToast(`菜谱券 +${n} · 现有 ${recipeTickets}`);
+  }
+
   /** 清掉进度，回到开局。云存档和账号新手标记会随后被这局空档盖掉。 */
   gmResetProgress(): void {
     this._cookFx = null;
@@ -708,7 +747,7 @@ class KitchenManagerClass {
   }
 
   allowGodPickToday(): boolean {
-    return this.save.dailyGodPickDate !== todayKey();
+    return !sameDayKey(this.save.dailyGodPickDate, todayKey());
   }
 
   markGodPickToday(): void {

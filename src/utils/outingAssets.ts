@@ -1,4 +1,4 @@
-import { MARKETS, MARKET_ART, SPECIAL_MARKETS, VEHICLES, getSpecialMarket, specialBootItems, sceneBg, type MarketId, type RunState, type SpecialMarketId } from '@/sim';
+import { MARKETS, MARKET_ART, SPECIAL_MARKETS, VEHICLES, getSpecialMarket, hudBuffPaths, specialBootItems, sceneBg, type MarketId, type RunState, type SpecialMarketId } from '@/sim';
 import { CARD_FRAME } from '@/gameobjects/market/MapView';
 import { HUD_ICON, UI_BTN } from '@/utils/ui';
 
@@ -23,6 +23,7 @@ export function destinationBootPaths(): string[] {
     HUD_ICON.player,
     HUD_ICON.coin,
     HUD_ICON.stamina,
+    ...hudBuffPaths(),
     HUD_ICON.peek,
     UI_BTN.terracotta,
     UI_BTN.cream,

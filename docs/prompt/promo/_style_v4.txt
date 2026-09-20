@@ -1,0 +1,14 @@
+The attached image is ONLY a style + object dictionary for 捡菜市集.
+Copy its ART LANGUAGE: clean casual 2D WeChat game, cream walls, terracotta or pale wood floor,
+medium-thick dark-brown outlines, flat cel shading, simple furniture silhouettes
+(brown door + round knob, wall hook, plastic bag vs woven basket, mini fridge vs tall cream fridge
+with whole vegetables inside, black wok on a tiny wooden table, white produce bins).
+Market side: bok choy and cabbage in white bins, tofu blocks, hanging garlic, a whole potato.
+
+IGNORE and NEVER redraw: HUD bars, coins UI, stamina UI, upgrade cards, buttons, arrows,
+GM text, 图鉴, numbers, labels, phone chrome, any person / boy / girl / hands / face.
+
+This is a promotional illustration, not a screenshot. Recompose, beautify, add sparkles and
+depth. Keep the same quiet tidy game look — not photoreal, not chibi-anime, not empty still-life.
+
+NO human character exists in this game. Empty scene only.

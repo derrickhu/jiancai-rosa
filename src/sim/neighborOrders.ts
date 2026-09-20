@@ -80,8 +80,8 @@ const LINES = [
 ];
 
 const GOLD_LINES = [
-  '做成了我多给你一笔，菜你自己留着。',
-  '这盘好了我多塞点钱，别跟我客气。',
+  '交过来我多给你一笔。',
+  '这盘交了多塞点钱，别跟我客气。',
 ];
 
 const SWAP_LINES = [
@@ -171,7 +171,7 @@ export function formatOrderRemain(ms: number): string {
 }
 
 export function missingNeedHint(view: RecipeUnlockView, recipeId: RecipeId): string {
-  if (recipeCanCook(view, recipeId)) return '冰箱里已经齐了，做了就给。';
+  if (recipeCanCook(view, recipeId)) return '材料齐了，去做再交。';
   const lack = recipeNeeds(view, recipeId)
     .filter((row) => row.have < row.need)
     .map((row) => row.label || getItem(row.iconId).name);
@@ -356,13 +356,13 @@ function latestUnlockedMarketIds(level: number): MarketId[] {
   return unlocked[0] ? [unlocked[0].id] : [];
 }
 
-function nextLockedMarketIds(level: number): MarketId[] {
+export function nextLockedMarketIds(level: number): MarketId[] {
   const locked = MARKETS.filter((m) => m.unlockLevel > level)
     .sort((a, b) => a.unlockLevel - b.unlockLevel);
   return locked[0] ? [locked[0].id] : [];
 }
 
-function unseenMarketFoods(
+export function unseenMarketFoods(
   view: NeighborRollView,
   marketIds: MarketId[],
   skip: Set<string>,

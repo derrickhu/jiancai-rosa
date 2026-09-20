@@ -1,0 +1,16 @@
+WeChat Mini Game commercial advertisement key art for 捡菜市集.
+
+LOOK at casual mobile-game ads (big 3D Chinese title, white ribbon subtitle, action + particles).
+DO NOT look like food photography, still-life, or a quiet empty room.
+
+Art style: clean casual 2D cartoon matching a cozy WeChat kitchen/market game.
+Cream walls, terracotta tiles, walnut wood, medium-thick dark-brown outlines,
+flat cel shading, cute simplified shapes, high readability at thumbnail size.
+Saturated but warm. NOT photoreal, NOT oil paint, NOT 3D render, NOT pixel art.
+
+Composition rule: show a GAMEPLAY ACTION in progress (hand rummaging, upgrade burst, wok toss).
+Exaggerate the hero object. Add motion lines, sparkles, flying whole vegetables.
+Bottom third is a designed title lockup: huge 3D yellow Chinese, thick dark outline,
+white inner stroke, sitting on a white waving ribbon. Title is part of the poster, not a UI sticker.
+
+Whole uncut ingredients only. No sliced food close-ups as the only subject.

@@ -19,7 +19,11 @@ export type DishEffectId =
   | 'stall_fish'
   | 'stall_meat'
   | 'sell_up'
+  | 'sell_up_small'
   | 'cook_xp'
+  | 'cook_xp_small'
+  | 'cook_double'
+  | 'fee_80'
   | 'order_soon';
 
 export type DishTiming = 'instant' | 'kitchen' | 'outing';
@@ -58,8 +62,12 @@ export interface OutingRunMods {
 }
 
 export const SELL_UP_MS = 30 * 60 * 1000;
+export const SELL_UP_SMALL_MS = 15 * 60 * 1000;
 export const SELL_UP_MUL = 1.5;
+export const SELL_UP_SMALL_MUL = 1.25;
 export const COOK_XP_MUL = 1.5;
+export const COOK_XP_SMALL_MUL = 1.25;
+export const FEE_80_MUL = 0.8;
 
 export const DISH_EFFECTS: Record<DishEffectId, DishEffectDef> = {
   stamina_1: { id: 'stamina_1', timing: 'instant', eatLabel: '吃：垫一口，体力 +1' },
@@ -87,6 +95,12 @@ export const DISH_EFFECTS: Record<DishEffectId, DishEffectDef> = {
     timing: 'outing',
     eatLabel: '吃：下一趟上品更肯露头',
     outingLine: '这趟上品更肯露头',
+  },
+  fee_80: {
+    id: 'fee_80',
+    timing: 'outing',
+    eatLabel: '吃：下一趟进场费八折',
+    outingLine: '这趟进场费八折',
   },
   fee_half: {
     id: 'fee_half',
@@ -148,11 +162,29 @@ export const DISH_EFFECTS: Record<DishEffectId, DishEffectDef> = {
     eatLabel: '吃：半小时内售价 ×1.5',
     kitchenLine: '售价 ×1.5',
   },
+  sell_up_small: {
+    id: 'sell_up_small',
+    timing: 'kitchen',
+    eatLabel: '吃：十五分钟内售价 ×1.25',
+    kitchenLine: '售价 ×1.25',
+  },
   cook_xp: {
     id: 'cook_xp',
     timing: 'kitchen',
     eatLabel: '吃：下一锅厨艺经验 ×1.5',
     kitchenLine: '下一锅经验 ×1.5',
+  },
+  cook_xp_small: {
+    id: 'cook_xp_small',
+    timing: 'kitchen',
+    eatLabel: '吃：下一锅厨艺经验 ×1.25',
+    kitchenLine: '下一锅经验 ×1.25',
+  },
+  cook_double: {
+    id: 'cook_double',
+    timing: 'kitchen',
+    eatLabel: '吃：下一锅出两份',
+    kitchenLine: '下一锅出两份',
   },
   order_soon: { id: 'order_soon', timing: 'instant', eatLabel: '吃：街坊马上再来点菜' },
 };
@@ -241,23 +273,26 @@ export const RECIPE_EAT: Record<RecipeId, DishEffectId> = {
   maoxuewang: 'stall_meat',
 
   // 隐藏：按稀有度对齐，不比同期可见菜更肥
-  smashed_cucumber: 'bag_dry_1',
-  garlic_bokchoy: 'stamina_1',
-  vinegar_cabbage: 'stamina_1',
-  stir_beans: 'bag_dry_1',
+  smashed_cucumber: 'cook_double',
+  garlic_bokchoy: 'sell_up_small',
+  vinegar_cabbage: 'sell_up_small',
+  stir_beans: 'sell_up',
   blistered_pepper: 'bag_dry_1',
-  spinach_egg_soup: 'steps_1',
-  qianlong_cabbage: 'steps_1',
-  celery_dried_tofu: 'cook_xp',
+  spinach_egg_soup: 'cook_xp_small',
+  qianlong_cabbage: 'cook_xp_small',
+  celery_dried_tofu: 'cook_xp_small',
   ants_tree: 'cook_xp',
-  onion_wood_ear: 'bag_dry_1',
+  garlic_water_spinach: 'bag_wet_1',
+  rape_tofu: 'order_soon',
+  corn_egg: 'fee_half',
+  onion_wood_ear: 'cook_xp_small',
   lotus_pepper: 'bag_dry_1',
-  carrot_mushroom: 'luck_rare',
-  yuxiang_eggplant: 'sell_up',
-  wood_ear_egg: 'stamina_2',
-  pepper_pork: 'fee_half',
-  bamboo_pork: 'fee_half',
-  ham_melon_soup: 'steps_2',
+  carrot_mushroom: 'bag_dry_1',
+  yuxiang_eggplant: 'sell_up_small',
+  wood_ear_egg: 'fee_80',
+  pepper_pork: 'fee_80',
+  bamboo_pork: 'fee_80',
+  ham_melon_soup: 'sell_up_small',
   wild_fish_soup: 'luck_epic',
 };
 
@@ -292,88 +327,318 @@ export function dishEffectDef(id: DishEffectId): DishEffectDef {
 export interface EatSaveSlice {
   stamina: number;
   staminaAt: number;
+  outingBuffs?: OutingBuff[];
+  kitchenBuffs?: KitchenBuff[];
   outingBuff?: OutingBuff;
   kitchenBuff?: KitchenBuff;
   neighborOfferAt: number;
 }
 
-export function liveOutingBuff<T extends { outingBuff?: OutingBuff }>(save: T): OutingBuff | undefined {
-  const buff = save.outingBuff;
-  if (!buff) return undefined;
-  if (dishEffectDef(buff.kind).timing !== 'outing') return undefined;
-  return buff;
+type BuffFamily = 'steps' | 'fee' | 'bag_dry' | 'bag_wet' | 'stall' | DishEffectId;
+
+function buffFamily(kind: DishEffectId): BuffFamily {
+  if (kind === 'steps_1' || kind === 'steps_2') return 'steps';
+  if (kind === 'fee_80' || kind === 'fee_half' || kind === 'fee_free') return 'fee';
+  if (kind === 'bag_dry_1' || kind === 'bag_dry_row') return 'bag_dry';
+  if (kind === 'bag_wet_1' || kind === 'bag_wet_row') return 'bag_wet';
+  if (kind === 'stall_leaf' || kind === 'stall_fish' || kind === 'stall_meat') return 'stall';
+  if (kind === 'sell_up' || kind === 'sell_up_small') return 'sell_up';
+  if (kind === 'cook_xp' || kind === 'cook_xp_small') return 'cook_xp';
+  return kind;
 }
 
-export function liveKitchenBuff<T extends { kitchenBuff?: KitchenBuff }>(
+function buffTier(kind: DishEffectId): number | null {
+  switch (kind) {
+    case 'steps_1': return 1;
+    case 'steps_2': return 2;
+    case 'fee_80': return 1;
+    case 'fee_half': return 2;
+    case 'fee_free': return 3;
+    case 'bag_dry_1': return 1;
+    case 'bag_dry_row': return 2;
+    case 'bag_wet_1': return 1;
+    case 'bag_wet_row': return 2;
+    case 'sell_up_small': return 1;
+    case 'sell_up': return 2;
+    case 'cook_xp_small': return 1;
+    case 'cook_xp': return 2;
+    default: return null;
+  }
+}
+
+function readOutingBuffs<T extends EatSaveSlice | { outingBuffs?: OutingBuff[]; outingBuff?: OutingBuff }>(
+  save: T,
+): OutingBuff[] {
+  if (Array.isArray(save.outingBuffs)) return save.outingBuffs;
+  return save.outingBuff ? [save.outingBuff] : [];
+}
+
+function readKitchenBuffs<T extends EatSaveSlice | { kitchenBuffs?: KitchenBuff[]; kitchenBuff?: KitchenBuff }>(
+  save: T,
+): KitchenBuff[] {
+  if (Array.isArray(save.kitchenBuffs)) return save.kitchenBuffs;
+  return save.kitchenBuff ? [save.kitchenBuff] : [];
+}
+
+function isLiveKitchenBuff(buff: KitchenBuff, now: number): boolean {
+  if (dishEffectDef(buff.kind).timing !== 'kitchen') return false;
+  return !(buff.until > 0 && buff.until <= now);
+}
+
+export function liveOutingBuffs<T extends { outingBuffs?: OutingBuff[]; outingBuff?: OutingBuff }>(
+  save: T,
+): OutingBuff[] {
+  return readOutingBuffs(save).filter((buff) => dishEffectDef(buff.kind).timing === 'outing');
+}
+
+export function liveKitchenBuffs<T extends { kitchenBuffs?: KitchenBuff[]; kitchenBuff?: KitchenBuff }>(
+  save: T,
+  now = Date.now(),
+): KitchenBuff[] {
+  return readKitchenBuffs(save).filter((buff) => isLiveKitchenBuff(buff, now));
+}
+
+export function liveOutingBuff<T extends { outingBuffs?: OutingBuff[]; outingBuff?: OutingBuff }>(
+  save: T,
+): OutingBuff | undefined {
+  return liveOutingBuffs(save)[0];
+}
+
+export function liveKitchenBuff<T extends { kitchenBuffs?: KitchenBuff[]; kitchenBuff?: KitchenBuff }>(
   save: T,
   now = Date.now(),
 ): KitchenBuff | undefined {
-  const buff = save.kitchenBuff;
-  if (!buff) return undefined;
-  if (dishEffectDef(buff.kind).timing !== 'kitchen') return undefined;
-  if (buff.kind !== 'cook_xp' && buff.until > 0 && buff.until <= now) return undefined;
-  return buff;
+  return liveKitchenBuffs(save, now)[0];
 }
 
-export function outingBuffLine<T extends { outingBuff?: OutingBuff }>(save: T): string | null {
-  const buff = liveOutingBuff(save);
-  if (!buff) return null;
+function formatOutingBuff(buff: OutingBuff): string | null {
   const line = dishEffectDef(buff.kind).outingLine;
-  const name = recipeById(buff.recipeId)?.name;
   if (!line) return null;
+  const name = recipeById(buff.recipeId)?.name;
   return name ? `${line}（${name}）` : line;
 }
 
-export function kitchenBuffLine<T extends { kitchenBuff?: KitchenBuff }>(save: T, now = Date.now()): string | null {
-  const buff = liveKitchenBuff(save, now);
-  if (!buff) return null;
+function formatKitchenBuff(buff: KitchenBuff, now: number): string | null {
   const line = dishEffectDef(buff.kind).kitchenLine;
-  const name = recipeById(buff.recipeId)?.name;
   if (!line) return null;
-  if (buff.kind === 'sell_up' && buff.until > now) {
+  const name = recipeById(buff.recipeId)?.name;
+  if ((buff.kind === 'sell_up' || buff.kind === 'sell_up_small') && buff.until > now) {
     const min = Math.max(1, Math.ceil((buff.until - now) / 60000));
     return name ? `${line} · 还剩 ${min} 分钟（${name}）` : `${line} · 还剩 ${min} 分钟`;
   }
   return name ? `${line}（${name}）` : line;
 }
 
-export function kitchenSellMul<T extends { kitchenBuff?: KitchenBuff }>(save: T, now = Date.now()): number {
-  const buff = liveKitchenBuff(save, now);
-  return buff?.kind === 'sell_up' ? SELL_UP_MUL : 1;
+export function outingBuffLines<T extends { outingBuffs?: OutingBuff[]; outingBuff?: OutingBuff }>(
+  save: T,
+): string[] {
+  return liveOutingBuffs(save).map(formatOutingBuff).filter((line): line is string => !!line);
 }
 
-export function kitchenCookXpMul<T extends { kitchenBuff?: KitchenBuff }>(save: T, now = Date.now()): number {
-  const buff = liveKitchenBuff(save, now);
-  return buff?.kind === 'cook_xp' ? COOK_XP_MUL : 1;
+export function kitchenBuffLines<T extends { kitchenBuffs?: KitchenBuff[]; kitchenBuff?: KitchenBuff }>(
+  save: T,
+  now = Date.now(),
+): string[] {
+  return liveKitchenBuffs(save, now).map((buff) => formatKitchenBuff(buff, now))
+    .filter((line): line is string => !!line);
 }
 
-export function consumeCookXpBuff<T extends { kitchenBuff?: KitchenBuff }>(save: T, now = Date.now()): T {
-  const buff = liveKitchenBuff(save, now);
-  if (buff?.kind !== 'cook_xp') return save;
-  const next = { ...save };
-  delete next.kitchenBuff;
-  return next;
+export function outingBuffLine<T extends { outingBuffs?: OutingBuff[]; outingBuff?: OutingBuff }>(
+  save: T,
+): string | null {
+  const lines = outingBuffLines(save);
+  return lines.length ? lines.join('  ·  ') : null;
 }
 
-export function clearOutingBuff<T extends { outingBuff?: OutingBuff }>(save: T): T {
-  if (!save.outingBuff) return save;
-  const next = { ...save };
-  delete next.outingBuff;
-  return next;
+export function kitchenBuffLine<T extends { kitchenBuffs?: KitchenBuff[]; kitchenBuff?: KitchenBuff }>(
+  save: T,
+  now = Date.now(),
+): string | null {
+  const lines = kitchenBuffLines(save, now);
+  return lines.length ? lines.join('  ·  ') : null;
 }
 
-export function outingRunMods<T extends { outingBuff?: OutingBuff }>(save: T): OutingRunMods {
-  const kind = liveOutingBuff(save)?.kind;
+export type HudBuffIconKey =
+  | 'steps'
+  | 'luck_rare'
+  | 'luck_epic'
+  | 'fee'
+  | 'bag_dry'
+  | 'bag_wet'
+  | 'stall_leaf'
+  | 'stall_fish'
+  | 'stall_meat'
+  | 'sell_up'
+  | 'cook_xp'
+  | 'cook_double';
+
+export interface HudBuff {
+  kind: DishEffectId;
+  icon: HudBuffIconKey;
+  label: string;
+  until?: number;
+}
+
+export function buffIconKey(kind: DishEffectId): HudBuffIconKey | null {
+  if (dishEffectDef(kind).timing === 'instant') return null;
+  if (kind === 'stall_leaf' || kind === 'stall_fish' || kind === 'stall_meat') return kind;
+  if (kind === 'luck_rare' || kind === 'luck_epic' || kind === 'cook_double') return kind;
+  const fam = buffFamily(kind);
+  if (
+    fam === 'steps'
+    || fam === 'fee'
+    || fam === 'bag_dry'
+    || fam === 'bag_wet'
+    || fam === 'sell_up'
+    || fam === 'cook_xp'
+  ) return fam;
+  return null;
+}
+
+export function buffIconPath(icon: HudBuffIconKey): string {
+  return `subpkg_images/buff_${icon}.png`;
+}
+
+export const HUD_BUFF_ICON_KEYS: HudBuffIconKey[] = [
+  'steps',
+  'luck_rare',
+  'luck_epic',
+  'fee',
+  'bag_dry',
+  'bag_wet',
+  'stall_leaf',
+  'stall_fish',
+  'stall_meat',
+  'sell_up',
+  'cook_xp',
+  'cook_double',
+];
+
+export function hudBuffPaths(): string[] {
+  return HUD_BUFF_ICON_KEYS.map(buffIconPath);
+}
+
+export function liveHudBuffs<T extends {
+  outingBuffs?: OutingBuff[];
+  outingBuff?: OutingBuff;
+  kitchenBuffs?: KitchenBuff[];
+  kitchenBuff?: KitchenBuff;
+}>(save: T, now = Date.now()): HudBuff[] {
+  const out: HudBuff[] = [];
+  for (const buff of liveKitchenBuffs(save, now)) {
+    const icon = buffIconKey(buff.kind);
+    const label = formatKitchenBuff(buff, now);
+    if (icon && label) out.push({ kind: buff.kind, icon, label, until: buff.until });
+  }
+  for (const buff of liveOutingBuffs(save)) {
+    const icon = buffIconKey(buff.kind);
+    const label = formatOutingBuff(buff);
+    if (icon && label) out.push({ kind: buff.kind, icon, label });
+  }
+  return out;
+}
+
+export function kitchenSellMul<T extends { kitchenBuffs?: KitchenBuff[]; kitchenBuff?: KitchenBuff }>(
+  save: T,
+  now = Date.now(),
+): number {
+  const kinds = liveKitchenBuffs(save, now).map((buff) => buff.kind);
+  if (kinds.includes('sell_up')) return SELL_UP_MUL;
+  if (kinds.includes('sell_up_small')) return SELL_UP_SMALL_MUL;
+  return 1;
+}
+
+export function kitchenCookXpMul<T extends { kitchenBuffs?: KitchenBuff[]; kitchenBuff?: KitchenBuff }>(
+  save: T,
+  now = Date.now(),
+): number {
+  const kinds = liveKitchenBuffs(save, now).map((buff) => buff.kind);
+  if (kinds.includes('cook_xp')) return COOK_XP_MUL;
+  if (kinds.includes('cook_xp_small')) return COOK_XP_SMALL_MUL;
+  return 1;
+}
+
+export function kitchenHasCookDouble<T extends { kitchenBuffs?: KitchenBuff[]; kitchenBuff?: KitchenBuff }>(
+  save: T,
+  now = Date.now(),
+): boolean {
+  return liveKitchenBuffs(save, now).some((buff) => buff.kind === 'cook_double');
+}
+
+function dropKitchenKind<T extends { kitchenBuffs?: KitchenBuff[]; kitchenBuff?: KitchenBuff }>(
+  save: T,
+  kind: DishEffectId,
+  now = Date.now(),
+): T {
+  const live = liveKitchenBuffs(save, now);
+  if (!live.some((buff) => buff.kind === kind)) return save;
+  return { ...save, kitchenBuffs: live.filter((buff) => buff.kind !== kind) };
+}
+
+export function consumeCookXpBuff<T extends { kitchenBuffs?: KitchenBuff[]; kitchenBuff?: KitchenBuff }>(
+  save: T,
+  now = Date.now(),
+): T {
+  const live = liveKitchenBuffs(save, now);
+  const next = live.filter((buff) => buff.kind !== 'cook_xp' && buff.kind !== 'cook_xp_small');
+  if (next.length === live.length) return save;
+  return { ...save, kitchenBuffs: next };
+}
+
+export function consumeCookDoubleBuff<T extends { kitchenBuffs?: KitchenBuff[]; kitchenBuff?: KitchenBuff }>(
+  save: T,
+  now = Date.now(),
+): T {
+  return dropKitchenKind(save, 'cook_double', now);
+}
+
+export function clearOutingBuff<T extends { outingBuffs?: OutingBuff[]; outingBuff?: OutingBuff }>(save: T): T {
+  if (!liveOutingBuffs(save).length) return save;
+  return { ...save, outingBuffs: [] };
+}
+
+export function outingRunMods<T extends { outingBuffs?: OutingBuff[]; outingBuff?: OutingBuff }>(
+  save: T,
+): OutingRunMods {
+  const kinds = liveOutingBuffs(save).map((buff) => buff.kind);
+  let extraSteps = 0;
+  let luckRare = 0;
+  let luckEpic = 0;
+  let feeMul = 1;
+  let stallBias: OutingRunMods['stallBias'];
+  let extraDryCells = 0;
+  let extraWetCells = 0;
+  let extraDryRows = 0;
+  let extraWetRows = 0;
+  for (const kind of kinds) {
+    if (kind === 'steps_2') extraSteps = Math.max(extraSteps, 2);
+    if (kind === 'steps_1') extraSteps = Math.max(extraSteps, 1);
+    if (kind === 'luck_rare') luckRare += 0.08;
+    if (kind === 'luck_epic') {
+      luckRare += 0.03;
+      luckEpic += 0.05;
+    }
+    if (kind === 'fee_free') feeMul = 0;
+    else if (kind === 'fee_half') feeMul = Math.min(feeMul, 0.5);
+    else if (kind === 'fee_80') feeMul = Math.min(feeMul, FEE_80_MUL);
+    if (kind === 'stall_leaf') stallBias = 'leaf';
+    if (kind === 'stall_fish') stallBias = 'fish';
+    if (kind === 'stall_meat') stallBias = 'meat';
+    if (kind === 'bag_dry_1') extraDryCells += 1;
+    if (kind === 'bag_wet_1') extraWetCells += 1;
+    if (kind === 'bag_dry_row') extraDryRows += 1;
+    if (kind === 'bag_wet_row') extraWetRows += 1;
+  }
   return {
-    extraSteps: kind === 'steps_2' ? 2 : kind === 'steps_1' ? 1 : 0,
-    luckRare: kind === 'luck_rare' ? 0.08 : kind === 'luck_epic' ? 0.03 : 0,
-    luckEpic: kind === 'luck_epic' ? 0.05 : 0,
-    feeMul: kind === 'fee_free' ? 0 : kind === 'fee_half' ? 0.5 : 1,
-    stallBias: kind === 'stall_leaf' ? 'leaf' : kind === 'stall_fish' ? 'fish' : kind === 'stall_meat' ? 'meat' : undefined,
-    extraDryCells: kind === 'bag_dry_1' ? 1 : 0,
-    extraWetCells: kind === 'bag_wet_1' ? 1 : 0,
-    extraDryRows: kind === 'bag_dry_row' ? 1 : 0,
-    extraWetRows: kind === 'bag_wet_row' ? 1 : 0,
+    extraSteps,
+    luckRare,
+    luckEpic,
+    feeMul,
+    stallBias,
+    extraDryCells,
+    extraWetCells,
+    extraDryRows,
+    extraWetRows,
   };
 }
 
@@ -396,6 +661,52 @@ export function migrateKitchenBuff(raw: unknown): KitchenBuff | undefined {
   if (DISH_EFFECTS[rec.kind as DishEffectId].timing !== 'kitchen') return undefined;
   const until = typeof rec.until === 'number' && Number.isFinite(rec.until) ? rec.until : 0;
   return { kind: rec.kind as DishEffectId, recipeId: rec.recipeId as RecipeId, until };
+}
+
+function compactBuffs<T extends { kind: DishEffectId }>(list: T[]): T[] {
+  const out: T[] = [];
+  for (const buff of list) {
+    const fam = buffFamily(buff.kind);
+    const idx = out.findIndex((row) => buffFamily(row.kind) === fam);
+    if (idx < 0) {
+      out.push(buff);
+      continue;
+    }
+    const prev = out[idx];
+    const prevTier = buffTier(prev.kind);
+    const nextTier = buffTier(buff.kind);
+    if (prevTier != null && nextTier != null && nextTier < prevTier) continue;
+    out[idx] = buff;
+  }
+  return out;
+}
+
+export function migrateOutingBuffs(raw: unknown, legacy?: unknown): OutingBuff[] {
+  const rows = Array.isArray(raw) ? raw : legacy !== undefined ? [legacy] : [];
+  return compactBuffs(rows.map(migrateOutingBuff).filter((row): row is OutingBuff => !!row));
+}
+
+export function migrateKitchenBuffs(raw: unknown, legacy?: unknown): KitchenBuff[] {
+  const rows = Array.isArray(raw) ? raw : legacy !== undefined ? [legacy] : [];
+  return compactBuffs(rows.map(migrateKitchenBuff).filter((row): row is KitchenBuff => !!row));
+}
+
+function upsertBuff<T extends { kind: DishEffectId }>(
+  list: T[],
+  incoming: T,
+): { list: T[]; replaced: boolean; ignored: boolean } {
+  const fam = buffFamily(incoming.kind);
+  const idx = list.findIndex((row) => buffFamily(row.kind) === fam);
+  if (idx < 0) return { list: [...list, incoming], replaced: false, ignored: false };
+  const prev = list[idx];
+  const prevTier = buffTier(prev.kind);
+  const nextTier = buffTier(incoming.kind);
+  if (prevTier != null && nextTier != null && nextTier < prevTier) {
+    return { list, replaced: false, ignored: true };
+  }
+  const next = [...list];
+  next[idx] = incoming;
+  return { list: next, replaced: true, ignored: false };
 }
 
 export function applyEatEffects<T extends EatSaveSlice>(
@@ -441,27 +752,37 @@ export function applyEatEffects<T extends EatSaveSlice>(
   }
 
   if (def.timing === 'kitchen') {
-    const until = def.id === 'sell_up' ? now + SELL_UP_MS : 0;
-    const prev = liveKitchenBuff(save, now);
-    const replaced = prev && prev.recipeId !== recipeId;
+    const until = def.id === 'sell_up'
+      ? now + SELL_UP_MS
+      : def.id === 'sell_up_small'
+        ? now + SELL_UP_SMALL_MS
+        : 0;
+    const incoming: KitchenBuff = { kind: def.id, recipeId, until };
+    const put = upsertBuff(liveKitchenBuffs(save, now), incoming);
+    const line = def.kitchenLine ?? def.eatLabel;
     return {
-      save: { ...save, kitchenBuff: { kind: def.id, recipeId, until } },
+      save: { ...save, kitchenBuffs: put.list },
       stamina: 0,
-      toast: replaced
-        ? `改吃${name}，${def.kitchenLine ?? def.eatLabel}`
-        : `吃了${name}，${def.kitchenLine ?? def.eatLabel}`,
+      toast: put.ignored
+        ? `已有更强的厨房加成，这口${name}没盖过去`
+        : put.replaced
+          ? `换了${name}，${line}`
+          : `吃了${name}，${line}`,
       nudgeOffer: false,
     };
   }
 
-  const prev = liveOutingBuff(save);
-  const replaced = prev && prev.recipeId !== recipeId;
+  const incoming: OutingBuff = { kind: def.id, recipeId };
+  const put = upsertBuff(liveOutingBuffs(save), incoming);
+  const line = def.outingLine ?? def.eatLabel;
   return {
-    save: { ...save, outingBuff: { kind: def.id, recipeId } },
+    save: { ...save, outingBuffs: put.list },
     stamina: 0,
-    toast: replaced
-      ? `改吃${name}，${def.outingLine ?? def.eatLabel}`
-      : `吃了${name}，${def.outingLine ?? def.eatLabel}`,
+    toast: put.ignored
+      ? `已有更强的出门加成，这口${name}没盖过去`
+      : put.replaced
+        ? `换了${name}，${line}`
+        : `吃了${name}，${line}`,
     nudgeOffer: false,
   };
 }

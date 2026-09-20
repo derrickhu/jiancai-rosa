@@ -239,14 +239,14 @@ export class DexPanel extends PIXI.Container {
       return { have: items.filter((it) => isFoodUnlocked(s, it.id)).length, total: items.length };
     }
     if (this._view.kind === 'dish') {
-      const items = dishesInGroup(this._view.group);
+      const items = dishesInGroup(this._view.group, s.recipesFound);
       return { have: items.filter((it) => isDishUnlocked(s, it.id)).length, total: items.length };
     }
     if (this._tab === 'food') {
       const items = DEX_FOOD_CATS.flatMap((c) => foodsInCat(c.id));
       return { have: items.filter((it) => isFoodUnlocked(s, it.id)).length, total: items.length };
     }
-    const items = dishGroups().flatMap((g) => dishesInGroup(g));
+    const items = dishGroups().flatMap((g) => dishesInGroup(g, s.recipesFound));
     return { have: items.filter((it) => isDishUnlocked(s, it.id)).length, total: items.length };
   }
 
@@ -334,7 +334,7 @@ export class DexPanel extends PIXI.Container {
       list,
       width,
       dishGroups().map((group) => {
-        const items = dishesInGroup(group);
+        const items = dishesInGroup(group, save.recipesFound);
         const have = items.filter((it) => isDishUnlocked(save, it.id)).length;
         return {
           label: group,
@@ -468,7 +468,7 @@ export class DexPanel extends PIXI.Container {
         rarity: it.rarity,
       }));
     } else if (this._view.kind === 'dish') {
-      entries = dishesInGroup(this._view.group).map((it) => ({
+      entries = dishesInGroup(this._view.group, save.recipesFound).map((it) => ({
         id: it.id,
         name: it.name,
         blurb: it.blurb,

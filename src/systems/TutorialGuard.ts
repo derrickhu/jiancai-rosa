@@ -101,6 +101,7 @@ export const TutorialGuard = {
   block(action: TutorialAction, toast = true): boolean {
     if (this.allows(action)) return false;
     if (toast && TutorialManager.isActive) {
+      if (TutorialManager.isStep(TutorialStep.CLAIM_GIFT)) return true;
       AudioManager.play('ui_deny');
       Platform.showToast(DENY[action] ?? TUTORIAL_DENY.default);
     }

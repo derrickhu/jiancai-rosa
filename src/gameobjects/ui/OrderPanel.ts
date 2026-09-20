@@ -5,6 +5,7 @@ import { OverlayManager } from '@/core/OverlayManager';
 import { KitchenManager } from '@/managers/KitchenManager';
 import {
   formatOrderRemain,
+  fridgeDishQty,
   neighborNpc,
   neighborOrderReward,
   neighborRewardChips,
@@ -12,7 +13,10 @@ import {
   recipeNeeds,
   recipeUnlockView,
   type NeighborOrder,
+  type RecipeId,
 } from '@/sim';
+import { playRewardCollect } from '@/utils/coinCollect';
+import { orderPanelPaths } from '@/utils/panelAssets';
 import { fillRect, makeLabel, makeRewardStrip, makeSlicedButton } from '@/utils/ui';
 import {
   dishTexture,
@@ -20,7 +24,7 @@ import {
   gameTexture,
   isTextureReady,
   itemTexture,
-  whenTextureReady,
+  watchTextures,
 } from '@/utils/assets';
 import {
   inspectFromItem,
@@ -41,9 +45,11 @@ const GOLD = 0xC48A14;
 
 export class OrderPanel extends PIXI.Container {
   _isOpen = false;
+  onCook: ((recipeId: RecipeId) => void) | null = null;
   private _root = new PIXI.Container();
   private _timer = 0;
   private _inspect: ItemInspectView | null = null;
+  private _paintQueued = false;
 
   constructor() {
     super();
@@ -62,6 +68,7 @@ export class OrderPanel extends PIXI.Container {
     this.visible = true;
     this._inspect = null;
     this._armTimer();
+    this._warm();
     this.relayout();
     OverlayManager.bringToFront();
   }
@@ -71,13 +78,31 @@ export class OrderPanel extends PIXI.Container {
     this._isOpen = false;
     this.visible = false;
     this._inspect = null;
+    this._paintQueued = false;
     this._clearTimer();
     this._root.removeChildren();
   }
 
+  private _warm(): void {
+    watchTextures(orderPanelPaths(KitchenManager.save, KitchenManager.liveNeighborOrders()), this._scheduleRelayout);
+  }
+
+  private _scheduleRelayout = (): void => {
+    if (!this._isOpen || this._paintQueued) return;
+    this._paintQueued = true;
+    const later = typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame
+      : (cb: () => void) => setTimeout(cb, 0);
+    later(() => {
+      this._paintQueued = false;
+      if (this._isOpen) this.relayout();
+    });
+  };
+
   relayout(): void {
     this._root.removeChildren();
     if (!this._isOpen) return;
+    this._warm();
     const now = Date.now();
     const orders = KitchenManager.liveNeighborOrders(now);
     if (!orders.length) {
@@ -133,7 +158,7 @@ export class OrderPanel extends PIXI.Container {
     title.position.set(x + 36, y + 28);
     title.eventMode = 'none';
     this._root.addChild(title);
-    const hint = makeLabel('做好了当场结，菜你留着。街坊有时还会拿家里余的换。', 18, MUTED, {
+    const hint = makeLabel('做好了点交菜。街坊给钱，有时还拿家里余的换。', 18, MUTED, {
       wordWrap: true,
       breakWords: true,
       wordWrapWidth: boxW - 72,
@@ -151,9 +176,7 @@ export class OrderPanel extends PIXI.Container {
       width: closeW,
       height: 46,
       skin: 'wood',
-      onReady: () => {
-        if (this._isOpen) this.relayout();
-      },
+      onReady: this._scheduleRelayout,
     });
     close.position.set(x + (boxW - closeW) / 2, y + boxH - 60);
     close.on('pointertap', () => this.close());
@@ -169,9 +192,7 @@ export class OrderPanel extends PIXI.Container {
           this._inspect = null;
           this.relayout();
         },
-        onReady: () => {
-          if (this._isOpen) this.relayout();
-        },
+        onReady: this._scheduleRelayout,
       }));
     }
   }
@@ -195,13 +216,11 @@ export class OrderPanel extends PIXI.Container {
     const npc = neighborNpc(order.npcId);
     const recipe = recipeById(order.recipeId);
     const view = recipeUnlockView(KitchenManager.save);
+    const have = fridgeDishQty(KitchenManager.save.fridge, order.recipeId);
     const pad = 16;
     const faceW = 154;
     const faceH = 220;
     const faceX = x + 10;
-    whenTextureReady(npc.portrait, () => {
-      if (this._isOpen) this.relayout();
-    });
     const tex = gameTexture(npc.portrait);
     if (isTextureReady(tex)) {
       const spr = new PIXI.Sprite(tex);
@@ -218,9 +237,7 @@ export class OrderPanel extends PIXI.Container {
       height: 44,
       skin: 'cream',
       textColor: INK,
-      onReady: () => {
-        if (this._isOpen) this.relayout();
-      },
+      onReady: this._scheduleRelayout,
     });
     drop.position.set(x + width - 128, y + pad);
     drop.on('pointertap', () => {
@@ -244,7 +261,11 @@ export class OrderPanel extends PIXI.Container {
 
     const lackY = y + pad + 82;
     const missing = recipeNeeds(view, order.recipeId).filter((row) => row.have < row.need);
-    if (missing.length) {
+    if (have > 0) {
+      const ready = makeLabel('冰箱里有现成的，点交菜就扣。', 20, MUTED);
+      ready.position.set(textX, lackY + 14);
+      root.addChild(ready);
+    } else if (missing.length) {
       const lack = makeLabel('还缺', 20, MUTED);
       lack.anchor.set(0, 0.5);
       lack.position.set(textX, lackY + 24);
@@ -255,19 +276,51 @@ export class OrderPanel extends PIXI.Container {
         usedX += 58;
       }
     } else {
-      const ready = makeLabel('冰箱里已经齐了，做了就给。', 20, MUTED);
-      ready.position.set(textX, lackY + 14);
+      const ready = makeLabel('材料齐了，去做再交。', 20, MUTED);
+      ready.anchor.set(0, 0.5);
+      ready.position.set(textX, lackY + 22);
       root.addChild(ready);
+      const cook = makeSlicedButton({
+        label: '去做菜',
+        width: 112,
+        height: 44,
+        skin: 'terracotta',
+        textColor: 0xFFF8F0,
+        onReady: this._scheduleRelayout,
+      });
+      cook.position.set(textX + Math.ceil(ready.width) + 12, lackY);
+      cook.on('pointertap', () => {
+        this.onCook?.(order.recipeId);
+      });
+      root.addChild(cook);
     }
 
     const chips = neighborRewardChips(neighborOrderReward(order));
     if (chips.length) {
-      const strip = makeRewardStrip(chips, () => {
-        if (this._isOpen) this.relayout();
-      }, '做成给', 'paper');
+      const strip = makeRewardStrip(chips, this._scheduleRelayout, '交菜给', 'paper');
       strip.position.set(textX, y + pad + 164);
       root.addChild(strip);
     }
+
+    const btn = makeSlicedButton({
+      label: '交菜',
+      width: 112,
+      height: 44,
+      skin: have > 0 ? 'terracotta' : 'cream',
+      textColor: have > 0 ? 0xFFF8F0 : INK,
+      onReady: this._scheduleRelayout,
+    });
+    btn.position.set(x + width - 128, y + pad + 52);
+    btn.on('pointertap', () => {
+      const gain = KitchenManager.submitNeighborOrder(order.id);
+      if (!gain) return;
+      this._inspect = null;
+      const from = { x: Game.designWidth / 2, y: Math.round(Game.logicHeight * 0.42) };
+      if (KitchenManager.liveNeighborOrders().length) this.relayout();
+      else this.close(true);
+      playRewardCollect({ ...gain, from });
+    });
+    root.addChild(btn);
     return root;
   }
 
@@ -279,16 +332,15 @@ export class OrderPanel extends PIXI.Container {
     plate.drawRoundedRect(x, y, size, size, 14);
     plate.endFill();
     root.addChild(plate);
-    const path = `subpkg_images/dish_${order.recipeId}.png`;
-    whenTextureReady(path, () => {
-      if (this._isOpen) this.relayout();
-    });
-    const dish = new PIXI.Sprite(dishTexture(order.recipeId));
-    fitSpriteInBox(dish, size - 10, size - 10);
-    dish.anchor.set(0.5);
-    dish.position.set(x + size / 2, y + size / 2);
-    dish.eventMode = 'none';
-    root.addChild(dish);
+    const dishTex = dishTexture(order.recipeId);
+    if (isTextureReady(dishTex)) {
+      const dish = new PIXI.Sprite(dishTex);
+      fitSpriteInBox(dish, size - 10, size - 10);
+      dish.anchor.set(0.5);
+      dish.position.set(x + size / 2, y + size / 2);
+      dish.eventMode = 'none';
+      root.addChild(dish);
+    }
 
     root.eventMode = 'static';
     root.cursor = 'pointer';
@@ -312,16 +364,15 @@ export class OrderPanel extends PIXI.Container {
     plate.drawRoundedRect(x, y, size, size, 12);
     plate.endFill();
     root.addChild(plate);
-    const path = `subpkg_images/${iconId}.png`;
-    whenTextureReady(path, () => {
-      if (this._isOpen) this.relayout();
-    });
-    const icon = new PIXI.Sprite(itemTexture(iconId));
-    fitSpriteInBox(icon, size - 8, size - 8);
-    icon.anchor.set(0.5);
-    icon.position.set(x + size / 2, y + size / 2);
-    icon.eventMode = 'none';
-    root.addChild(icon);
+    const iconTex = itemTexture(iconId);
+    if (isTextureReady(iconTex)) {
+      const icon = new PIXI.Sprite(iconTex);
+      fitSpriteInBox(icon, size - 8, size - 8);
+      icon.anchor.set(0.5);
+      icon.position.set(x + size / 2, y + size / 2);
+      icon.eventMode = 'none';
+      root.addChild(icon);
+    }
 
     const count = makeLabel(`${have}/${need}`, 16, TERRACOTTA, { fontWeight: '700' });
     count.anchor.set(0.5, 0);
