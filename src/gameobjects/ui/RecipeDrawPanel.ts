@@ -375,6 +375,7 @@ export class RecipeDrawPanel extends PIXI.Container {
       ? { x: this._box.x, y: this._box.y - 80 }
       : { x: Game.designWidth / 2, y: Math.round(Game.logicHeight * 0.42) };
     if (result.foodDefId) {
+      if (result.foodFolded && result.toast) Platform.showToast(result.toast, 'success');
       playRewardCollect({
         gold: result.gold,
         foldGold: result.foldGold,
