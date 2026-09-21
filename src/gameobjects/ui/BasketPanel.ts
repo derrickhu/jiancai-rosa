@@ -59,6 +59,7 @@ export class BasketPanel extends PIXI.Container {
   private _scroller: VerticalScroller;
   private _stageScroller: VerticalScroller;
   private _unlocking = false;
+  private _flexTapAt = 0;
   private _paintQueued = false;
   private _drag: {
     uid: string;
@@ -577,14 +578,26 @@ export class BasketPanel extends PIXI.Container {
     sub.position.set(title.x + title.width + gap, midY);
     btn.addChild(play, title, sub);
     btn.position.set((w - btnW) / 2, (h - btnH) / 2);
-    btn.on('pointertap', () => {
-      if (this._scroller.moved || this._unlocking) return;
-      this._watchFlexAd();
-    });
+    btn.eventMode = 'none';
     root.addChild(btn);
     root.position.set(gridX, gridY);
-    root.eventMode = 'none';
+    root.eventMode = 'static';
+    root.cursor = 'pointer';
+    root.hitArea = new PIXI.Rectangle(0, 0, w, h);
+    root.on('pointerdown', (e) => {
+      e.stopPropagation();
+      this._scroller.cancel();
+      this._onFlexTap();
+    });
     return root;
+  }
+
+  private _onFlexTap(): void {
+    const now = Date.now();
+    if (now - this._flexTapAt < 280) return;
+    this._flexTapAt = now;
+    AudioManager.play('ui_click');
+    this._watchFlexAd();
   }
 
   private _watchFlexAd(): void {
