@@ -1,14 +1,15 @@
 export type MarketId =
   | 'xiangko' | 'heyan' | 'qiaotou'
   | 'shanwu' | 'jiangbian' | 'nanshi'
-  | 'laocheng' | 'dukou' | 'shanzhen';
+  | 'laocheng' | 'dukou' | 'shanzhen'
+  | 'guoyuan' | 'tiantou' | 'futou';
 
 export interface MarketDef {
   id: MarketId;
   name: string;
   hint: string;
   unlockLevel: number;
-  /** 出门扣几口包子。每两个菜场 +1：前两场 1，再两场 2，以此类推。 */
+  /** 出门扣几口包子。前九场每两个菜场 +1，到山珍行是 5。果园、田头、埠头也停在 5。 */
   staminaCost: number;
   thumb: string;
 }
@@ -89,6 +90,30 @@ export const MARKETS: MarketDef[] = [
     unlockLevel: 14,
     staminaCost: 5,
     thumb: 'subpkg_images/dest_shanzhen.jpg',
+  },
+  {
+    id: 'guoyuan',
+    name: '果园早市',
+    hint: '果林边上的早市，菠萝和苦瓜还挂着露水。',
+    unlockLevel: 16,
+    staminaCost: 5,
+    thumb: 'subpkg_images/dest_guoyuan.jpg',
+  },
+  {
+    id: 'tiantou',
+    name: '田头晚集',
+    hint: '天色暗下来才出摊，田菜和羊肉案都在埂上。',
+    unlockLevel: 19,
+    staminaCost: 5,
+    thumb: 'subpkg_images/dest_tiantou.jpg',
+  },
+  {
+    id: 'futou',
+    name: '埠头果菜行',
+    hint: '南边的果和海里的鱼搁在同一条埠头。',
+    unlockLevel: 22,
+    staminaCost: 5,
+    thumb: 'subpkg_images/dest_futou.jpg',
   },
 ];
 

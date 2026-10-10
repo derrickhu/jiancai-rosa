@@ -62,6 +62,9 @@ const MARKET_BGM: Record<string, MarketBgmId> = {
   laocheng: 'market_laocheng',
   dukou: 'market_jiangbian',
   shanzhen: 'market_laocheng',
+  guoyuan: 'market_heyan',
+  tiantou: 'market_shanwu',
+  futou: 'market_jiangbian',
 };
 
 const AUDIO_DIR = 'subpkg_audio';

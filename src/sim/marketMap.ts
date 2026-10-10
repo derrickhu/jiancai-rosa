@@ -231,6 +231,7 @@ export function buildMarketMap(marketId: MarketId, seed: number, opts?: {
 
 /** 两张卡时换着贴左/贴右/分两边，别每层都长一个样。 */
 function pickLanes(rng: Rng, width: number): number[] {
+  if (width >= 4) return [0, 1, 2, 3];
   if (width >= LANES) return [0, 1, 2];
   if (width <= 1) return [1];
   return rngPick(rng, [[0, 1], [1, 2], [0, 2]]);

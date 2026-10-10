@@ -17,7 +17,11 @@ export type RecipeId =
   | 'garlic_shrimp' | 'ginger_crab' | 'steam_yellowfish' | 'braised_eel' | 'wild_fish_soup'
   | 'radish_ribs' | 'cabbage_belly' | 'braised_beef' | 'ham_melon_soup' | 'matsutake_chicken'
   | 'yandu_xian' | 'maoxuewang'
-  | 'garlic_water_spinach' | 'rape_tofu' | 'corn_egg';
+  | 'garlic_water_spinach' | 'rape_tofu' | 'corn_egg'
+  | 'bitter_egg' | 'apple_ribs' | 'asparagus_lamb' | 'pear_tremella' | 'steam_bass'
+  | 'pineapple_pork' | 'mango_shrimp' | 'loofah_soup' | 'braised_lamb' | 'lychee_ribs' | 'papaya_fish'
+  | 'orange_wings' | 'coconut_chicken'
+  | 'hawthorn_ribs' | 'pear_shrimp' | 'dragon_beef' | 'lemon_bass' | 'squid_stir' | 'pea_shrimp' | 'garlic_okra';
 
 export interface RecipeFood {
   uid?: string;
@@ -211,6 +215,27 @@ export const RECIPES: RecipeDef[] = [
   dish('matsutake_chicken', '松茸炖鸡', '汤', 'legendary', '揭盖那一下，整间屋子都知道你今天买了什么。', ['matsutake', 'chicken_leg', 'ginger']),
   dish('yandu_xian', '腌笃鲜', '汤', 'legendary', '咸的鲜的一起笃，笋在里面最耐心。', ['ham', 'pork_belly', 'bamboo_shoot', 'bamboo_shoot', 'tofu']),
   dish('maoxuewang', '毛血旺', '荤', 'epic', '一锅红，干辣椒和花椒负责叫醒。', ['duck_blood', 'duck_blood', 'sprout', 'pork', 'garlic', 'dried_chili', 'peppercorn']),
+
+  dish('bitter_egg', '苦瓜炒蛋', '家常', 'rare', '苦收在蛋里，两只蛋才盖得住。', ['bitter_melon', 'egg', 'egg']),
+  dish('apple_ribs', '苹果焖排', '荤', 'epic', '苹果把排骨的油吸走，姜负责收尾。', ['apple', 'ribs', 'ginger']),
+  dish('asparagus_lamb', '芦笋羊肉', '荤', 'epic', '绿矛还脆，羊肉刚断生。', ['asparagus', 'lamb', 'garlic']),
+  dish('pear_tremella', '雪梨银耳羹', '汤', 'epic', '雪梨把银耳炖开，枸杞点在面上。', ['pear', 'tremella', 'goji']),
+  dish('steam_bass', '清蒸鲈鱼', '水产', 'epic', '银鳞一条，葱姜比酱诚实。', ['seabass', 'ginger', 'scallion', 'scallion']),
+  dish('pineapple_pork', '菠萝咕咾肉', '荤', 'epic', '菠萝和五花一起响，青椒负责颜色。', ['pineapple', 'pork_belly', 'pepper']),
+  dish('mango_shrimp', '芒果炒虾', '水产', 'epic', '金黄撞上红虾，两只才够一盘。', ['mango', 'shrimp', 'shrimp']),
+  dish('loofah_soup', '丝瓜蛋汤', '汤', 'rare', '丝瓜一软，蛋花才肯散开。', ['loofah', 'egg', 'scallion']),
+  dish('braised_lamb', '红烧羊肉', '荤', 'epic', '两块羊肉，姜蒜把膻按住。', ['lamb', 'lamb', 'ginger', 'garlic']),
+  dish('lychee_ribs', '荔枝排骨', '荤', 'epic', '红壳的甜裹住排骨，姜负责不腻。', ['lychee', 'ribs', 'ginger']),
+  dish('papaya_fish', '木瓜鲫鱼汤', '汤', 'epic', '木瓜把土鲫的腥按住，姜在锅边。', ['papaya', 'crucian', 'ginger']),
+  dish('orange_wings', '橙香鸡翅', '荤', 'epic', '鲜橙先到手。翅膀摊上没有，靠街坊或抽谱。', ['orange', 'chicken_wing', 'chicken_wing']),
+  dish('coconut_chicken', '椰子鸡', '荤', 'epic', '椰子刚在埠头开，鸡腿是老相识。', ['coconut', 'chicken_leg', 'ginger']),
+  dish('hawthorn_ribs', '山楂焖排', '荤', 'epic', '山楂收油，萝卜垫底。', ['hawthorn', 'ribs', 'radish']),
+  dish('pear_shrimp', '雪梨虾仁', '水产', 'epic', '雪梨的清盖住虾的甜。', ['pear', 'shrimp', 'goji']),
+  dish('dragon_beef', '火龙果牛肉', '荤', 'legendary', '粉皮和红肉一起下锅，青椒负责叫。', ['dragonfruit', 'beef', 'pepper']),
+  dish('lemon_bass', '柠檬蒸鲈鱼', '水产', 'epic', '柠檬片压在银鳞上，葱还在。', ['lemon', 'seabass', 'scallion']),
+  dish('squid_stir', '爆炒鱿鱼', '水产', 'legendary', '一整只卷起来，蒜姜青椒一起响。', ['squid', 'garlic', 'pepper', 'ginger']),
+  dish('pea_shrimp', '豌豆虾仁', '水产', 'epic', '绿荚和红虾，蒜是收尾。', ['pea', 'shrimp', 'garlic']),
+  dish('garlic_okra', '蒜蓉秋葵', '家常', 'rare', '两头蒜才压得住那点黏。', ['okra', 'garlic', 'garlic']),
 ];
 
 /** 两道菜去重后的食材种类不能撞车，份数不同也算重复。 */
@@ -261,6 +286,8 @@ export const HIDDEN_RECIPE_IDS: ReadonlySet<RecipeId> = new Set([
   'spinach_egg_soup',
   'ham_melon_soup',
   'wild_fish_soup',
+  'hawthorn_ribs',
+  'squid_stir',
 ]);
 
 export function listedRecipes(
@@ -283,6 +310,10 @@ export const TABLE_UNLOCKS: RecipeId[][] = [
   ['lotus_shrimp_box'],
   ['celery_beef'],
   ['tremella_lily_soup'],
+  [],
+  ['orange_wings'],
+  [],
+  ['coconut_chicken'],
 ];
 
 /** 厨艺升级送礼。3/5/7/9 空着，良品主料还没出。 */
@@ -299,6 +330,16 @@ export const COOK_UNLOCK_AT: Record<number, CookUnlockGrant> = {
   13: 'steam_yellowfish',
   14: 'matsutake_chicken',
   15: 'maoxuewang',
+  16: 'bitter_egg',
+  17: 'pear_shrimp',
+  18: 'apple_ribs',
+  19: 'garlic_okra',
+  20: 'asparagus_lamb',
+  21: 'pea_shrimp',
+  22: 'pear_tremella',
+  23: 'lemon_bass',
+  24: 'steam_bass',
+  25: 'dragon_beef',
 };
 
 export function cookUnlocksAt(level: number): RecipeId[] {
@@ -320,6 +361,9 @@ export const MARKET_RECIPE_POOL: Record<MarketId, RecipeId[]> = {
   laocheng: ['cabbage_belly', 'braised_beef'],
   dukou: ['garlic_shrimp', 'braised_eel'],
   shanzhen: ['ginger_crab', 'melon_cup', 'yandu_xian'],
+  guoyuan: ['pineapple_pork', 'mango_shrimp'],
+  tiantou: ['loofah_soup', 'braised_lamb'],
+  futou: ['lychee_ribs', 'papaya_fish'],
 };
 
 export function isRecipeId(id: string): id is RecipeId {

@@ -69,6 +69,9 @@ export const NEIGHBOR_NPCS: NeighborNpc[] = [
   { id: 'zhu', name: '阿珠', portrait: 'subpkg_images/npc_jiangbian_aunt.png' },
   { id: 'granny', name: '山坞婆婆', portrait: 'subpkg_images/npc_shanwu_granny.png' },
   { id: 'boss', name: '菜行老板', portrait: 'subpkg_images/npc_laocheng_boss.png' },
+  { id: 'tao', name: '阿桃', portrait: 'subpkg_images/npc_guoyuan_tao.png' },
+  { id: 'zhou', name: '老周', portrait: 'subpkg_images/npc_tiantou_zhou.png' },
+  { id: 'hai', name: '阿海', portrait: 'subpkg_images/npc_futou_hai.png' },
 ];
 
 const SKIP_RECIPES = new Set<RecipeId>(['wild_fish_soup']);
@@ -312,6 +315,13 @@ function pickFoodReward(
   if (rng() >= foodChance(recipe)) return undefined;
   const skip = new Set(recipe.needs);
   const cap = teaseRarityCap(recipe);
+  const seen = new Set([...view.dexSeen, ...(view.dexInspected ?? [])]);
+  const wingUnseen = !skip.has('chicken_wing')
+    && !seen.has('chicken_wing')
+    && isNeighborRewardFood('chicken_wing');
+  if (wingUnseen && rng() < (wantTease(recipe) ? 0.45 : 0.18)) {
+    return { defId: 'chicken_wing', qty: 1, tease: true };
+  }
   const nextIds = nextLockedMarketIds(view.level);
   const currentIds = latestUnlockedMarketIds(view.level);
   const nextUnseen = unseenMarketFoods(view, nextIds, skip, cap);
@@ -319,6 +329,7 @@ function pickFoodReward(
   if (wantTease(recipe)) {
     if (nextUnseen.length) return { defId: rngPick(rng, nextUnseen), qty: 1, tease: true };
     if (currentUnseen.length) return { defId: rngPick(rng, currentUnseen), qty: 1, tease: true };
+    if (wingUnseen) return { defId: 'chicken_wing', qty: 1, tease: true };
   } else if ((nextUnseen.length || currentUnseen.length) && rng() < 0.22) {
     const pool = nextUnseen.length ? nextUnseen : currentUnseen;
     return { defId: rngPick(rng, pool), qty: 1, tease: true };

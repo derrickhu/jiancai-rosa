@@ -319,7 +319,12 @@ const ROW_SCALES = [1, 0.64, 0.44];
 const ROW_GAP = 24;
 const ROW_MODES: CardMode[] = ['full', 'peek', 'far'];
 
-function laneCenter(viewWidth: number, lane: number): number {
+const LANE_X_WIDE = [0.145, 0.382, 0.618, 0.855];
+
+function laneCenter(viewWidth: number, lane: number, slots = LANES): number {
+  if (slots >= 4) {
+    return Math.round(viewWidth * (LANE_X_WIDE[Math.max(0, Math.min(LANE_X_WIDE.length - 1, lane))] ?? 0.5));
+  }
   return Math.round(viewWidth * (LANE_X[Math.max(0, Math.min(LANES - 1, lane))] ?? 0.5));
 }
 
@@ -377,7 +382,8 @@ export function layoutRouteMap(opts: {
   const minBase = Math.round(opts.viewWidth * 0.245);
 
   let shown = Math.min(opts.rows.length, ROW_SCALES.length);
-  let base = Math.round(opts.viewWidth * CARD_FRACTION);
+  const wide = opts.rows.slice(0, shown).some((row) => row.length >= 4);
+  let base = Math.round(opts.viewWidth * (wide ? 0.21 : CARD_FRACTION));
   while (shown > 1 && stack(shown, base) > room) {
     const shrunk = fitBase(shown);
     if (shrunk >= minBase) {
@@ -397,7 +403,7 @@ export function layoutRouteMap(opts: {
     placed.push(opts.rows[i].map((option) => ({
       option,
       card: new PIXI.Container(),
-      cx: laneCenter(opts.viewWidth, option.node.lane),
+      cx: laneCenter(opts.viewWidth, option.node.lane, opts.rows[i].length),
       cy: rowTop + Math.round(height / 2),
       top: rowTop,
       bottom: lineY,

@@ -38,6 +38,9 @@ const MARKET_BEAT_KINDS: Partial<Record<MarketId, CardKind[]>> = {
   laocheng: ['talk', 'gate', 'branch'],
   dukou: ['talk', 'gather', 'branch'],
   shanzhen: ['talk'],
+  guoyuan: ['talk', 'branch'],
+  tiantou: ['talk', 'branch'],
+  futou: ['talk', 'branch'],
 };
 
 /** 节拍专属摊的货。大部分已在摊池里，这里只补摊池没有的。 */

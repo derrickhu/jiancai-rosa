@@ -495,6 +495,176 @@ const xiangkoStair: BeatFn = (ctx) => {
   });
 };
 
+function openBranch(
+  ctx: BeatCtx,
+  from: number,
+  to: number,
+  title: string,
+  templateId: string,
+  sceneId: string,
+  bg: string,
+  rows: MapNode[][],
+): void {
+  const id = pickOverlaySlot(ctx, from, to, true);
+  if (!id) return;
+  overlayCard(ctx, id, {
+    kind: 'branch',
+    title,
+    templateId,
+    encounter: { type: 'branch', sceneId },
+  });
+  attachScene(ctx, { id: sceneId, bg, rows });
+}
+
+function applyGuoyuanBeats(ctx: BeatCtx): void {
+  openBranch(ctx, 3, 9, '果林小路', 'guoyuan_orchard_gate', 'guoyuan_orchard', 'subpkg_images/market_route_guoyuan_orchard.jpg', [[
+    makeSceneNode({
+      id: 'gy_o0_0', layer: 0, lane: 0, kind: 'stall', steps: 1,
+      sceneId: 'guoyuan_orchard', title: '林边果筐', templateId: 'guoyuan_orchard_fruit',
+      stall: 'root', encounter: { type: 'rummage', stall: 'root' },
+    }),
+    makeSceneNode({
+      id: 'gy_o0_1', layer: 0, lane: 1, kind: 'talk', steps: 1,
+      sceneId: 'guoyuan_orchard', title: '阿桃', templateId: 'guoyuan_tao',
+      encounter: { type: 'talk', scriptId: 'guoyuan_tao' },
+    }),
+    makeSceneNode({
+      id: 'gy_o0_2', layer: 0, lane: 2, kind: 'freebie', steps: 1,
+      sceneId: 'guoyuan_orchard', title: '树下一把', templateId: 'guoyuan_orchard_freebie',
+    }),
+  ], [
+    makeSceneNode({
+      id: 'gy_o1_0', layer: 1, lane: 0, kind: 'stall', steps: 1,
+      sceneId: 'guoyuan_orchard', title: '苦瓜架', templateId: 'guoyuan_orchard_bitter',
+      stall: 'leaf', encounter: { type: 'rummage', stall: 'leaf' },
+    }),
+    makeSceneNode({
+      id: 'gy_o1_1', layer: 1, lane: 2, kind: 'empty', steps: 1,
+      sceneId: 'guoyuan_orchard', title: '空果筐', templateId: 'guoyuan_orchard_empty',
+    }),
+  ]]);
+  openBranch(ctx, 8, 16, '温室棚', 'guoyuan_glass_gate', 'guoyuan_glass', 'subpkg_images/market_route_guoyuan_glass.jpg', [[
+    makeSceneNode({
+      id: 'gy_g0_0', layer: 0, lane: 0, kind: 'stall', steps: 1,
+      sceneId: 'guoyuan_glass', title: '棚里果筐', templateId: 'guoyuan_glass_fruit',
+      stall: 'root', encounter: { type: 'rummage', stall: 'root' },
+    }),
+    makeSceneNode({
+      id: 'gy_g0_1', layer: 0, lane: 1, kind: 'favor', steps: 1,
+      sceneId: 'guoyuan_glass', title: '阿桃的凳', templateId: 'guoyuan_glass_favor',
+    }),
+    makeSceneNode({
+      id: 'gy_g0_2', layer: 0, lane: 2, kind: 'stall', steps: 1,
+      sceneId: 'guoyuan_glass', title: '蛋篓', templateId: 'guoyuan_glass_egg',
+      stall: 'egg', encounter: { type: 'rummage', stall: 'egg' },
+    }),
+  ], [
+    makeSceneNode({
+      id: 'gy_g1_0', layer: 1, lane: 1, kind: 'freebie', steps: 1,
+      sceneId: 'guoyuan_glass', title: '棚角一把', templateId: 'guoyuan_glass_freebie',
+    }),
+  ]]);
+}
+
+function applyTiantouBeats(ctx: BeatCtx): void {
+  openBranch(ctx, 3, 9, '田埂小路', 'tiantou_ridge_gate', 'tiantou_ridge', 'subpkg_images/market_route_tiantou_ridge.jpg', [[
+    makeSceneNode({
+      id: 'tt_r0_0', layer: 0, lane: 0, kind: 'stall', steps: 1,
+      sceneId: 'tiantou_ridge', title: '埂上田菜', templateId: 'tiantou_ridge_leaf',
+      stall: 'leaf', encounter: { type: 'rummage', stall: 'leaf' },
+    }),
+    makeSceneNode({
+      id: 'tt_r0_1', layer: 0, lane: 1, kind: 'talk', steps: 1,
+      sceneId: 'tiantou_ridge', title: '老周', templateId: 'tiantou_zhou',
+      encounter: { type: 'talk', scriptId: 'tiantou_zhou' },
+    }),
+    makeSceneNode({
+      id: 'tt_r0_2', layer: 0, lane: 2, kind: 'freebie', steps: 1,
+      sceneId: 'tiantou_ridge', title: '沟边一把', templateId: 'tiantou_ridge_freebie',
+    }),
+  ], [
+    makeSceneNode({
+      id: 'tt_r1_0', layer: 1, lane: 0, kind: 'stall', steps: 1,
+      sceneId: 'tiantou_ridge', title: '芦笋捆', templateId: 'tiantou_ridge_asparagus',
+      stall: 'leaf', encounter: { type: 'rummage', stall: 'leaf' },
+    }),
+    makeSceneNode({
+      id: 'tt_r1_1', layer: 1, lane: 2, kind: 'empty', steps: 1,
+      sceneId: 'tiantou_ridge', title: '空菜筐', templateId: 'tiantou_ridge_empty',
+    }),
+  ]]);
+  openBranch(ctx, 8, 16, '羊圈边', 'tiantou_pen_gate', 'tiantou_pen', 'subpkg_images/market_route_tiantou_pen.jpg', [[
+    makeSceneNode({
+      id: 'tt_p0_0', layer: 0, lane: 0, kind: 'stall', steps: 1,
+      sceneId: 'tiantou_pen', title: '羊肉案', templateId: 'tiantou_pen_meat',
+      stall: 'meat', encounter: { type: 'rummage', stall: 'meat' },
+    }),
+    makeSceneNode({
+      id: 'tt_p0_1', layer: 0, lane: 1, kind: 'favor', steps: 1,
+      sceneId: 'tiantou_pen', title: '老周的凳', templateId: 'tiantou_pen_favor',
+    }),
+    makeSceneNode({
+      id: 'tt_p0_2', layer: 0, lane: 2, kind: 'empty', steps: 1,
+      sceneId: 'tiantou_pen', title: '空草料', templateId: 'tiantou_pen_empty',
+    }),
+  ], [
+    makeSceneNode({
+      id: 'tt_p1_0', layer: 1, lane: 1, kind: 'freebie', steps: 1,
+      sceneId: 'tiantou_pen', title: '圈边一把', templateId: 'tiantou_pen_freebie',
+    }),
+  ]]);
+}
+
+function applyFutouBeats(ctx: BeatCtx): void {
+  openBranch(ctx, 3, 10, '码头栈', 'futou_pier_gate', 'futou_pier', 'subpkg_images/market_route_futou_pier.jpg', [[
+    makeSceneNode({
+      id: 'ft_p0_0', layer: 0, lane: 0, kind: 'stall', steps: 1,
+      sceneId: 'futou_pier', title: '栈上鱼摊', templateId: 'futou_pier_fish',
+      stall: 'fish', encounter: { type: 'rummage', stall: 'fish' },
+    }),
+    makeSceneNode({
+      id: 'ft_p0_1', layer: 0, lane: 1, kind: 'talk', steps: 1,
+      sceneId: 'futou_pier', title: '阿海', templateId: 'futou_hai',
+      encounter: { type: 'talk', scriptId: 'futou_hai' },
+    }),
+    makeSceneNode({
+      id: 'ft_p0_2', layer: 0, lane: 2, kind: 'freebie', steps: 1,
+      sceneId: 'futou_pier', title: '跳板一把', templateId: 'futou_pier_freebie',
+    }),
+  ], [
+    makeSceneNode({
+      id: 'ft_p1_0', layer: 1, lane: 0, kind: 'stall', steps: 1,
+      sceneId: 'futou_pier', title: '冰上鲈鱼', templateId: 'futou_pier_bass',
+      stall: 'fish', encounter: { type: 'rummage', stall: 'fish' },
+    }),
+    makeSceneNode({
+      id: 'ft_p1_1', layer: 1, lane: 2, kind: 'empty', steps: 1,
+      sceneId: 'futou_pier', title: '空冰床', templateId: 'futou_pier_empty',
+    }),
+  ]]);
+  openBranch(ctx, 9, 18, '果仓', 'futou_store_gate', 'futou_store', 'subpkg_images/market_route_futou_store.jpg', [[
+    makeSceneNode({
+      id: 'ft_s0_0', layer: 0, lane: 0, kind: 'stall', steps: 1,
+      sceneId: 'futou_store', title: '仓里南果', templateId: 'futou_store_fruit',
+      stall: 'root', encounter: { type: 'rummage', stall: 'root' },
+    }),
+    makeSceneNode({
+      id: 'ft_s0_1', layer: 0, lane: 1, kind: 'favor', steps: 1,
+      sceneId: 'futou_store', title: '阿海的凳', templateId: 'futou_store_favor',
+    }),
+    makeSceneNode({
+      id: 'ft_s0_2', layer: 0, lane: 2, kind: 'stall', steps: 1,
+      sceneId: 'futou_store', title: '葱姜篓', templateId: 'futou_store_egg',
+      stall: 'egg', encounter: { type: 'rummage', stall: 'egg' },
+    }),
+  ], [
+    makeSceneNode({
+      id: 'ft_s1_0', layer: 1, lane: 1, kind: 'freebie', steps: 1,
+      sceneId: 'futou_store', title: '仓角一把', templateId: 'futou_store_freebie',
+    }),
+  ]]);
+}
+
 export function applyMarketBeats(
   marketId: MarketId,
   nodes: Record<string, MapNode>,
@@ -542,5 +712,17 @@ export function applyMarketBeats(
         encounter: { type: 'rummage', specialty: 'treasure' },
       });
     }
+    return;
+  }
+  if (marketId === 'guoyuan') {
+    applyGuoyuanBeats(ctx);
+    return;
+  }
+  if (marketId === 'tiantou') {
+    applyTiantouBeats(ctx);
+    return;
+  }
+  if (marketId === 'futou') {
+    applyFutouBeats(ctx);
   }
 }

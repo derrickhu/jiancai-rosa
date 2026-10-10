@@ -89,6 +89,36 @@ export const TALK_SCRIPTS: Record<string, TalkScript> = {
       { label: '看看就走' },
     ],
   },
+  guoyuan_tao: {
+    id: 'guoyuan_tao',
+    speaker: '阿桃',
+    portrait: 'subpkg_images/npc_guoyuan_tao.png',
+    text: '果筐还没拢完。帮我归一下？菠萝、苹果、苦瓜，你挑一样带走。',
+    choices: [
+      { label: '帮归筐', steps: 1, grantFood: ['pineapple', 'apple', 'bitter_melon'], setFlag: 'met_guoyuan_tao' },
+      { label: '没工夫' },
+    ],
+  },
+  tiantou_zhou: {
+    id: 'tiantou_zhou',
+    speaker: '老周',
+    portrait: 'subpkg_images/npc_tiantou_zhou.png',
+    text: '天快黑了，案板还没收。帮我看一会儿？丝瓜、芦笋、羊肉，你要哪样。',
+    choices: [
+      { label: '帮看案', steps: 1, grantFood: ['loofah', 'asparagus', 'lamb'], setFlag: 'met_tiantou_zhou' },
+      { label: '没工夫' },
+    ],
+  },
+  futou_hai: {
+    id: 'futou_hai',
+    speaker: '阿海',
+    portrait: 'subpkg_images/npc_futou_hai.png',
+    text: '潮要上来，筐还敞着。帮我盖一下？荔枝、鲈鱼、鱿鱼，你挑一样。',
+    choices: [
+      { label: '帮盖筐', steps: 1, grantFood: ['lychee', 'seabass', 'squid'], setFlag: 'met_futou_hai' },
+      { label: '没工夫' },
+    ],
+  },
 };
 
 export function talkScript(id: string): TalkScript | undefined {

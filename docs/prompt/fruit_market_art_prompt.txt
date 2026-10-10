@@ -1,0 +1,157 @@
+Cozy casual mobile-game cartoon. Clean medium-thick dark-brown outlines the color of dark cocoa, soft cel shading, simple readable shapes, warm wood and paper colors, hanging bulbs the yellow of a warm tungsten lamp. Same cute hand-drawn market painting as a morning vegetable lane: baskets, wooden crates, red-orange canvas awnings. NO TEXT, no letters, no numbers, no shop signs, no watermark, no UI chrome.
+
+===foods|9:16===
+Solid pure white background. One tall sheet of exactly 3 columns and 7 rows, 21 equal cells, thin even white gutters, every cell fully separate. Each cell holds ONE whole raw ingredient, centered, large, thick cocoa-brown outline, flat cheerful color, a little soft highlight. Whole produce only, the way it sits in a market basket.
+
+Row 1 left to right: a whole pineapple with a green leafy crown, gold rind the color of ripe pineapple; a whole round orange the color of a fresh orange peel; a whole red apple the color of a candy-apple red.
+Row 2: a whole pale yellow pear; a whole mango the color of ripe mango flesh with a green shoulder; a whole warty bitter melon, deep green.
+Row 3: one long ridged loofah, light green; a small bunch of green okra pods; one pale green lettuce stem with a few soft leaves at the top.
+Row 4: a handful of plump green pea pods; a tied bundle of green asparagus spears; a raw lamb chop, meat the color of fresh lamb, a pale bone.
+Row 5: a cluster of red lychee with bumpy shells; a whole brown hairy coconut; a whole papaya, orange-green skin.
+Row 6: a whole bright yellow lemon; a whole pink dragon fruit with green scales; a small cluster of round red hawthorn fruits on a short stem.
+Row 7: one whole silver seabass, side view, scales the color of pale silver; one whole pale squid with tentacles; one raw chicken wing, skin the color of raw chicken, a single wing.
+
+===dishes|3:4===
+Solid pure white background. Exactly 4 columns and 5 rows, 20 equal cells, thin even white gutters. Each cell is one finished Chinese home dish in a simple ceramic bowl or plate, 3/4 view, thick cocoa-brown outline, flat appetizing color, steam optional as a soft wisp. One dish per cell.
+
+Row 1: bitter melon stir-fried with yellow scrambled egg; pork ribs braised with red apple wedges and a slice of ginger; green asparagus with slices of lamb; a white bowl of snow-pear and white tremella soup with a few red goji berries.
+Row 2: a whole silver seabass steamed with scallion and ginger on a pale plate; sweet-sour pork with golden pineapple chunks and green pepper; mango slices with pink shrimp; a clear soup with pale green loofah and egg ribbons.
+Row 3: red-braised lamb chunks in a brown clay pot; pork ribs with bright red lychee; a milky soup with orange papaya and a whole crucian carp; orange-glazed chicken wings with orange slices.
+Row 4: coconut chicken in a pale pot with a coconut shell beside the bowl; pork ribs with red hawthorn and white radish; snow pear slices with pink shrimp and red goji; pink dragon fruit with beef strips and green pepper.
+Row 5: silver seabass with yellow lemon slices; stir-fried squid curls with garlic and green pepper; green pea pods with pink shrimp; garlic-topped green okra on a small plate.
+
+===npcs|16:9===
+Solid pure white background. Three equal portrait panels in one row, even white gutters. Each panel is one friendly half-body market neighbor, same cute outlined cartoon as a kind riverside uncle: warm skin, thick cocoa-brown outline, soft flat color, one hand slightly forward, the other holding a basket. Three different people.
+
+Left: a young woman fruit-seller, straw hat, leaf-green apron over a cream shirt, round cheerful face, basket of pineapple and red apples.
+Center: an older sun-browned farmer, short grey hair, indigo work jacket, evening warmth, basket of long green loofah and asparagus.
+Right: a young dock man, short black hair, teal vest over a cream shirt, basket holding a silver fish and a red lychee cluster.
+
+===piles|1:1|plain===
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines the color of dark cocoa, soft cel shading, gentle highlights, warm wood and paper colors. Whole unprocessed ingredients only. Readable silhouette. Slightly golden market-kitchen light, tidy. NO TEXT, no labels, no numbers, no watermark, no UI chrome.
+
+Solid pure white background, the white of blank paper. Exactly 3 columns and 3 rows, 9 equal cells. Wide gutters of that same blank paper between every cell. Each cell is one isolated heap of market goods, three-quarter view, filling most of the cell, a readable silhouette ready to cut out. The heap sits in a basket, a shallow crate, on a wooden board, or under a cloth corner. Blank white paper surrounds the heap.
+
+Row 1 left to right: a heaped shallow wooden crate of warty green bitter melons, a tan cloth over one corner; a round wicker basket heaped with whole pineapple, red apples and oranges; a grey paper egg tray of brown eggs beside a white tofu block, a scrap of cream paper.
+Row 2: a heap of long pale-green loofah, green okra pods and a tied bundle of asparagus, straw rope, a green cloth over one corner; a grey egg tray with green onion and ginger, cream paper; a wooden board piled with raw lamb chops, a blue cloth draped over one corner.
+Row 3: a round basket of red lychee, a brown coconut and an orange papaya; a grey egg tray with scallion and a cream cloth corner; crushed ice holding one silver seabass and one pale squid, a teal cloth under the ice.
+
+===cards_guoyuan|1:1===
+One square image, a clean grid of 4 columns and 3 rows, 12 portrait panels, thin even gutters, every panel its own frame. Morning orchard market, honey dirt and fruit trees, warm sun, hanging yellow bulbs, red-orange awnings. Thick cocoa-brown outlines. NO TEXT.
+
+Panel 1 leafy stall: crates of warty green bitter melon under a warm bulb.
+Panel 2 root stall: baskets of pineapple, red apple, orange, mango.
+Panel 3 egg stall: grey egg tray, white tofu, a garlic bulb, on a wooden counter.
+Panel 4 seafood stall: a fruit crate of pears standing in for the fourth stall, cool leaves, still an orchard stall.
+Panel 5 fork: the orchard lane splitting into two dirt paths, awnings on both sides.
+Panel 6 dead end: a wooden fence and stacked empty crates, one dim bulb.
+Panel 7 dropped produce: a bitter melon and an apple lying on the dirt, a pool of lamp light.
+Panel 8 paid stall: a wooden coin tray of round bronze coins on a generously stocked fruit stall.
+Panel 9 empty stall: bare wooden frame, one empty foam box, lamp off.
+Panel 10 kindness: a low stool, a steaming tea bowl, a bunch of scallion, warm lamp.
+Panel 11 deeper: the lane leading toward a lit orchard shed.
+Panel 12 hidden: a cloth lifted to show a bamboo basket of fruit underneath.
+
+===cards_tiantou|1:1===
+One square image, 4 columns by 3 rows, 12 portrait panels, thin gutters. Dusk field market on a dirt ridge, persimmon-orange sky, warm bulbs, indigo shadows. Thick cocoa-brown outlines. NO TEXT.
+
+Panel 1: crates of loofah, okra and asparagus.
+Panel 2: baskets of pale lettuce stems and pea pods.
+Panel 3: egg tray, tofu, ginger.
+Panel 4: a side vegetable crate, still a field stall.
+Panel 5: the ridge path splitting in two.
+Panel 6: a dead end at a closed grass shed.
+Panel 7: a dropped bundle of loofah on the dirt.
+Panel 8: bronze coins on a well-stocked vegetable stall.
+Panel 9: a cleared stall, lamp off.
+Panel 10: a stool, tea, and a bunch of scallion.
+Panel 11: the path toward a lit sheep-pen lantern.
+Panel 12: a cloth lifted over a basket of green vegetables.
+
+===cards_futou|1:1===
+One square image, 4 columns by 3 rows, 12 portrait panels, thin gutters. Southern wooden pier market, late afternoon, teal water at the far end, persimmon lanterns, fruit and fish. Thick cocoa-brown outlines. NO TEXT.
+
+Panel 1: crates of leafy herbs and scallion on the pier.
+Panel 2: baskets of lychee, coconut, papaya, lemon, dragon fruit.
+Panel 3: egg tray and tofu on a wooden counter.
+Panel 4: ice bed with a silver seabass and a pale squid, teal cloth.
+Panel 5: the pier splitting toward two stalls.
+Panel 6: planks ending at open water, stacked crates.
+Panel 7: a dropped lychee and a lemon on wet planks.
+Panel 8: bronze coins on a stocked fruit-and-fish stall.
+Panel 9: a cleared stall, lantern dim.
+Panel 10: a stool, tea, scallion.
+Panel 11: the pier leading into a lit fruit warehouse.
+Panel 12: a cloth lifted over a basket of lychee.
+
+===meat_tiantou|3:4===
+One portrait thumbnail of a dusk butcher stall. A wooden block piled with raw lamb chops, meat the color of fresh lamb, a few pork slices beside them, a warm yellow bulb, indigo evening sky behind the awning, thick cocoa-brown outline. The stall fills the frame. NO TEXT.
+
+===route_guoyuan|9:16|ref===
+STYLE AND CAMERA from the reference only: vertical lane, stalls left and right, empty walking path down the center, thick cocoa outlines, hanging warm bulbs. Draw a NEW morning orchard market. Packed honey-brown earth with a few stone pavers. Left: wooden crates of whole pineapple, red apples, oranges. Right: red-orange awnings, baskets of mango, pale pear, warty green bitter melon. Fruit trees with round fruit close the far end. Morning honey sunlight.
+
+===route_guoyuan_orchard|9:16|ref===
+STYLE AND CAMERA from the reference only. A narrower path inside a fruit orchard. Dirt path, low fruit trees on both sides, crates of pineapple and apples along the edges, a few hanging warm bulbs, morning light through leaves. The path leads deeper between the trees.
+
+===route_guoyuan_glass|9:16|ref===
+STYLE AND CAMERA from the reference only. Inside a warm glass greenhouse. A straight aisle, wooden benches on both sides holding bitter melon vines and potted fruit, condensation on the glass, one warm bulb, honey light. The aisle stays clear down the center.
+
+===route_tiantou|9:16|ref===
+STYLE AND CAMERA from the reference only. A NEW dusk field market on a dirt ridge. Persimmon-orange sky. Left: bundles of long green loofah, okra, pale lettuce stems, pea pods. Right: a wooden butcher stall with raw lamb and a warm bulb, indigo cloth. Distant vegetable rows and a low wooden fence at the far end. The walking path is packed earth.
+
+===route_tiantou_ridge|9:16|ref===
+STYLE AND CAMERA from the reference only. A narrow dirt ridge between vegetable fields at dusk. Low stalls of loofah and asparagus along both edges, a few warm bulbs, persimmon sky, the path dropping gently toward a dark field.
+
+===route_tiantou_pen|9:16|ref===
+STYLE AND CAMERA from the reference only. A short lane beside a wooden sheep pen at nightfall. Straw, a low fence on the left, a butcher board with lamb on the right under a warm bulb, indigo sky, the path ending at a lit shed.
+
+===route_futou|9:16|ref===
+STYLE AND CAMERA from the reference only. A NEW southern pier market. Wooden planks underfoot. Left: baskets of red lychee, brown coconut, orange papaya, yellow lemon, pink dragon fruit. Right: an ice stall with silver seabass and pale squid, teal cloth, persimmon lanterns. A band of teal water only at the far end. The walking lane is the pier itself.
+
+===route_futou_pier|9:16|ref===
+STYLE AND CAMERA from the reference only. A narrower wooden pier at late afternoon. Fish crates and ice on the right, fruit baskets on the left, teal water visible along one edge, persimmon lanterns, the planks running straight ahead.
+
+===route_futou_store|9:16|ref===
+STYLE AND CAMERA from the reference only. Inside a wooden fruit warehouse. Crates of lychee, coconut and papaya stacked along both sides, a clear aisle, warm lantern light, cool shadow under the beams.
+
+===dest_guoyuan|16:9===
+Wide thumbnail of a morning orchard market. Fruit trees, crates of pineapple and red apples in front, red-orange awnings, warm sun low in a honey sky, hanging yellow bulbs. Thick cocoa-brown outlines. The scene fills the frame. NO TEXT.
+
+===dest_tiantou|16:9===
+Wide thumbnail of a dusk field market. Dirt ridge, bundles of green loofah and asparagus, a lamb butcher board, persimmon sky, warm bulbs. Thick cocoa-brown outlines. The scene fills the frame. NO TEXT.
+
+===dest_futou|16:9===
+Wide thumbnail of a southern pier market. Wooden pier, baskets of lychee and papaya, an ice bed with a silver fish, teal water, persimmon lanterns. Thick cocoa-brown outlines. The scene fills the frame. NO TEXT.
+
+===dest_field_night|16:9===
+Wide thumbnail of a night vegetable patch. Dark blue sky, a warm lamp over rows of loofah and leafy greens, a few fruit crates at the edge, dew on the leaves. Thick cocoa-brown outlines. The scene fills the frame. NO TEXT.
+
+===special_field_night_bg|9:16===
+Full-bleed vertical night scene of a vegetable field being picked by lamplight. Rows of green loofah and leafy vegetables, one warm yellow lamp close to the camera, dark blue sky, dew, wooden path. The lower middle stays a clear patch of ground where a wooden tray can sit. Thick cocoa-brown outlines. NO TEXT.
+
+===rummage_guoyuan_leaf|9:16|table===
+CAMERA LOCKED to the reference: one wooden market table fills this tall portrait, planks run from the near edge to the far edge, the center of the table is bare. Recolor the table a soft leaf green. Corner crates hold warty green bitter melons. One warm bulb hangs above. Thick cocoa-brown outlines. NO TEXT.
+
+===rummage_guoyuan_root|9:16|table===
+CAMERA LOCKED to the reference: one wooden market table fills this tall portrait, planks run from the near edge to the far edge, the center of the table is bare. Honey-colored wood. Corner baskets hold pineapple, red apples and oranges. One warm bulb. Thick cocoa-brown outlines. NO TEXT.
+
+===rummage_guoyuan_egg|9:16|table===
+CAMERA LOCKED to the reference: one wooden market table fills this tall portrait, planks run from the near edge to the far edge, the center of the table is bare. Cream-painted planks. Corners hold a grey egg tray and a white tofu block. One warm bulb. Thick cocoa-brown outlines. NO TEXT.
+
+===rummage_tiantou_leaf|9:16|table===
+CAMERA LOCKED to the reference: one wooden market table fills this tall portrait, planks run from the near edge to the far edge, the center of the table is bare. Olive-green planks, dusk light. Corner crates hold long loofah and okra. One warm bulb. Thick cocoa-brown outlines. NO TEXT.
+
+===rummage_tiantou_egg|9:16|table===
+CAMERA LOCKED to the reference: one wooden market table fills this tall portrait, planks run from the near edge to the far edge, the center of the table is bare. Cream planks. Corners hold an egg tray, ginger and scallion. One warm bulb. Thick cocoa-brown outlines. NO TEXT.
+
+===rummage_tiantou_meat|9:16|table===
+CAMERA LOCKED to the reference: one wooden market table fills this tall portrait, planks run from the near edge to the far edge, the center of the table is bare. Dark wood. A side board in the corner holds raw lamb chops. Indigo evening, one warm bulb. Thick cocoa-brown outlines. NO TEXT.
+
+===rummage_futou_root|9:16|table===
+CAMERA LOCKED to the reference: one wooden market table fills this tall portrait, planks run from the near edge to the far edge, the center of the table is bare. Warm wood. Corner baskets hold red lychee, a brown coconut and an orange papaya. One lantern. Thick cocoa-brown outlines. NO TEXT.
+
+===rummage_futou_egg|9:16|table===
+CAMERA LOCKED to the reference: one wooden market table fills this tall portrait, planks run from the near edge to the far edge, the center of the table is bare. Cream planks. Corners hold an egg tray and scallion. One lantern. Thick cocoa-brown outlines. NO TEXT.
+
+===rummage_futou_fish|9:16|table===
+CAMERA LOCKED to the reference: one wooden market table fills this tall portrait, planks run from the near edge to the far edge, the center of the table is bare. Blue-grey planks. Corners hold crushed ice with a silver seabass and a pale squid, and a teal cloth. One persimmon lantern. Thick cocoa-brown outlines. NO TEXT.

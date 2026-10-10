@@ -96,6 +96,66 @@ const SCENES: Partial<Record<MarketId, Record<string, RouteSceneDef>>> = {
       enterNote: '拐进一条更窄的青石巷。',
     },
   },
+  guoyuan: {
+    main: {
+      id: 'main',
+      title: '果园早市',
+      bg: MARKET_ART.guoyuan.routeBg,
+      enterNote: '回到果园大路。',
+    },
+    guoyuan_orchard: {
+      id: 'guoyuan_orchard',
+      title: '果林小路',
+      bg: 'subpkg_images/market_route_guoyuan_orchard.jpg',
+      enterNote: '踩进果林，露水还在叶子上。',
+    },
+    guoyuan_glass: {
+      id: 'guoyuan_glass',
+      title: '温室棚',
+      bg: 'subpkg_images/market_route_guoyuan_glass.jpg',
+      enterNote: '棚里更暖，苦瓜挂在架子上。',
+    },
+  },
+  tiantou: {
+    main: {
+      id: 'main',
+      title: '田头晚集',
+      bg: MARKET_ART.tiantou.routeBg,
+      enterNote: '回到田埂大路。',
+    },
+    tiantou_ridge: {
+      id: 'tiantou_ridge',
+      title: '田埂小路',
+      bg: 'subpkg_images/market_route_tiantou_ridge.jpg',
+      enterNote: '顺着田埂往里，灯一盏一盏矮下去。',
+    },
+    tiantou_pen: {
+      id: 'tiantou_pen',
+      title: '羊圈边',
+      bg: 'subpkg_images/market_route_tiantou_pen.jpg',
+      enterNote: '草料味先到，案板还亮着。',
+    },
+  },
+  futou: {
+    main: {
+      id: 'main',
+      title: '埠头果菜行',
+      bg: MARKET_ART.futou.routeBg,
+      enterNote: '回到埠头大路。',
+    },
+    futou_pier: {
+      id: 'futou_pier',
+      title: '码头栈',
+      bg: 'subpkg_images/market_route_futou_pier.jpg',
+      enterNote: '栈板一响，潮气扑上来。',
+    },
+    futou_store: {
+      id: 'futou_store',
+      title: '果仓',
+      bg: 'subpkg_images/market_route_futou_store.jpg',
+      enterNote: '钻进果仓，甜味比鱼腥先到。',
+    },
+  },
 };
 
 export function sceneDef(marketId: MarketId, sceneId: string): RouteSceneDef {

@@ -159,6 +159,29 @@ const SPECS: ItemSpec[] = [
   { id: 'beef_brisket', name: '牛腩', w: 2, h: 2, zone: 'dry', rarity: 'epic', stalls: ['meat'], color: 0x9A4A3A, blurb: '带筋一块，得炖足两个钟头才肯松口。', blurbRotten: '筋发黏，红色褪成了灰。' },
   { id: 'pork_liver', name: '猪肝', w: 2, h: 1, zone: 'dry', rarity: 'rare', stalls: ['meat'], color: 0x8A3030, blurb: '一整叶深褐的肝，火要大，锅要快。', blurbRotten: '表面发绿，腥得先翻脸。' },
   { id: 'duck_blood', name: '鸭血', w: 1, h: 1, zone: 'dry', rarity: 'epic', stalls: ['meat'], color: 0x6A2028, blurb: '一方深褐的嫩块，毛血旺没有它就不肯开场。', blurbRotten: '边儿发灰，嫩变成了散。' },
+
+  // ── 果园 / 田头 / 埠头。鸡翅不进任何摊池。 ──────────────
+  { id: 'pineapple', name: '菠萝', w: 2, h: 2, zone: 'dry', rarity: 'rare', vegetable: true, bulky: true, stalls: ['root'], color: 0xE6A317, blurb: '带冠的金疙瘩，咕咾肉就认它。', blurbRotten: '冠先塌，汁也酸成了醋。' },
+  { id: 'orange', name: '鲜橙', w: 1, h: 1, zone: 'dry', rarity: 'rare', vegetable: true, stalls: ['root'], color: 0xF08A1A, blurb: '皮还亮，剥开才是香的。鸡翅最肯跟它见面。', blurbRotten: '皮发软，香气先走了。' },
+  { id: 'apple', name: '苹果', w: 1, h: 1, zone: 'dry', rarity: 'rare', vegetable: true, stalls: ['root'], color: 0xD63A3A, blurb: '红得老实，焖排骨比生啃更像晚饭。', blurbRotten: '斑点爬上来了，脆也没了。' },
+  { id: 'pear', name: '雪梨', w: 1, h: 2, zone: 'dry', rarity: 'epic', vegetable: true, stalls: ['root'], color: 0xE4D48A, blurb: '黄皮白心，银耳和虾仁都肯让它。', blurbRotten: '心空了，敲一敲是水。' },
+  { id: 'mango', name: '芒果', w: 1, h: 2, zone: 'dry', rarity: 'epic', vegetable: true, stalls: ['root'], color: 0xF0B429, blurb: '金黄一弯，虾仁进锅才配它。', blurbRotten: '皮起皱，甜味先发酵。' },
+  { id: 'bitter_melon', name: '苦瓜', w: 1, h: 2, zone: 'dry', rarity: 'rare', vegetable: true, stalls: ['leaf'], color: 0x7A9A3A, blurb: '一身疙瘩，炒蛋才肯把苦收住。', blurbRotten: '绿褪成黄，苦变成了闷。' },
+  { id: 'loofah', name: '丝瓜', w: 1, h: 3, zone: 'dry', rarity: 'rare', vegetable: true, stalls: ['leaf'], color: 0x8FBF4A, blurb: '细长一条，蛋汤里它负责清。', blurbRotten: '瓤空了，只剩一张皮。' },
+  { id: 'okra', name: '秋葵', w: 1, h: 2, zone: 'dry', rarity: 'rare', vegetable: true, stalls: ['leaf'], color: 0x4E8A32, blurb: '尖尖一簇，蒜蓉一响就糯。', blurbRotten: '尖先黑，籽也散了。' },
+  { id: 'lettuce_stem', name: '莴笋', w: 1, h: 2, zone: 'dry', rarity: 'rare', vegetable: true, stalls: ['leaf'], color: 0xC5D6A0, blurb: '叶子可以摘掉，笋秆才是这根的本事。', blurbRotten: '秆发空，叶子先认输。' },
+  { id: 'pea', name: '豌豆', w: 1, h: 1, zone: 'dry', rarity: 'rare', vegetable: true, stalls: ['leaf'], color: 0x6BAA3A, blurb: '一把鼓鼓的荚，虾仁最肯跟它见面。', blurbRotten: '荚瘪了，豆也皱了。' },
+  { id: 'asparagus', name: '芦笋', w: 1, h: 3, zone: 'dry', rarity: 'epic', vegetable: true, stalls: ['leaf'], color: 0x7CB342, blurb: '一束绿矛，羊肉才肯让它。', blurbRotten: '尖发褐，脆先走了。' },
+  { id: 'lamb', name: '羊肉', w: 2, h: 1, zone: 'dry', rarity: 'epic', stalls: ['meat'], color: 0xC46A5A, blurb: '晚集案板上的新货，红烧比清炒更像它。', blurbRotten: '边儿发暗，膻先盖过肉。' },
+  { id: 'lychee', name: '荔枝', w: 1, h: 1, zone: 'dry', rarity: 'epic', vegetable: true, stalls: ['root'], color: 0xE85A6A, blurb: '红壳一颗，排骨肯跟它焖。', blurbRotten: '壳还红，里面已经发酵。' },
+  { id: 'coconut', name: '椰子', w: 2, h: 2, zone: 'dry', rarity: 'rare', vegetable: true, bulky: true, stalls: ['root'], color: 0x8B6A45, blurb: '毛壳一颗，鸡汤认它的甜。', blurbRotten: '摇起来没水，壳还在装硬。' },
+  { id: 'papaya', name: '木瓜', w: 1, h: 2, zone: 'dry', rarity: 'epic', vegetable: true, stalls: ['root'], color: 0xE8922A, blurb: '长长一颗，鲫鱼汤靠它把腥按住。', blurbRotten: '皮发斑，瓤先软。' },
+  { id: 'lemon', name: '柠檬', w: 1, h: 1, zone: 'dry', rarity: 'rare', vegetable: true, stalls: ['root'], color: 0xF2D04B, blurb: '黄得扎眼，清蒸鲈鱼靠它提神。', blurbRotten: '皮发硬，酸也泄了。' },
+  { id: 'dragonfruit', name: '火龙果', w: 1, h: 2, zone: 'dry', rarity: 'epic', vegetable: true, stalls: ['root'], color: 0xE23B6A, blurb: '粉皮绿鳞，牛肉进锅才配它。', blurbRotten: '鳞片塌了，甜味先走。' },
+  { id: 'hawthorn', name: '山楂', w: 1, h: 1, zone: 'dry', rarity: 'rare', vegetable: true, stalls: ['root'], color: 0xC43A28, blurb: '小红一串，焖排骨靠它收油。', blurbRotten: '皱成小石头，酸也没了。' },
+  { id: 'seabass', name: '鲈鱼', w: 2, h: 1, zone: 'wet', rarity: 'epic', stalls: ['fish'], color: 0x7A9AAA, blurb: '银鳞一条，清蒸比红烧更认识它。', blurbRotten: '鳞先立起来，眼睛也浑了。' },
+  { id: 'squid', name: '鱿鱼', w: 2, h: 2, zone: 'wet', rarity: 'legendary', stalls: ['fish'], color: 0xE8D5C4, blurb: '一整只，爆炒才肯卷起来。', blurbRotten: '身发黏，须子先断。' },
+  { id: 'chicken_wing', name: '鸡翅', w: 1, h: 2, zone: 'dry', rarity: 'epic', stalls: ['meat'], color: 0xE0B07A, blurb: '摊上没有。街坊或抽谱食材奖才会塞到你手里。', blurbRotten: '皮发黏，骨还在硬撑。' },
 ];
 
 export const ITEMS: ItemDef[] = SPECS.map(priced);
@@ -273,6 +296,21 @@ const MARKET_POOLS: Record<MarketId, Partial<Record<StallId, StallPool>>> = {
     fish: pool([], ['oyster'], ['shrimp'], ['crab']),
     meat: pool([], ['ham', 'chicken_leg'], ['pork_belly']),
   },
+  guoyuan: {
+    leaf: pool([], ['bitter_melon']),
+    root: pool([], ['pineapple', 'orange', 'apple'], ['pear', 'mango']),
+    egg: pool(['egg', 'garlic', 'scallion']),
+  },
+  tiantou: {
+    leaf: pool([], ['loofah', 'okra', 'lettuce_stem', 'pea'], ['asparagus']),
+    egg: pool(['egg', 'garlic', 'ginger']),
+    meat: pool(['pork'], [], ['lamb']),
+  },
+  futou: {
+    root: pool([], ['coconut', 'lemon', 'hawthorn'], ['lychee', 'papaya', 'dragonfruit']),
+    egg: pool(['garlic', 'ginger', 'scallion']),
+    fish: pool([], [], ['seabass'], ['squid']),
+  },
 };
 
 /** 一次抽货里绿/蓝/紫的基础概率。厨艺每升一级再各加一点点。 */
@@ -286,6 +324,9 @@ const RARE_CHANCE: Record<MarketId, number> = {
   laocheng: 0.22,
   dukou: 0.18,
   shanzhen: 0.12,
+  guoyuan: 0.62,
+  tiantou: 0.55,
+  futou: 0.4,
 };
 
 const EPIC_CHANCE: Record<MarketId, number> = {
@@ -298,6 +339,9 @@ const EPIC_CHANCE: Record<MarketId, number> = {
   laocheng: 0.48,
   dukou: 0.5,
   shanzhen: 0.18,
+  guoyuan: 0.3,
+  tiantou: 0.38,
+  futou: 0.42,
 };
 
 const LEGENDARY_CHANCE: Record<MarketId, number> = {
@@ -310,6 +354,9 @@ const LEGENDARY_CHANCE: Record<MarketId, number> = {
   laocheng: 0,
   dukou: 0,
   shanzhen: 0.28,
+  guoyuan: 0,
+  tiantou: 0,
+  futou: 0.16,
 };
 
 const RARE_PER_LEVEL = 0.004;
@@ -573,6 +620,21 @@ const MARKET_STALL_NAME: Partial<Record<MarketId, Partial<Record<StallId, string
     egg: '山珍筐',
     fish: '蟹篓',
     meat: '梁上火腿',
+  },
+  guoyuan: {
+    leaf: '苦瓜摊',
+    root: '果筐',
+    egg: '蛋篓',
+  },
+  tiantou: {
+    leaf: '田菜摊',
+    egg: '蛋篓',
+    meat: '羊肉案',
+  },
+  futou: {
+    root: '南果筐',
+    egg: '葱姜篓',
+    fish: '埠头鱼',
   },
 };
 

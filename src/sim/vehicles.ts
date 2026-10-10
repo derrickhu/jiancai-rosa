@@ -14,7 +14,7 @@ export interface VehicleDef {
 
 /**
  * 走路开局就有。后面的只负责「看见更远的场」，进不进得去还看厨艺。
- * 小货车留给还没做的更远菜场，上面先空着。
+ * 小货车开果园、田头和埠头。进不进得去仍看厨艺。
  */
 export const VEHICLES: VehicleDef[] = [
   {
@@ -44,9 +44,9 @@ export const VEHICLES: VehicleDef[] = [
   {
     id: 'truck',
     name: '小货车',
-    blurb: '更远的场还在路上。',
+    blurb: '果园、田头和埠头，都在更远的路上。',
     cost: 860,
-    markets: [],
+    markets: ['guoyuan', 'tiantou', 'futou'],
     art: 'subpkg_images/vehicle_truck.png',
   },
 ];
@@ -96,14 +96,15 @@ export function ownsRouteToMarket(save: { vehicles?: readonly string[] }, market
 }
 
 export function vehicleForMarket(marketId: MarketId): VehicleDef {
-  return VEHICLES.find((v) => v.id !== 'truck' && v.markets.includes(marketId)) ?? VEHICLES[0];
+  return VEHICLES.find((v) => v.markets.includes(marketId)) ?? VEHICLES[0];
 }
 
-/** 走路夜摊、自行车垂钓、电动车干货。小货车先空着。 */
-export function specialMarketForVehicle(id: VehicleId): 'spice_night' | 'riverside_fish' | 'oldtown_dry' | null {
+/** 走路夜摊、自行车垂钓、电动车干货、小货车田埂夜摘。 */
+export function specialMarketForVehicle(id: VehicleId): 'spice_night' | 'riverside_fish' | 'oldtown_dry' | 'field_night' | null {
   if (id === 'walk') return 'spice_night';
   if (id === 'bike') return 'riverside_fish';
   if (id === 'ebike') return 'oldtown_dry';
+  if (id === 'truck') return 'field_night';
   return null;
 }
 

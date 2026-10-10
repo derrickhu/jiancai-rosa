@@ -198,6 +198,8 @@ export const DISH_EFFECTS: Record<DishEffectId, DishEffectDef> = {
  *   江边 / 南门：偏鱼摊、体力+2、偏肉摊
  *   上品台 / 老城：湿/干整行
  *   渡口 / 山珍 / 厨艺 13+：上品运、进场免费
+ *   果园到埠头：不再发体力 +1、八折、单格。良品管再出门和田菜摊，
+ *   上品管天色、整行、偏摊、上品运、半价、经验和双份。珍品才免费进场。
  */
 export const RECIPE_EAT: Record<RecipeId, DishEffectId> = {
   // 开局三道：三种基础里选今晚要哪样
@@ -294,6 +296,30 @@ export const RECIPE_EAT: Record<RecipeId, DishEffectId> = {
   bamboo_pork: 'fee_80',
   ham_melon_soup: 'sell_up_small',
   wild_fish_soup: 'luck_epic',
+
+  // 良品：材料好凑，吃了就再出门
+  bitter_egg: 'stamina_2',
+  loofah_soup: 'order_soon',
+  garlic_okra: 'stall_leaf',
+  // 上品：每道只管晚局的一件事
+  pear_shrimp: 'steps_2',
+  apple_ribs: 'cook_xp',
+  asparagus_lamb: 'stall_meat',
+  pea_shrimp: 'bag_wet_row',
+  pear_tremella: 'luck_epic',
+  lemon_bass: 'stall_fish',
+  steam_bass: 'fee_half',
+  pineapple_pork: 'sell_up',
+  mango_shrimp: 'luck_epic',
+  braised_lamb: 'cook_xp',
+  lychee_ribs: 'steps_2',
+  papaya_fish: 'bag_wet_row',
+  orange_wings: 'cook_double',
+  coconut_chicken: 'bag_dry_row',
+  hawthorn_ribs: 'sell_up',
+  // 珍品
+  squid_stir: 'luck_epic',
+  dragon_beef: 'fee_free',
 };
 
 {

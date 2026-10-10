@@ -3,7 +3,7 @@ import { rngWeighted, type Rng } from './rng';
 import { nextUid, type ExtractedItem } from './run';
 import type { VehicleId } from './vehicles';
 
-export type SpecialMarketId = 'spice_night' | 'riverside_fish' | 'oldtown_dry';
+export type SpecialMarketId = 'spice_night' | 'riverside_fish' | 'oldtown_dry' | 'field_night';
 export type SpecialFlavor = 'spice' | 'fish' | 'dry';
 export type TimingGrade = 'early' | 'hit' | 'late';
 
@@ -121,6 +121,39 @@ export const SPECIAL_MARKETS: SpecialMarketDef[] = [
       { id: 'lotus_seed', weight: 1 },
     ],
   },
+  {
+    id: 'field_night',
+    name: '田埂夜摘',
+    hint: '灯亮的那一面熟了，再伸手。',
+    vehicle: 'truck',
+    dailyLimit: SPECIAL_DAILY_LIMIT,
+    rounds: SPECIAL_ROUNDS,
+    thumb: 'subpkg_images/dest_field_night.jpg',
+    bg: 'subpkg_images/special_field_night_bg.jpg',
+    flavor: 'dry',
+    cue: '亮了就摘',
+    bgmMarket: 'laocheng',
+    targetPool: [
+      { id: 'loofah', weight: 4 },
+      { id: 'okra', weight: 4 },
+      { id: 'lettuce_stem', weight: 4 },
+      { id: 'pea', weight: 4 },
+      { id: 'asparagus', weight: 3 },
+      { id: 'pineapple', weight: 2 },
+      { id: 'pear', weight: 2 },
+      { id: 'mango', weight: 2 },
+      { id: 'lamb', weight: 2 },
+      { id: 'lychee', weight: 1 },
+      { id: 'seabass', weight: 1 },
+      { id: 'squid', weight: 1 },
+    ],
+    consolationPool: [
+      { id: 'loofah', weight: 3 },
+      { id: 'okra', weight: 3 },
+      { id: 'pea', weight: 2 },
+      { id: 'lettuce_stem', weight: 2 },
+    ],
+  },
 ];
 
 const BY_ID = new Map(SPECIAL_MARKETS.map((m) => [m.id, m] as const));
@@ -174,6 +207,11 @@ export function specialResultLine(
     if (grade === 'early') return '脱钩了';
     if (grade === 'late') return '线松了';
     return `上来了·${name}`;
+  }
+  if (def.id === 'field_night') {
+    if (grade === 'early') return name ? `还没熟·${name}` : '还没熟';
+    if (grade === 'late') return '摘晚了';
+    return `摘到了·${name}`;
   }
   if (grade === 'early') return `还是生货·${name}`;
   if (grade === 'late') return '被风吹走了';

@@ -30,6 +30,9 @@ export const MARKET_PLAN: Record<MarketId, MarketPlan> = {
   laocheng: { steps: 15, stallLayers: 5, width: [3, 3], maxDeadend: 3, allowDeep: false },
   dukou: { steps: 14, stallLayers: 4, width: [3, 3], maxDeadend: 2, allowDeep: false },
   shanzhen: { steps: 12, stallLayers: 3, width: [2, 3], maxDeadend: 2, allowDeep: false },
+  guoyuan: { steps: 16, stallLayers: 5, width: [3, 4], maxDeadend: 3, allowDeep: false },
+  tiantou: { steps: 17, stallLayers: 5, width: [3, 4], maxDeadend: 3, allowDeep: false },
+  futou: { steps: 18, stallLayers: 6, width: [3, 4], maxDeadend: 4, allowDeep: false },
 };
 
 /**
@@ -46,6 +49,9 @@ export const RECIPE_VISIT_CHANCE: Record<MarketId, number> = {
   laocheng: 0.38,
   dukou: 0.36,
   shanzhen: 0.42,
+  guoyuan: 0.4,
+  tiantou: 0.38,
+  futou: 0.36,
 };
 
 /** 填非保底层用。公共权重池；每场独特内容靠脚本节拍另挂，不靠这张表。 */
@@ -122,6 +128,30 @@ export const CARD_WEIGHTS: Record<MarketId, Array<[CardKind, number]>> = {
     ['deadend', 12],
     ['paystall', 20],
   ],
+  guoyuan: [
+    ['stall', 42],
+    ['freebie', 12],
+    ['empty', 10],
+    ['favor', 8],
+    ['deadend', 10],
+    ['paystall', 12],
+  ],
+  tiantou: [
+    ['stall', 40],
+    ['freebie', 11],
+    ['empty', 10],
+    ['favor', 8],
+    ['deadend', 11],
+    ['paystall', 14],
+  ],
+  futou: [
+    ['stall', 40],
+    ['freebie', 10],
+    ['empty', 10],
+    ['favor', 8],
+    ['deadend', 12],
+    ['paystall', 14],
+  ],
 };
 
 /** 哪类摊多。河沿肉摊、江边水产主场都走这张表，别为菜场另写卡型。 */
@@ -135,6 +165,9 @@ export const STALL_WEIGHTS: Record<MarketId, Array<[StallId, number]>> = {
   laocheng: [['leaf', 22], ['root', 28], ['egg', 16], ['meat', 34]],
   dukou: [['egg', 32], ['fish', 68]],
   shanzhen: [['leaf', 8], ['root', 16], ['egg', 28], ['fish', 24], ['meat', 24]],
+  guoyuan: [['leaf', 28], ['root', 58], ['egg', 14]],
+  tiantou: [['leaf', 50], ['egg', 16], ['meat', 34]],
+  futou: [['root', 40], ['egg', 14], ['fish', 46]],
 };
 
 /**
@@ -162,6 +195,21 @@ const MARKET_STALL_COUNT: Partial<Record<MarketId, Partial<Record<StallId, [numb
     fish: [2, 4],
     meat: [3, 4],
   },
+  guoyuan: {
+    leaf: [3, 5],
+    root: [4, 6],
+    egg: [2, 4],
+  },
+  tiantou: {
+    leaf: [4, 6],
+    egg: [2, 4],
+    meat: [3, 5],
+  },
+  futou: {
+    root: [4, 6],
+    egg: [2, 4],
+    fish: [3, 5],
+  },
 };
 
 export function stallPileRange(marketId: MarketId, stall: StallId): [number, number] {
@@ -187,6 +235,9 @@ const MARKET_ENTRY: Record<MarketId, number> = {
   laocheng: 4,
   dukou: 4,
   shanzhen: 5,
+  guoyuan: 5,
+  tiantou: 6,
+  futou: 6,
 };
 
 /** 鱼摊/肉摊货贵、蓝紫多，普通摊之上再加。巷口不加，避免开局鱼摊也劝退。 */
@@ -281,6 +332,19 @@ export const MARKET_ART: Record<MarketId, { routeBg: string; cardAtlas: string; 
     routeBg: 'subpkg_images/market_route_shanzhen.jpg',
     cardAtlas: 'subpkg_images/market_cards_shanzhen.jpg',
     meatCard: 'subpkg_images/market_card_shanzhen_meat.jpg',
+  },
+  guoyuan: {
+    routeBg: 'subpkg_images/market_route_guoyuan.jpg',
+    cardAtlas: 'subpkg_images/market_cards_guoyuan.jpg',
+  },
+  tiantou: {
+    routeBg: 'subpkg_images/market_route_tiantou.jpg',
+    cardAtlas: 'subpkg_images/market_cards_tiantou.jpg',
+    meatCard: 'subpkg_images/market_card_tiantou_meat.jpg',
+  },
+  futou: {
+    routeBg: 'subpkg_images/market_route_futou.jpg',
+    cardAtlas: 'subpkg_images/market_cards_futou.jpg',
   },
 };
 
@@ -667,6 +731,120 @@ export const EVENT_VOICE: Record<MarketId, Partial<Record<CardKind, EventVoice>>
         '老账本里夹着的，行里没人做了。你拿去。',
         '这道菜从前是给东家做的。别糟蹋了。',
         '纸脆，你收好。上头那几味，市面上不常有。',
+      ],
+    },
+  },
+  guoyuan: {
+    favor: {
+      speaker: '阿桃',
+      portrait: 'subpkg_images/npc_guoyuan_tao.png',
+      lines: [
+        '前头那筐果我打过招呼了。进去翻，不用给钱。',
+        '苦瓜还带着露。后面那摊账记我头上。',
+        '果林小路也开着。你先把这摊翻了。',
+      ],
+    },
+    empty: {
+      speaker: '收摊的果农',
+      portrait: 'subpkg_images/npc_guoyuan_tao.png',
+      lines: [
+        '这筐空了。温室棚里还有。',
+        '早市快散。往果林那边走走，灯还亮着。',
+        '菠萝先卖完了。苦瓜那摊还没收。',
+      ],
+    },
+    deadend: {
+      speaker: null,
+      portrait: null,
+      lines: [
+        '篱笆挡住了，果树后面没有摊。',
+        '这条是浇水的小径，走到头是空地。',
+        '天色白耗了一步，果林从另一边绕。',
+      ],
+    },
+    recipe: {
+      speaker: '阿桃',
+      portrait: 'subpkg_images/npc_guoyuan_tao.png',
+      lines: [
+        '这张油纸是果园里传下来的。你拿去。',
+        '上头那两味，早市才有。别放潮了。',
+        '我妈写的。字淡了，菜还在。',
+      ],
+    },
+  },
+  tiantou: {
+    favor: {
+      speaker: '老周',
+      portrait: 'subpkg_images/npc_tiantou_zhou.png',
+      lines: [
+        '前头田菜摊我说过了。进去白翻。',
+        '羊肉案还亮着灯。这摊账记我头上。',
+        '田埂那条小路开着。你先把眼前这摊翻完。',
+      ],
+    },
+    empty: {
+      speaker: '收摊的菜农',
+      portrait: 'subpkg_images/npc_tiantou_zhou.png',
+      lines: [
+        '这垄收光了。羊圈边还有一案。',
+        '晚了，筐先空。往田埂走，灯还在。',
+        '丝瓜卖完了。芦笋那捆还在。',
+      ],
+    },
+    deadend: {
+      speaker: null,
+      portrait: null,
+      lines: [
+        '田埂断在一道水沟前，过不去。',
+        '走到头是关了门的草棚。天色白耗了一步。',
+        '这条是运菜的车辙，没有摊。',
+      ],
+    },
+    recipe: {
+      speaker: '老周',
+      portrait: 'subpkg_images/npc_tiantou_zhou.png',
+      lines: [
+        '晚集传下来的油纸。你收好。',
+        '羊肉和田菜，别的场没有这搭配。',
+        '纸边烤黄了，字还认得。',
+      ],
+    },
+  },
+  futou: {
+    favor: {
+      speaker: '阿海',
+      portrait: 'subpkg_images/npc_futou_hai.png',
+      lines: [
+        '前头鱼摊我打过招呼。进去翻，不用给钱。',
+        '南果那筐还开着。账记我头上。',
+        '码头栈板还没收。你先把这摊看完。',
+      ],
+    },
+    empty: {
+      speaker: '收摊的鱼贩',
+      portrait: 'subpkg_images/npc_futou_hai.png',
+      lines: [
+        '冰化完了，这摊空了。果仓还开着。',
+        '潮要上来。往栈桥走，灯还亮。',
+        '鲈鱼先卖完。鱿鱼不常有，你再问问。',
+      ],
+    },
+    deadend: {
+      speaker: null,
+      portrait: null,
+      lines: [
+        '栈板到头是水面，没有下一摊。',
+        '仓门关死了。天色白耗了一步。',
+        '这条是卸货的跳板，摊都在另一边。',
+      ],
+    },
+    recipe: {
+      speaker: '阿海',
+      portrait: 'subpkg_images/npc_futou_hai.png',
+      lines: [
+        '埠头的油纸，鱼和果写在一张上。你拿去。',
+        '别沾水。上头那两味，这边才配得齐。',
+        '我爹留下的。你做得来再来找我。',
       ],
     },
   },
