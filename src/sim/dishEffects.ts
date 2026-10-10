@@ -592,9 +592,22 @@ export function consumeCookDoubleBuff<T extends { kitchenBuffs?: KitchenBuff[]; 
   return dropKitchenKind(save, 'cook_double', now);
 }
 
-export function clearOutingBuff<T extends { outingBuffs?: OutingBuff[]; outingBuff?: OutingBuff }>(save: T): T {
+/**
+ * 各加成什么时候消失（只在自己的场景触发后踩掉，别的路径不许顺手清）：
+ * - 体力 / 街坊马上再来：吃下去当场结算，不入档
+ * - 售价 ×：吃下去开始计时，窗口内每次卖菜都加成，到点自己过期
+ * - 下一锅经验 / 下一锅出两份：只在炒菜成功并真正套上后消耗
+ * - 天色 / 运势 / 进场费 / 篮子格 / 偏摊：只在「正式出门」start 套进这趟 run 之后，收摊时消耗
+ *   进冰箱、特殊市场、只逛选点、出门中途捡一份，都不该动厨房加成，也不该提前清没套过的出门加成
+ */
+export function consumeOutingBuffs<T extends { outingBuffs?: OutingBuff[]; outingBuff?: OutingBuff }>(save: T): T {
   if (!liveOutingBuffs(save).length) return save;
   return { ...save, outingBuffs: [] };
+}
+
+/** @deprecated 用 consumeOutingBuffs；厨房加成绝不能走这条 */
+export function clearOutingBuff<T extends { outingBuffs?: OutingBuff[]; outingBuff?: OutingBuff }>(save: T): T {
+  return consumeOutingBuffs(save);
 }
 
 export function outingRunMods<T extends { outingBuffs?: OutingBuff[]; outingBuff?: OutingBuff }>(

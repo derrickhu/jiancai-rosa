@@ -22,6 +22,7 @@ import { Platform } from '@/core/PlatformService';
 import { clearCookReadyFx, playCookReadyFx } from '@/utils/cookReadyFx';
 import {
   staminaMax,
+  FURN_ART_MAX_LEVEL,
   FURN_IDS,
   FURN_MAX_LEVEL,
   HOUSE_FALLBACK_SIZE,
@@ -306,7 +307,9 @@ export class KitchenScene implements Scene {
       this._paintStandIn(fit);
     }
 
-    for (const id of FURN_IDS) {
+    // 干箱站在灶台后面，框会叠到台面上。灶台最后画，贴图永远盖在最上面。
+    const furnPaintOrder: FurnId[] = [...FURN_IDS.filter((id) => id !== 'table'), 'table'];
+    for (const id of furnPaintOrder) {
       this._world.addChild(this._furniture(this._furnAt(id), save, fit));
     }
 
@@ -534,7 +537,8 @@ export class KitchenScene implements Scene {
   }
 
   private _furnPath(id: FurnId, level: number): string {
-    for (let lv = level; lv >= 0; lv--) {
+    const artLevel = Math.min(level, FURN_ART_MAX_LEVEL);
+    for (let lv = artLevel; lv >= 0; lv--) {
       const path = `subpkg_kitchen/kitchen_${id}_${lv}.png`;
       const tex = gameTexture(path);
       if (isTextureReady(tex)) return path;
@@ -1479,7 +1483,8 @@ export class KitchenScene implements Scene {
         return `容量  ${bagDryCols(lv)}×${bagRows(lv)} → ${bagDryCols(lv + 1)}×${bagRows(lv + 1)}`;
       }
       if (id === 'table') {
-        return `${nextShown}级  解锁 ${tableUnlockNext(lv)} 本菜谱`;
+        const unlocks = tableUnlockNext(lv);
+        return unlocks > 0 ? `${nextShown}级  解锁 ${unlocks} 本菜谱` : `${nextShown}级`;
       }
       return `${nextShown}级`;
     })();

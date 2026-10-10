@@ -61,6 +61,7 @@ import {
   type KitchenSave,
   type RecipeId,
 } from '@/sim/kitchen';
+import { consumeOutingBuffs } from '@/sim/dishEffects';
 import type { Rarity } from '@/sim/rarity';
 import {
   NEIGHBOR_COOLDOWN,
@@ -217,6 +218,14 @@ class KitchenManagerClass {
     }
     this.pendingHaul = items;
     return { needsPick: true };
+  }
+
+  /** 正式出门已经套过加成后收摊，才清出门 buff。厨房加成不动。 */
+  spendOutingBuffs(): void {
+    const next = consumeOutingBuffs(this.save);
+    if (next === this.save) return;
+    SaveManager.replace(next);
+    this.emit();
   }
 
   unpackNeed(): number {

@@ -18,9 +18,11 @@ import {
   type SpecialMarketDef,
   type SpecialMarketId,
   type TimingGrade,
+  liveHudBuffs,
 } from '@/sim';
+import { ensureHudBuffPanel } from '@/gameobjects/ui/HudBuffPanel';
 import { applyFit, fitCover, fitSpriteInBox, gameTexture, isTextureReady, itemLookTexture, whenTextureReady } from '@/utils/assets';
-import { HUD_ICON, fillRect, makeLabel, makeMuteButton, makeNewFoodTag, makePaperChip, makeStatPill } from '@/utils/ui';
+import { HUD_BUFF, HUD_ICON, fillRect, makeHudBuffRow, makeLabel, makeMuteButton, makeNewFoodTag, makePaperChip, makeStatPill } from '@/utils/ui';
 
 type Phase = 'idle' | 'telegraph' | 'hitWindow' | 'late' | 'resolve' | 'done';
 
@@ -163,6 +165,17 @@ export class SpecialMarketScene implements Scene {
     });
     bag.position.set(190, y + 52);
     this._hud.addChild(bag);
+
+    const buffs = liveHudBuffs(KitchenManager.save);
+    if (buffs.length) {
+      const row = makeHudBuffRow({
+        buffs,
+        onReady: redraw,
+        onTap: () => ensureHudBuffPanel().open(),
+      });
+      row.position.set(14, y + 52 + 44 + HUD_BUFF.pad);
+      this._hud.addChild(row);
+    }
 
     const mute = makeMuteButton(40);
     mute.position.set(w - 56, y);

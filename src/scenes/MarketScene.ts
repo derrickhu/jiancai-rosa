@@ -27,10 +27,12 @@ import {
   sceneBg,
   stallPileArt,
   stallRummageArt,
+  liveHudBuffs,
 } from '@/sim';
+import { ensureHudBuffPanel } from '@/gameobjects/ui/HudBuffPanel';
 import { layoutRouteMap, type RouteCell, type RouteMapView } from '@/gameobjects/market/MapView';
 import { AudioManager } from '@/core/AudioManager';
-import { FONT, HUD_ICON, bindUiClick, fillRect, makeLabel, makeNewFoodTag, makeRarityFlare, makeSlicedButton, makeStallNameTag, makeStatPill } from '@/utils/ui';
+import { FONT, HUD_BUFF, HUD_ICON, bindUiClick, fillRect, makeHudBuffRow, makeLabel, makeNewFoodTag, makeRarityFlare, makeSlicedButton, makeStallNameTag, makeStatPill } from '@/utils/ui';
 import { Platform } from '@/core/PlatformService';
 import { TweenManager, Ease } from '@/core/TweenManager';
 import { applyFit, fitCover, fitSpriteInBox, fitWidthBottom, gameTexture, isTextureFailed, isTextureReady, itemLookTexture, itemTexture, whenTextureReady } from '@/utils/assets';
@@ -248,7 +250,8 @@ export class MarketScene implements Scene {
   }
 
   private _hudFloor(): number {
-    return this._pillY() + 52;
+    const extra = liveHudBuffs(KitchenManager.save).length ? HUD_BUFF.size + HUD_BUFF.pad + 4 : 0;
+    return this._pillY() + 52 + extra;
   }
 
   private _drawHud(): void {
@@ -309,6 +312,17 @@ export class MarketScene implements Scene {
       TutorialManager.advanceIf(TutorialStep.OPEN_BASKET);
     });
     this._res.addChild(this._basketBtn);
+
+    const buffs = liveHudBuffs(KitchenManager.save);
+    if (buffs.length) {
+      const row = makeHudBuffRow({
+        buffs,
+        onReady: redraw,
+        onTap: () => ensureHudBuffPanel().open(),
+      });
+      row.position.set(rowX, pillY + 44 + HUD_BUFF.pad);
+      this._res.addChild(row);
+    }
 
     const side = 104;
     const y = this._hudTop();

@@ -1,15 +1,19 @@
 export type FurnId = 'fridge' | 'table' | 'basket' | 'foam';
 
 export const FURN_IDS: FurnId[] = ['fridge', 'table', 'basket', 'foam'];
-export const FURN_MAX_LEVEL = 9;
+export const FURN_MAX_LEVEL = 14;
 export const FURN_LEVEL_COUNT = FURN_MAX_LEVEL + 1;
+/** 贴图画到内部 14 级。缺文件时往下找。 */
+export const FURN_ART_MAX_LEVEL = 14;
 
-export const HOUSE_MAX_LEVEL = 2;
+export const HOUSE_MAX_LEVEL = 4;
 export const HOUSE_LEVEL_COUNT = HOUSE_MAX_LEVEL + 1;
-export const HOUSE_LABEL = ['陋屋', '精装屋', '雅致屋'] as const;
-/** 三档同机位、同画幅，一屏看完，不再加宽。 */
-export const HOUSE_SCREENS = [1.22, 1.22, 1.22];
+export const HOUSE_LABEL = ['陋屋', '精装屋', '雅致屋', '宽宅', '宅院'] as const;
+/** 各档同机位、同画幅，一屏看完，不再加宽。 */
+export const HOUSE_SCREENS = [1.22, 1.22, 1.22, 1.22, 1.22];
 export const HOUSE_FALLBACK_SIZE = [
+  { w: 853, h: 1280 },
+  { w: 853, h: 1280 },
   { w: 853, h: 1280 },
   { w: 853, h: 1280 },
   { w: 853, h: 1280 },
@@ -33,11 +37,13 @@ export const FURN_LABEL: Record<FurnId, string> = {
   foam: '泡沫箱',
 };
 
-/** 本档房屋能装下的家具最高级（0–9）。 */
+/** 本档房屋能装下的家具最高级（0–14）。雅致屋停在 9，再往上先装修。 */
 const HOUSE_FURN_CAP: Record<number, Record<FurnId, number>> = {
   0: { fridge: 3, table: 2, basket: 3, foam: 2 },
   1: { fridge: 5, table: 5, basket: 5, foam: 4 },
   2: { fridge: 9, table: 9, basket: 9, foam: 9 },
+  3: { fridge: 12, table: 12, basket: 12, foam: 12 },
+  4: { fridge: 14, table: 14, basket: 14, foam: 14 },
 };
 
 export function clampFurnLevel(level: number): number {
@@ -88,16 +94,22 @@ export function furnLabel(id: FurnId, level = 0): string {
     if (lv <= 1) return '水桶';
     if (lv <= 4) return '泡沫箱';
     if (lv <= 7) return '保温箱';
-    return '双层保温箱';
+    if (lv <= 9) return '双层保温箱';
+    if (lv <= 12) return '冰鲜箱';
+    return '车载冰柜';
   }
   if (id === 'basket') {
     if (lv <= 1) return '塑料袋';
     if (lv <= 3) return '小菜篮';
     if (lv <= 5) return '菜篮';
     if (lv <= 7) return '菜筐';
-    return '双层菜篮';
+    if (lv <= 9) return '双层菜篮';
+    if (lv <= 12) return '竹筐';
+    return '双层竹筐';
   }
   if (id === 'table') {
+    if (lv >= 13) return '双灶岛台';
+    if (lv >= 10) return '铜灶台';
     if (lv >= 8) return '大理石岛台';
     if (lv >= 5) return '岛台灶';
     if (lv >= 3) return '蛋卷桌';
@@ -127,9 +139,22 @@ const HOUSE_POSE_MAP: Record<number, Record<FurnId, Pose>> = {
     foam: { nx: 0.276, ny: 0.485, nw: 0.091, nh: 0.178 },
     table: { nx: 0.077, ny: 0.572, nw: 0.583, nh: 0.484 },
   },
+  // 宽宅、宅院和雅致屋同一机位。
+  3: {
+    fridge: { nx: 0.481, ny: 0.410, nw: 0.166, nh: 0.272 },
+    basket: { nx: 0.325, ny: 0.348, nw: 0.087, nh: 0.268, hang: true },
+    foam: { nx: 0.276, ny: 0.485, nw: 0.091, nh: 0.178 },
+    table: { nx: 0.077, ny: 0.572, nw: 0.583, nh: 0.484 },
+  },
+  4: {
+    fridge: { nx: 0.481, ny: 0.410, nw: 0.166, nh: 0.272 },
+    basket: { nx: 0.325, ny: 0.348, nw: 0.087, nh: 0.268, hang: true },
+    foam: { nx: 0.276, ny: 0.485, nw: 0.091, nh: 0.178 },
+    table: { nx: 0.077, ny: 0.572, nw: 0.583, nh: 0.484 },
+  },
 };
 
-const HOUSE_BOX_SCALE = [1.65, 1.65, 1.65];
+const HOUSE_BOX_SCALE = [1.65, 1.65, 1.65, 1.65, 1.65];
 
 /** GM 固化：三档房屋每级坐标。有则覆盖公式。 */
 const BAKED_POSES: FurnLayout[] = [
@@ -172,7 +197,7 @@ const BAKED_POSES: FurnLayout[] = [
   { id: 'table', house: 0, level: 6, nx: 0.077, ny: 0.572, nw: 0.583, nh: 0.484 },
   { id: 'table', house: 0, level: 7, nx: 0.067, ny: 0.553, nw: 0.594, nh: 0.495 },
   { id: 'table', house: 0, level: 8, nx: 0.055, ny: 0.537, nw: 0.605, nh: 0.506 },
-  { id: 'table', house: 0, level: 9, nx: 0.049, ny: 0.537, nw: 0.616, nh: 0.517 },
+  { id: 'table', house: 0, level: 9, nx: 0.064, ny: 0.540, nw: 0.604, nh: 0.507 },
   { id: 'fridge', house: 1, level: 0, nx: 0.481, ny: 0.410, nw: 0.166, nh: 0.272 },
   { id: 'fridge', house: 1, level: 1, nx: 0.496, ny: 0.439, nw: 0.143, nh: 0.234 },
   { id: 'fridge', house: 1, level: 2, nx: 0.488, ny: 0.397, nw: 0.174, nh: 0.285 },
@@ -192,7 +217,7 @@ const BAKED_POSES: FurnLayout[] = [
   { id: 'table', house: 1, level: 6, nx: 0.077, ny: 0.572, nw: 0.583, nh: 0.484 },
   { id: 'table', house: 1, level: 7, nx: 0.067, ny: 0.553, nw: 0.594, nh: 0.495 },
   { id: 'table', house: 1, level: 8, nx: 0.055, ny: 0.537, nw: 0.605, nh: 0.506 },
-  { id: 'table', house: 1, level: 9, nx: 0.049, ny: 0.537, nw: 0.616, nh: 0.517 },
+  { id: 'table', house: 1, level: 9, nx: 0.064, ny: 0.540, nw: 0.604, nh: 0.507 },
   { id: 'basket', house: 1, level: 0, nx: 0.325, ny: 0.348, nw: 0.087, nh: 0.268, hang: true },
   { id: 'basket', house: 1, level: 1, nx: 0.311, ny: 0.352, nw: 0.101, nh: 0.294, hang: true },
   { id: 'basket', house: 1, level: 2, nx: 0.323, ny: 0.344, nw: 0.096, nh: 0.218, hang: true },
@@ -232,7 +257,7 @@ const BAKED_POSES: FurnLayout[] = [
   { id: 'table', house: 2, level: 6, nx: 0.077, ny: 0.572, nw: 0.583, nh: 0.484 },
   { id: 'table', house: 2, level: 7, nx: 0.067, ny: 0.553, nw: 0.594, nh: 0.495 },
   { id: 'table', house: 2, level: 8, nx: 0.055, ny: 0.537, nw: 0.605, nh: 0.506 },
-  { id: 'table', house: 2, level: 9, nx: 0.049, ny: 0.537, nw: 0.616, nh: 0.517 },
+  { id: 'table', house: 2, level: 9, nx: 0.064, ny: 0.540, nw: 0.604, nh: 0.507 },
   { id: 'basket', house: 2, level: 0, nx: 0.325, ny: 0.348, nw: 0.087, nh: 0.268, hang: true },
   { id: 'basket', house: 2, level: 1, nx: 0.311, ny: 0.352, nw: 0.101, nh: 0.294, hang: true },
   { id: 'basket', house: 2, level: 2, nx: 0.323, ny: 0.344, nw: 0.096, nh: 0.218, hang: true },
@@ -253,6 +278,27 @@ const BAKED_POSES: FurnLayout[] = [
   { id: 'foam', house: 2, level: 7, nx: 0.256, ny: 0.484, nw: 0.190, nh: 0.218 },
   { id: 'foam', house: 2, level: 8, nx: 0.254, ny: 0.429, nw: 0.178, nh: 0.277 },
   { id: 'foam', house: 2, level: 9, nx: 0.261, ny: 0.397, nw: 0.206, nh: 0.310 },
+  // 10–14 按新贴图外接比例摆。只写房屋 0，其它房屋走同一套回退。
+  { id: 'fridge', house: 0, level: 10, nx: 0.496, ny: 0.179, nw: 0.198, nh: 0.540 },
+  { id: 'fridge', house: 0, level: 11, nx: 0.475, ny: 0.164, nw: 0.220, nh: 0.560 },
+  { id: 'fridge', house: 0, level: 12, nx: 0.468, ny: 0.137, nw: 0.233, nh: 0.580 },
+  { id: 'fridge', house: 0, level: 13, nx: 0.449, ny: 0.123, nw: 0.260, nh: 0.600 },
+  { id: 'fridge', house: 0, level: 14, nx: 0.454, ny: 0.084, nw: 0.244, nh: 0.640 },
+  { id: 'table', house: 0, level: 10, nx: 0.159, ny: 0.528, nw: 0.405, nh: 0.492 },
+  { id: 'table', house: 0, level: 11, nx: 0.096, ny: 0.520, nw: 0.504, nh: 0.518 },
+  { id: 'table', house: 0, level: 12, nx: 0.078, ny: 0.496, nw: 0.580, nh: 0.598 },
+  { id: 'table', house: 0, level: 13, nx: 0.053, ny: 0.537, nw: 0.620, nh: 0.514 },
+  { id: 'table', house: 0, level: 14, nx: 0.020, ny: 0.512, nw: 0.660, nh: 0.533 },
+  { id: 'basket', house: 0, level: 10, nx: 0.302, ny: 0.321, nw: 0.127, nh: 0.296, hang: true },
+  { id: 'basket', house: 0, level: 11, nx: 0.305, ny: 0.266, nw: 0.144, nh: 0.343, hang: true },
+  { id: 'basket', house: 0, level: 12, nx: 0.293, ny: 0.253, nw: 0.157, nh: 0.350, hang: true },
+  { id: 'basket', house: 0, level: 13, nx: 0.286, ny: 0.243, nw: 0.175, nh: 0.405, hang: true },
+  { id: 'basket', house: 0, level: 14, nx: 0.286, ny: 0.249, nw: 0.157, nh: 0.365, hang: true },
+  { id: 'foam', house: 0, level: 10, nx: 0.254, ny: 0.513, nw: 0.210, nh: 0.180 },
+  { id: 'foam', house: 0, level: 11, nx: 0.239, ny: 0.506, nw: 0.237, nh: 0.204 },
+  { id: 'foam', house: 0, level: 12, nx: 0.221, ny: 0.525, nw: 0.248, nh: 0.200 },
+  { id: 'foam', house: 0, level: 13, nx: 0.235, ny: 0.408, nw: 0.216, nh: 0.314 },
+  { id: 'foam', house: 0, level: 14, nx: 0.226, ny: 0.294, nw: 0.178, nh: 0.420 },
 ];
 
 const BAKED_MAP = new Map(
@@ -299,11 +345,13 @@ function poseAt(id: FurnId, level: number, house = 2): FurnLayout {
   const lv = clampFurnLevel(level);
   const baked = BAKED_MAP.get(`${h}:${id}:${lv}`) ?? BAKED_MAP.get(`0:${id}:${lv}`);
   if (baked) {
-    const hang = baked.hang || HOUSE_POSE_MAP[h][id].hang;
+    const poseHouse = HOUSE_POSE_MAP[h] ? h : 2;
+    const hang = baked.hang || HOUSE_POSE_MAP[poseHouse]?.[id]?.hang;
     return { ...baked, id, level: lv, house: h, ...(hang ? { hang: true as const } : {}) };
   }
-  const base = HOUSE_POSE_MAP[h][id];
-  const scale = HOUSE_BOX_SCALE[h];
+  const poseHouse = HOUSE_POSE_MAP[h] ? h : 2;
+  const base = HOUSE_POSE_MAP[poseHouse][id];
+  const scale = HOUSE_BOX_SCALE[h] ?? HOUSE_BOX_SCALE[2];
   const box = STAGE_BOX[id]?.[lv];
   const g = 0.58 + Math.max(0, lv) * 0.07;
   const nw = (box ? box.nw * scale : Math.min(0.62, base.nw * g));

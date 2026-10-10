@@ -1,6 +1,5 @@
 import {
   applyEatEffects,
-  clearOutingBuff,
   consumeCookDoubleBuff,
   consumeCookXpBuff,
   kitchenCookXpMul,
@@ -112,14 +111,17 @@ export const STAMINA_REGEN_MS = 30 * 60 * 1000;
 /** 游戏圈每日发帖领金币。 */
 export const GAME_CLUB_DAILY_COINS = 50;
 
-/** 当前厨艺对应的体力上限。1 级 10 点，之后每级 +1。 */
+/** 体力只跟到厨艺 15。16–25 不再加体力。 */
+export const STAMINA_LEVEL_CAP = 15;
+/** 当前厨艺对应的体力上限。1 级 10 点，到 15 级为止每级 +1。 */
 export function staminaMax(save: Pick<KitchenSave, 'level'> | number): number {
   const level = typeof save === 'number' ? clampCookLevel(save) : clampCookLevel(save.level);
-  return STAMINA_MAX + STAMINA_PER_LEVEL * (level - 1);
+  const staminaLevel = Math.min(level, STAMINA_LEVEL_CAP);
+  return STAMINA_MAX + STAMINA_PER_LEVEL * (staminaLevel - 1);
 }
 export const FRIDGE_BASE = 18;
-/** 冰箱内部 0–9 级的格数。回家后干湿饭菜都进这些格，不分仓。每升一级 +6。 */
-export const FRIDGE_CAP = [18, 24, 30, 36, 42, 48, 54, 60, 66, 72];
+/** 冰箱内部 0–14 级的格数。0–9 每级 +6，10–14 每级 +4。 */
+export const FRIDGE_CAP = [18, 24, 30, 36, 42, 48, 54, 60, 66, 72, 76, 80, 84, 88, 92];
 /** 同一格里同种食材/饭菜最多叠多少份。多了另开一格。 */
 export const FRIDGE_STACK = 10;
 export const UPGRADE_BASKET_I = 80;
@@ -221,7 +223,7 @@ export interface KitchenSave {
   /** @deprecated 由 furnLevels.fridge / foam 迁移 */
   fridgeExtra: boolean;
   furnLevels: Record<FurnId, number>;
-  /** 房屋 0 陋屋 / 1 精装屋 / 2 雅致屋。大件家具升级受这一档限制。 */
+  /** 房屋 0 陋屋 / 1 精装屋 / 2 雅致屋 / 3 宽宅 / 4 宅院。大件家具升级受这一档限制。 */
   houseLevel: number;
   dexSeen: string[];
   dexInspected: string[];
@@ -638,12 +640,12 @@ export function settleFridgeUnpack(
   const gold = sold.reduce((sum, it) => sum + fridgeItemPrice(it, save, now), 0);
   const next = noteDex(save, haul);
   return {
-    save: clearOutingBuff({
+    save: {
       ...next,
       fridge: compactFridge(keep),
       money: next.money + gold,
       dailyGodPickDate: keep.some((it) => it.defId === 'wild_yellowfish') ? todayKey(now) : save.dailyGodPickDate,
-    }),
+    },
     gained: gold,
     kept: keep.length,
   };
@@ -786,11 +788,11 @@ export function ingestExtract(save: KitchenSave, items: ExtractedItem[], now = D
     qty: 1,
   }));
   const next = noteDex(save, keep);
-  return clearOutingBuff({
+  return {
     ...next,
     fridge: compactFridge(incoming.reduce((fridge, it) => putIntoFridge(fridge, it), next.fridge)),
     dailyGodPickDate: keep.some((it) => it.defId === 'wild_yellowfish') ? todayKey(now) : save.dailyGodPickDate,
-  });
+  };
 }
 
 export function eatDish(
@@ -990,6 +992,7 @@ export function upgradeCost(id: FurnId, fromLevel: number): number {
   // 食材表改成按占格公式化定价后整体涨了一档，这里同步抬价，
   // 否则一趟菜场就能换一次升级，攒钱又变得没有挑战。
   // 前两级单独打折，开局先把烹饪台和篮子抬起来。1→2 再让一截，一趟巷口就够抬一件。
+  // 内部 0–4（升到界面 5 级）维持 1.38。从内部 5 起锚在 4 级现价，之后每级 ×1.72。
   const base: Record<FurnId, number> = {
     fridge: 90,
     table: 65,
@@ -997,31 +1000,36 @@ export function upgradeCost(id: FurnId, fromLevel: number): number {
     foam: 55,
   };
   const early = lv === 0 ? 0.45 : lv === 1 ? 0.72 : 1;
-  return Math.round(base[id] * Math.pow(1.38, lv) * early);
+  if (lv <= 4) return Math.round(base[id] * Math.pow(1.38, lv) * early);
+  const anchor = Math.round(base[id] * Math.pow(1.38, 4));
+  return Math.round(anchor * Math.pow(1.72, lv - 4));
 }
 
-export const HOUSE_UPGRADE_COST = [380, 980];
-/** 陋屋→精装屋要厨艺 4，精装屋→雅致屋要厨艺 8。 */
-export const HOUSE_COOK_NEED = [4, 8];
-export const COOK_LEVEL_MAX = 15;
+export const HOUSE_UPGRADE_COST = [380, 2800, 9000, 22000];
+/** 陋屋→精装屋厨艺 4，精装→雅致 8，雅致→宽宅 16，宽宅→宅院 20。 */
+export const HOUSE_COOK_NEED = [4, 8, 16, 20];
+export const COOK_LEVEL_MAX = 25;
 /**
  * COOK_XP_TO_NEXT[当前厨艺] = 升到下一级所需。
- * 前 8 级维持原曲线；9→15 削平，避免最后两场卡在单级 70 道上品上。
+ * 前 8 级维持原曲线；9→15 削平；16→25 沿后段每级 +120。
  */
-export const COOK_XP_TO_NEXT = [0, 60, 110, 180, 250, 340, 450, 580, 720, 820, 940, 1060, 1180, 1300, 1420];
+export const COOK_XP_TO_NEXT = [
+  0, 60, 110, 180, 250, 340, 450, 580, 720, 820, 940, 1060, 1180, 1300, 1420,
+  1540, 1660, 1780, 1900, 2020, 2140, 2260, 2380, 2500, 2620,
+];
 const COOK_XP_MAXED = COOK_XP_TO_NEXT[COOK_LEVEL_MAX - 1];
 
-/** 烹饪台从当前内部等级再升一级时新解锁几本。 */
+/** 烹饪台从当前内部等级再升一级时新解锁几本。10 级以后不送菜谱。 */
 export function tableUnlockNext(fromLevel: number): number {
-  return TABLE_UNLOCKS[clampFurnLevel(fromLevel)]?.length ?? 1;
+  return TABLE_UNLOCKS[clampFurnLevel(fromLevel)]?.length ?? 0;
 }
 
-/** 升到下一级家具所需厨艺。下标是当前内部等级 0–8。 */
+/** 升到下一级家具所需厨艺。下标是当前内部等级 0–13。 */
 const FURN_COOK_NEED: Record<FurnId, number[]> = {
-  table: [1, 3, 3, 5, 7, 9, 11, 12, 13],
-  fridge: [1, 1, 3, 4, 5, 6, 7, 9, 11],
-  basket: [1, 2, 3, 4, 5, 6, 7, 9, 11],
-  foam: [1, 1, 3, 4, 5, 6, 7, 9, 11],
+  table: [1, 3, 3, 5, 7, 9, 11, 12, 13, 16, 18, 20, 22, 24],
+  fridge: [1, 1, 3, 4, 5, 6, 7, 9, 11, 15, 17, 18, 20, 22],
+  basket: [1, 2, 3, 4, 5, 6, 7, 9, 11, 15, 17, 18, 20, 22],
+  foam: [1, 1, 3, 4, 5, 6, 7, 9, 11, 15, 17, 18, 20, 22],
 };
 
 export function clampCookLevel(level: number): number {

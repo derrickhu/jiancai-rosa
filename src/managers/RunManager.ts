@@ -459,14 +459,13 @@ class RunManagerClass {
   }
 
   private _takeFreebie(state: RunState, node: MapNode): RunState {
-    const outing = outingRunMods(KitchenManager.save);
     const { defId, quality } = rollFreebie(
       this._rng,
       state.marketId,
       cookLevel(KitchenManager.save),
       this._wanted(),
       this._boosted(),
-      { rare: outing.luckRare, epic: outing.luckEpic },
+      { rare: state.luckRare, epic: state.luckEpic },
     );
     return this._placeFood(state, node.id, node.kind, defId, quality, '摊主收筐时漏下的，还新鲜着，捡回去。');
   }
@@ -730,6 +729,7 @@ class RunManagerClass {
     const kind = decideExtract(this.run, voluntary);
     const result = settleExtract(kind, this.basket);
     const unpack = KitchenManager.receiveExtract(result.items);
+    KitchenManager.spendOutingBuffs();
     const extract = { ...result, needsPick: unpack.needsPick };
     this.run = { ...this.run, ended: true, extract };
     analytics.trackQuestComplete(`outing_${this.run.marketId}`, 'event', {

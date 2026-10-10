@@ -103,6 +103,9 @@ export interface RunState {
   slowNodes: string[];
   /** 吃菜：进场费倍率。1 原价，0.5 半价，0 免费。 */
   feeMul: number;
+  /** 出门时拍下的运势，摊上白捡也走这份，不跟存档里还在不在的 buff 挂钩。 */
+  luckRare: number;
+  luckEpic: number;
   ended: boolean;
   extract?: ExtractResult;
   /** 路线页那行事件回执 */
@@ -234,6 +237,8 @@ export function createRun(opts: {
     freePass: false,
     slowNodes: [],
     feeMul: opts.feeMul === 0 ? 0 : Math.max(0, opts.feeMul ?? 1),
+    luckRare: Math.max(0, luck?.rare ?? 0),
+    luckEpic: Math.max(0, luck?.epic ?? 0),
     ended: false,
     extract: undefined,
     note: '天还没黑，挑条路走。',

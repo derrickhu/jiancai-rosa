@@ -235,8 +235,10 @@ function syncPackIgnore(remotePaths) {
   const raw = fs.readFileSync(configPath, 'utf-8');
   const project = JSON.parse(raw);
   const pack = project.packOptions || { ignore: [], include: [] };
+  const remote = new Set(remotePaths);
   const keep = (pack.ignore || []).filter((entry) => {
     const value = String(entry.value || '');
+    if (remote.has(value)) return false;
     return !value.startsWith('subpkg_images/')
       && !value.startsWith('subpkg_audio/')
       && !value.startsWith('audio/');

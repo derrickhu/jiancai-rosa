@@ -45,6 +45,7 @@ class CdnAssetServiceClass {
 
   isBundledPath(path: string): boolean {
     const normalized = this._normalize(path);
+    if (this._matchesCdnPrefix(normalized)) return false;
     return this._bundledPrefixes.some(prefix => normalized.startsWith(prefix));
   }
 
