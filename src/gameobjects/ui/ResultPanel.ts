@@ -7,6 +7,7 @@ import { SceneManager } from '@/core/SceneManager';
 import { KitchenManager } from '@/managers/KitchenManager';
 import { RunManager } from '@/managers/RunManager';
 import { Platform } from '@/core/PlatformService';
+import { tryShowInterstitial } from '@/services/InterstitialAdService';
 import {
   RARITY_STYLE,
   fridgeCap,
@@ -123,8 +124,10 @@ export class ResultPanel extends PIXI.Container {
     this._scroller.disable();
     TutorialOverlay.unregister('result');
     TutorialOverlay.onBlankTap(null);
+    const inTutorial = TutorialManager.isActive;
     TutorialManager.advanceIf(TutorialStep.WAIT_RESULT);
     RunManager.clear();
+    if (!inTutorial) void tryShowInterstitial('go_home');
     SceneManager.switchTo('kitchen');
   }
 
@@ -724,6 +727,7 @@ export class ResultPanel extends PIXI.Container {
     this._stopPops();
     this._scroller.disable();
     RunManager.clear();
+    if (!TutorialManager.isActive) void tryShowInterstitial('go_home');
     SceneManager.switchTo('kitchen');
   }
 }

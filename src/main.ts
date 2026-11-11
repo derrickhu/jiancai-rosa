@@ -20,6 +20,7 @@ import { CdnAssetService } from '@/core/CdnAssetService';
 import { gameTexture, isTextureReady, preloadTextures, retryTexture } from '@/utils/assets';
 import { kitchenBootPaths, kitchenCriticalPaths } from '@/utils/bootAssets';
 import { ensureBootSubpackages } from '@/utils/bootSubpackages';
+import { DouyinWelfareManager } from '@/managers/DouyinWelfareManager';
 
 const BOOT_HOLD_MS = 480;
 const BOOT_HANG_MS = 40000;
@@ -38,6 +39,7 @@ function handleCloudSaveReload(info: CloudImportInfo): void {
 
 async function main(): Promise<void> {
   initAnalytics();
+  DouyinWelfareManager.init();
   if (typeof GameGlobal !== 'undefined') {
     const prevError = GameGlobal.onError;
     const prevReject = GameGlobal.onUnhandledRejection;

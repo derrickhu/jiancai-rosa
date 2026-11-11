@@ -13,6 +13,8 @@ import { DailyMenuPanel } from '@/gameobjects/ui/DailyMenuPanel';
 import { RecipeDrawPanel } from '@/gameobjects/ui/RecipeDrawPanel';
 import { EventPanel } from '@/gameobjects/ui/EventPanel';
 import { GameClubPanel } from '@/gameobjects/ui/GameClubPanel';
+import { DouyinWelfarePanel } from '@/gameobjects/ui/DouyinWelfarePanel';
+import { DouyinWelfareManager } from '@/managers/DouyinWelfareManager';
 import { UpgradePanel } from '@/gameobjects/ui/UpgradePanel';
 import { ensureRecipeUnlockPanel } from '@/gameobjects/ui/RecipeUnlockPanel';
 import { ensureCookLevelUpPanel } from '@/gameobjects/ui/CookLevelUpPanel';
@@ -99,6 +101,7 @@ export class KitchenScene implements Scene {
   private _gacha = new RecipeDrawPanel();
   private _event = new EventPanel();
   private _gameClub = new GameClubPanel();
+  private _welfare = new DouyinWelfarePanel();
   private _upgrade = new UpgradePanel();
   private _offerTimer = 0;
   private _onChange = () => {
@@ -167,6 +170,12 @@ export class KitchenScene implements Scene {
     this.container.eventMode = 'static';
     this._world.eventMode = 'static';
     this._ui.eventMode = 'passive';
+    if (Platform.isDouyin) {
+      Platform.onShow(() => {
+        if (this.container.parent && !this._itemDrag) this.relayout();
+        this._welfare.refreshIfOpen();
+      });
+    }
   }
 
   onEnter(): void {
@@ -216,6 +225,7 @@ export class KitchenScene implements Scene {
       || this._gacha._isOpen
       || this._event._isOpen
       || this._gameClub._isOpen
+      || this._welfare._isOpen
       || ensureRecipeUnlockPanel()._isOpen
       || ensureCookLevelUpPanel()._isOpen
       || ensureTutorialGiftPanel()._isOpen
@@ -250,6 +260,7 @@ export class KitchenScene implements Scene {
     this._gacha.close(true);
     this._event.close(true);
     this._gameClub.close(true);
+    this._welfare.close(true);
     this._upgrade.close(true);
     this._upgradePick = null;
     clearCookReadyFx();
@@ -622,8 +633,14 @@ export class KitchenScene implements Scene {
     let slot = dexY;
     this._drawDexHud(redraw, slot);
     slot += STEP;
-    this._drawGameClubHud(redraw, slot);
-    slot += STEP;
+    if (Platform.isWechat) {
+      this._drawGameClubHud(redraw, slot);
+      slot += STEP;
+    }
+    if (Platform.isDouyin) {
+      this._drawWelfareHud(redraw, slot);
+      slot += STEP;
+    }
     if (!TutorialManager.isActive && KitchenManager.save.dailyMenu) {
       this._drawDailyMenuHud(redraw, slot);
       slot += STEP;
@@ -870,6 +887,40 @@ export class KitchenScene implements Scene {
     this._ui.addChild(root);
   }
 
+  private _drawWelfareHud(_redraw: () => void, y: number): void {
+    if (!DouyinWelfareManager.hasEntry) return;
+    const size = 86;
+    const root = new PIXI.Container();
+    const badge = new PIXI.Graphics();
+    fillRect(badge, 8, 8, size - 16, size - 16, 0xC46A3A, 18);
+    const mark = makeLabel('福', 32, 0xFFF8F0, { fontWeight: '700' });
+    mark.anchor.set(0.5);
+    mark.position.set(size / 2, size / 2);
+    const chip = new PIXI.Graphics();
+    fillRect(chip, 8, size - 2, size - 16, 26, 0xFFF8F0, 12);
+    chip.alpha = 0.92;
+    const label = makeLabel('福利', 18, 0x2A2018, { fontWeight: '700' });
+    label.anchor.set(0.5, 0);
+    label.position.set(size / 2, size);
+    root.addChild(badge, mark, chip, label);
+    if (DouyinWelfareManager.hasRedDot) {
+      const dot = new PIXI.Graphics();
+      fillRect(dot, size - 22, 4, 16, 16, 0xD94A3A, 8);
+      root.addChild(dot);
+    }
+    root.position.set(10, y);
+    root.eventMode = 'static';
+    root.cursor = 'pointer';
+    root.hitArea = new PIXI.Rectangle(0, 0, size, size + 28);
+    const stop = (e: PIXI.FederatedPointerEvent) => e.stopPropagation();
+    root.on('pointerdown', stop);
+    root.on('pointertap', (e) => {
+      e.stopPropagation();
+      this._welfare.open();
+    });
+    this._ui.addChild(root);
+  }
+
   private _drawDexHud(redraw: () => void, y: number): void {
     const path = HUD_ICON.dex;
     whenTextureReady(path, redraw);
@@ -1051,6 +1102,7 @@ export class KitchenScene implements Scene {
     this._gacha.close(true);
     this._event.close(true);
     this._gameClub.close(true);
+    this._welfare.close(true);
     this._upgrade.close(true);
     this._upgradePick = null;
     ensureRecipeUnlockPanel().close();

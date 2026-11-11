@@ -86,6 +86,8 @@ class CdnAssetServiceClass {
 
   /** 开发者工具 USER_DATA_PATH 是 http://usr，图片能读，InnerAudio 必须 wxfile://。 */
   toInnerAudioSrc(path: string): string {
+    // wxfile 只存在于微信。抖音缓存是 ttfile://user，改写成 wxfile 会把音效播空。
+    if (!Platform.isWechat) return path;
     if (/^https?:\/\/usr\//.test(path)) return path.replace(/^https?:\/\/usr\//, 'wxfile://usr/');
     return path;
   }

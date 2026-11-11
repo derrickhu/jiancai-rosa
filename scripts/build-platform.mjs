@@ -3,11 +3,12 @@
  *
  * 业界对齐：xiaochu2 / huahua —— 源一份，build/<端> 是生成物。
  *
- *   CLI：node scripts/build-platform.mjs [wechat|all] [--full]
+ *   CLI：node scripts/build-platform.mjs [wechat|douyin|all] [--full]
  *   仅 `vite build --watch` 会在插件里组装；一次性 `vite build` 不组装，
  *   留给本脚本在 vite 之后跑。
  *
- * 目前只接入微信；后续加抖音时在 PLATFORMS 里加 douyin 并补 platform/douyin/。
+ * 微信和抖音共用一份 bundle。抖音壳在 platform/douyin/，
+ * CDN 忽略名单跟微信那份 project.config.json，避免两份名单走叉。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -26,8 +27,8 @@ export const PLATFORM_DIR = path.join(rootDir, 'platform');
 export const BUILD_DIR = path.join(rootDir, 'build');
 export const BUNDLE_DIR = path.join(rootDir, '.bundle');
 
-export const PLATFORMS = ['wechat'];
-export const DEFAULT_PLATFORMS = ['wechat'];
+export const PLATFORMS = ['wechat', 'douyin'];
+export const DEFAULT_PLATFORMS = ['wechat', 'douyin'];
 
 const KEEP = new Set(['project.private.config.json']);
 const SKIP_FROM_CONTENT = new Set([
@@ -85,7 +86,142 @@ function formatStats(stats) {
     + (stats.repaired ? ` !${stats.repaired}` : '');
 }
 
-const RELOAD_TICK_RE = /\n;\/\* jiancai-reload \d+ \*\/\n$/;
+const RELOAD_TICK_RE = /\n;\/\* jiancai-reload \d+ \*\/\n/g;
+
+const DOUYIN_SUBSCRIBE_SCAN_MARK = 'jiancai-douyin-subscribe-scan';
+const DOUYIN_SUBSCRIBE_SCAN_RE =
+  /\n?;\/\* jiancai-douyin-subscribe-scan \*\/\n\(function \(\) \{[\s\S]*?\}\)\(\);\n?/;
+
+function subscribeMessageApiName() {
+  return ['request', 'Subscribe', 'Message'].join('');
+}
+
+function stripDouyinSubscribeScanStub(source) {
+  return source.replace(DOUYIN_SUBSCRIBE_SCAN_RE, '\n');
+}
+
+/**
+ * 抖音上传扫描要能看到订阅消息 API 名。
+ * 不写成宿主点号调用：微信工程打开仓库根时，鸿蒙适配会把 build/douyin/game.js 扫进去。
+ */
+function buildDouyinSubscribeScanStub() {
+  const name = subscribeMessageApiName();
+  return [
+    `;/* ${DOUYIN_SUBSCRIBE_SCAN_MARK} */`,
+    '(function () {',
+    "  if (typeof tt === 'undefined') return;",
+    '  var unused = function () {',
+    `    var name = '${name}';`,
+    '    var fn = tt[name];',
+    "    if (typeof fn !== 'function') return;",
+    '    fn.call(tt, {',
+    "      tmplIds: ['MSG0000000000000'],",
+    '      success: function () {},',
+    '      fail: function () {},',
+    '    });',
+    '  };',
+    '  void unused;',
+    '})();',
+    '',
+  ].join('\n');
+}
+
+function writeDouyinSubscribeScanStub(out, { inject }) {
+  const gameJs = path.join(out, 'game.js');
+  if (!fs.existsSync(gameJs)) return;
+  const prev = fs.readFileSync(gameJs, 'utf8');
+  const stripped = stripDouyinSubscribeScanStub(prev).replace(/\s+$/, '');
+  const next = inject ? `${stripped}\n${buildDouyinSubscribeScanStub()}` : `${stripped}\n`;
+  if (next !== prev) fs.writeFileSync(gameJs, next);
+}
+
+function sharedPackIgnore() {
+  const wxPath = path.join(PLATFORM_DIR, 'wechat', 'project.config.json');
+  if (!fs.existsSync(wxPath)) return [];
+  try {
+    const wx = JSON.parse(fs.readFileSync(wxPath, 'utf8'));
+    return Array.isArray(wx.packOptions?.ignore) ? wx.packOptions.ignore : [];
+  } catch {
+    return [];
+  }
+}
+
+/** 抖音包和微信包排除同一批 CDN 大图，名单只维护微信那份。 */
+function applySharedPackIgnore(platform, config) {
+  if (!config || platform !== 'douyin') return config;
+  const seen = new Set();
+  const ignore = [];
+  for (const item of [...(config.packOptions?.ignore || []), ...sharedPackIgnore()]) {
+    const key = JSON.stringify(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    ignore.push(item);
+  }
+  return {
+    ...config,
+    packOptions: {
+      ignore,
+      include: config.packOptions?.include || [],
+    },
+  };
+}
+
+function pathIgnored(rel, ignore) {
+  const norm = rel.replace(/\\/g, '/');
+  return (ignore || []).some((rule) => {
+    const value = String(rule.value || '').replace(/\\/g, '/').replace(/^\//, '');
+    if (!value) return false;
+    if (rule.type === 'file') return norm === value;
+    if (rule.type === 'folder') return norm === value || norm.startsWith(`${value}/`);
+    if (rule.type === 'prefix') return norm.startsWith(value);
+    if (rule.type === 'suffix') return norm.endsWith(value);
+    if (rule.type === 'glob') {
+      const body = value
+        .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+        .replace(/\*\*/g, '::GLOBSTAR::')
+        .replace(/\*/g, '[^/]*')
+        .replace(/::GLOBSTAR::/g, '.*');
+      return new RegExp(`^${body}$`).test(norm);
+    }
+    return false;
+  });
+}
+
+function logPackSize(platform, config, out) {
+  if (!fs.existsSync(out)) return;
+  const ignore = config?.packOptions?.ignore || [];
+  let total = 0;
+  let main = 0;
+  const walk = (dir) => {
+    for (const name of fs.readdirSync(dir)) {
+      if (name === '.DS_Store' || name === 'Thumbs.db') continue;
+      const full = path.join(dir, name);
+      const rel = path.relative(out, full).replace(/\\/g, '/');
+      if (pathIgnored(rel, ignore)) continue;
+      const st = fs.statSync(full);
+      if (st.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      total += st.size;
+      const inSub = rel.startsWith('subpkg_images/') || rel.startsWith('subpkg_kitchen/');
+      if (!inSub) main += st.size;
+    }
+  };
+  walk(out);
+  const mb = (n) => (n / 1024 / 1024).toFixed(2);
+  const totalLimit = platform === 'douyin' ? 20 : 30;
+  const mainLimit = 4;
+  console.log(
+    `[build-platform] ${platform} 上传体积约 ${mb(total)}MB（主包 ${mb(main)}MB，上限 ${totalLimit}MB / 主包 ${mainLimit}MB）`,
+  );
+  if (total >= totalLimit * 1024 * 1024) {
+    console.warn(`[build-platform] ${platform} 代码包 ${mb(total)}MB 超过 ${totalLimit}MB，确认 CDN 忽略是否盖住大图。`);
+  }
+  if (main >= mainLimit * 1024 * 1024) {
+    console.warn(`[build-platform] ${platform} 主包 ${mb(main)}MB 超过 ${mainLimit}MB。`);
+  }
+}
 
 /** 小游戏工具通常只因 js/json 变化自动编译；只换图时轻碰 game.js 让模拟器自己起来。 */
 function pokeSimulator(out, stats) {
@@ -117,6 +253,7 @@ export function assemble(platform, { quiet = false, bundleDir, full = false } = 
   if (fs.existsSync(configSrc)) {
     const fresh = JSON.parse(fs.readFileSync(configSrc, 'utf8'));
     ({ config, inherited } = inheritAppid(outConfig, fresh));
+    config = applySharedPackIgnore(platform, config);
   }
 
   const stats = createMirrorStats();
@@ -141,7 +278,9 @@ export function assemble(platform, { quiet = false, bundleDir, full = false } = 
     const prev = fs.existsSync(outConfig) ? fs.readFileSync(outConfig, 'utf8') : '';
     if (prev !== rendered) fs.writeFileSync(outConfig, rendered, 'utf8');
   }
+  writeDouyinSubscribeScanStub(out, { inject: platform === 'douyin' });
   pokeSimulator(out, stats);
+  if (!quiet) logPackSize(platform, config, out);
 
   if (!quiet) {
     const size = (fs.statSync(bundle).size / 1024).toFixed(0);

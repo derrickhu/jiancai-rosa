@@ -1,5 +1,5 @@
 import { analytics } from '@/analytics';
-import { REWARDED_AD_UNITS, type RewardedAdScene } from '@/config/AdsConfig';
+import { REWARDED_AD_UNITS_BY_PLATFORM, type RewardedAdScene } from '@/config/AdsConfig';
 import { Platform } from '@/core/PlatformService';
 
 export type RewardedAdResult = 'completed' | 'skipped' | 'unavailable' | 'error';
@@ -83,8 +83,13 @@ function getAd(unitId: string): RewardedVideoAd | null {
   }
 }
 
+function rewardedUnits(): Record<RewardedAdScene, string> {
+  return Platform.isDouyin ? REWARDED_AD_UNITS_BY_PLATFORM.douyin : REWARDED_AD_UNITS_BY_PLATFORM.wechat;
+}
+
 export function warmupRewardedAds(): void {
-  for (const unitId of Object.values(REWARDED_AD_UNITS)) {
+  for (const unitId of Object.values(rewardedUnits())) {
+    if (!unitId) continue;
     const ad = getAd(unitId);
     ad?.load().catch((error) => {
       console.warn('[RewardedAd] warmup failed', unitId, error);
@@ -93,7 +98,11 @@ export function warmupRewardedAds(): void {
 }
 
 export async function playRewardedAd(scene: RewardedAdScene): Promise<RewardedAdResult> {
-  const unitId = REWARDED_AD_UNITS[scene];
+  const unitId = rewardedUnits()[scene];
+  if (!unitId) {
+    analytics.trackAdError(scene, SDK_ERR_UNAVAILABLE, 'no_ad_unit', adExtras(''));
+    return 'unavailable';
+  }
   if (!Platform.api?.createRewardedVideoAd) {
     analytics.trackAdError(scene, SDK_ERR_UNAVAILABLE, 'no_ad_api', adExtras(unitId));
     return 'unavailable';

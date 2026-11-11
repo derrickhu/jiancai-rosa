@@ -2,10 +2,11 @@
   "name": "jiancai-rosa",
   "version": "0.1.0",
   "type": "module",
-  "description": "捡菜市集 - 微信小游戏",
+  "description": "捡菜市集 - 微信 / 抖音小游戏",
   "scripts": {
     "build": "vite build && rimraf .bundle/index.html minigame/index.html && node scripts/build-platform.mjs",
     "build:wechat": "JIANCAI_PLATFORM=wechat npm run build",
+    "build:douyin": "JIANCAI_PLATFORM=douyin npm run build",
     "dev": "vite build --watch",
     "upload:cdn": "node scripts/upload_cdn.js",
     "upload:cdn:dry": "node scripts/upload_cdn.js --dry-run"

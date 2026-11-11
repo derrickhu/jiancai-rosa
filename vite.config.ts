@@ -52,7 +52,7 @@ function assemblePlatformsPlugin(): Plugin {
   let stopWatch: (() => void) | undefined;
   let queue: Promise<void> = Promise.resolve();
 
-  const target = () => process.env.JIANCAI_PLATFORM ?? 'wechat';
+  const target = () => process.env.JIANCAI_PLATFORM ?? 'all';
 
   const enqueue = (reason: string) => {
     queue = queue

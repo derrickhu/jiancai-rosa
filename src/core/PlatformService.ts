@@ -292,6 +292,8 @@ class PlatformServiceClass {
       }
       try {
         this._api.login({
+          // 抖音不带 force 时可能只给 anonymousCode，code2session 要 code。
+          ...(this.isDouyin ? { force: true } : {}),
           success: (res: any) => resolve(res?.code || ''),
           fail: () => resolve(''),
         });
@@ -367,6 +369,7 @@ class PlatformServiceClass {
     const api = this._api;
     if (!api) return;
     const imageUrl = () => getImageUrl?.() || this.pickShareImage();
+    const sharePrefix = this.isDouyin ? 'dy' : 'wx';
     try {
       api.showShareMenu?.({
         withShareTicket: true,
@@ -376,7 +379,7 @@ class PlatformServiceClass {
     try {
       api.onShareAppMessage?.((res?: { from?: string }) => {
         const from = String(res?.from || '');
-        const entryPoint = from === 'button' ? 'wx_button' : from === 'menu' ? 'wx_menu' : 'wx_other';
+        const entryPoint = from === 'button' ? `${sharePrefix}_button` : from === 'menu' ? `${sharePrefix}_menu` : `${sharePrefix}_other`;
         const title = getTitle();
         const image = imageUrl();
         analytics.trackShareAppMessage(entryPoint, { title, image_url: image });
@@ -387,7 +390,7 @@ class PlatformServiceClass {
       api.onShareTimeline?.(() => {
         const title = getTitle();
         const image = imageUrl();
-        analytics.trackShareTimeline('wx_timeline', { title, image_url: image });
+        analytics.trackShareTimeline(`${sharePrefix}_timeline`, { title, image_url: image });
         return { title, imageUrl: image };
       });
     } catch (_) {}
@@ -434,6 +437,64 @@ class PlatformServiceClass {
     const show = (holder as { __jiancaiShowPrompt?: (o: typeof opts) => Promise<boolean> }).__jiancaiShowPrompt;
     if (show) return show(opts);
     return Promise.resolve(false);
+  }
+
+  /**
+   * 插屏。没配广告位、宿主不支持、加载失败都 resolve(false)，不挡跳转。
+   * 抖音要求展示后再播要先 destroy，所以每次新建，关完就销毁。
+   */
+  showInterstitialAd(adUnitId: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      if (!adUnitId) {
+        resolve(false);
+        return;
+      }
+      const create = this._api?.createInterstitialAd;
+      if (typeof create !== 'function') {
+        resolve(false);
+        return;
+      }
+
+      let ad: { show?: () => Promise<void> | void; destroy?: () => void; onError?: (fn: () => void) => void; onClose?: (fn: () => void) => void; onLoad?: (fn: () => void) => void } | null = null;
+      let settled = false;
+      let shown = false;
+      const finish = (ok: boolean): void => {
+        if (settled) return;
+        settled = true;
+        try { ad?.destroy?.(); } catch (_) {}
+        resolve(ok);
+      };
+
+      try {
+        ad = create.call(this._api, { adUnitId });
+      } catch (_) {
+        resolve(false);
+        return;
+      }
+      if (!ad?.show) {
+        resolve(false);
+        return;
+      }
+
+      ad.onError?.(() => finish(false));
+      ad.onClose?.(() => finish(true));
+      ad.onLoad?.(() => {
+        try {
+          const pending = ad?.show?.();
+          if (pending && typeof (pending as Promise<void>).then === 'function') {
+            (pending as Promise<void>).then(() => { shown = true; }).catch(() => finish(false));
+          } else {
+            shown = true;
+          }
+        } catch (_) {
+          finish(false);
+        }
+      });
+
+      setTimeout(() => {
+        if (!settled && !shown) finish(false);
+      }, 5000);
+    });
   }
 
   /** 看完激励视频才发奖。浏览器 / 模拟器没有广告 SDK 时直接发，方便本地试。 */
@@ -510,6 +571,58 @@ class PlatformServiceClass {
       if (!res.ok) throw new Error(`request status=${res.status} url=${url}`);
       return res.text();
     });
+  }
+
+  checkScene(opts: {
+    scene: string;
+    success?: (res: { isExist?: boolean }) => void;
+    fail?: (err?: unknown) => void;
+  }): void {
+    try {
+      if (typeof this._api?.checkScene === 'function') this._api.checkScene(opts);
+      else opts.fail?.({ errMsg: 'checkScene not supported' });
+    } catch (e) {
+      opts.fail?.(e);
+    }
+  }
+
+  /** 抖音侧边栏复访。点击回调里要同步调用。 */
+  navigateToScene(opts: {
+    scene: string;
+    success?: () => void;
+    fail?: (err?: unknown) => void;
+  }): void {
+    try {
+      if (typeof this._api?.navigateToScene === 'function') this._api.navigateToScene(opts);
+      else opts.fail?.({ errMsg: 'navigateToScene not supported' });
+    } catch (e) {
+      opts.fail?.(e);
+    }
+  }
+
+  checkShortcut(opts: {
+    success?: (res: { status?: { exist?: boolean; needUpdate?: boolean } | null }) => void;
+    fail?: (err?: unknown) => void;
+  }): void {
+    try {
+      if (typeof this._api?.checkShortcut === 'function') this._api.checkShortcut(opts);
+      else opts.fail?.({ errMsg: 'checkShortcut not supported' });
+    } catch (e) {
+      opts.fail?.(e);
+    }
+  }
+
+  /** 添加到桌面。必须处在用户点击的同步栈里。 */
+  addShortcut(opts: {
+    success?: () => void;
+    fail?: (err?: { errMsg?: string }) => void;
+  }): void {
+    try {
+      if (typeof this._api?.addShortcut === 'function') this._api.addShortcut(opts);
+      else opts.fail?.({ errMsg: 'addShortcut not supported' });
+    } catch (e) {
+      opts.fail?.(e as { errMsg?: string });
+    }
   }
 
   downloadFile(opts: { url: string; timeoutMs?: number }): Promise<{ tempFilePath: string }> {

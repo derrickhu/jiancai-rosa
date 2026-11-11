@@ -1,0 +1,23 @@
+{
+  "description": "捡菜市集 · 抖音。用抖音开发者工具打开 build/douyin/。",
+  "projectname": "捡菜市集",
+  "appid": "tt6fa7191af1dbdcc202",
+  "compileType": "game",
+  "libVersion": "3.19.0",
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "minified": true,
+    "compileHotReload": true
+  },
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  },
+  "condition": {
+    "game": {
+      "current": -1,
+      "list": []
+    }
+  }
+}

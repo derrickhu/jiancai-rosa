@@ -52,6 +52,10 @@ export class GameClubPanel extends PIXI.Container {
   }
 
   open(): void {
+    if (!Platform.isWechat) {
+      Platform.showToast('游戏圈仅微信内可用');
+      return;
+    }
     if (!this._isOpen) AudioManager.play('ui_click');
     this._isOpen = true;
     this.visible = true;

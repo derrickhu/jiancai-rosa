@@ -153,6 +153,51 @@ function _loadImagesThenStart() {
   _startGame('先出 loading，分包并行');
 }
 
+// 抖音侧边栏 / 桌面：onShow 可能早于 bundle，启动参数先记在 GameGlobal。
+// 这里走原生 API 变量，不写宿主点号。点号调用留在点击栈里，给审核扫。
+(function () {
+  if (_runtime.detectMinigamePlatform() !== 'douyin') return;
+  var P = _nativeApi;
+  if (!P || typeof GameGlobal === 'undefined') return;
+  GameGlobal.__launchInfo = {};
+  GameGlobal.__sidebarSupported = false;
+  GameGlobal.__desktopShortcutSupported = false;
+  GameGlobal.__desktopShortcutStatus = null;
+  try {
+    if (typeof P.onShow === 'function') {
+      P.onShow(function (res) { GameGlobal.__launchInfo = res || {}; });
+    }
+    var launch = typeof P.getLaunchOptionsSync === 'function' ? P.getLaunchOptionsSync() : null;
+    if (launch) GameGlobal.__launchInfo = launch;
+    var enter = typeof P.getEnterOptionsSync === 'function' ? P.getEnterOptionsSync() : null;
+    if (enter) GameGlobal.__launchInfo = enter;
+  } catch (e) {
+    _diag('抖音 onShow 失败:' + e);
+  }
+  try {
+    if (typeof P.checkScene === 'function') {
+      P.checkScene({
+        scene: 'sidebar',
+        success: function (res) {
+          GameGlobal.__sidebarSupported = !!(res && res.isExist);
+        },
+        fail: function () { GameGlobal.__sidebarSupported = false; },
+      });
+    }
+  } catch (_) {}
+  try {
+    if (typeof P.addShortcut === 'function') GameGlobal.__desktopShortcutSupported = true;
+    if (typeof P.checkShortcut === 'function') {
+      P.checkShortcut({
+        success: function (res) {
+          GameGlobal.__desktopShortcutStatus = res && res.status ? res.status : null;
+        },
+        fail: function () {},
+      });
+    }
+  } catch (_) {}
+})();
+
 var _bootScheduled = false;
 function _bootAfterBridge() {
   if (_bootScheduled) return;

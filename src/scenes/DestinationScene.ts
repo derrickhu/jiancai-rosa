@@ -38,6 +38,7 @@ import { SpecialMarketScene } from '@/scenes/SpecialMarketScene';
 import { TutorialManager, TutorialStep } from '@/managers/TutorialManager';
 import { TutorialOverlay, stageRectOf } from '@/gameobjects/ui/TutorialOverlay';
 import { TutorialGuard } from '@/systems/TutorialGuard';
+import { tryShowInterstitial } from '@/services/InterstitialAdService';
 
 const DEST_BG = 'subpkg_images/dest_street_bg.jpg';
 /** 走路一屏正好四张。更高的屏卡不再拉高，多出来的空落在列表里。 */
@@ -726,6 +727,7 @@ export class DestinationScene implements Scene {
     btn.on('pointertap', (e) => {
       e.stopPropagation();
       if (TutorialGuard.block('goHomeDest')) return;
+      void tryShowInterstitial('go_home');
       SceneManager.switchTo('kitchen');
     });
     root.addChild(btn);
