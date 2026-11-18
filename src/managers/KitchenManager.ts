@@ -14,6 +14,7 @@ import {
   SHARE_IMAGE_URLS,
   SHARE_STAMINA_TITLES,
   STAMINA_AD_GAIN,
+  STAMINA_SHARE_GAIN,
   GAME_CLUB_DAILY_COINS,
   addStamina,
   canClaimGameClubReward,
@@ -30,10 +31,13 @@ import {
   defaultSave,
   fridgeAcceptsOuting,
   fridgeCanFit,
+  fridgeItemName,
+  fridgeKind,
   fridgeOwnCap,
   fridgeRoom,
   fridgeSlotsNeeded,
   fridgeUnpackNeed,
+  isRecipeId,
   settleFridgeUnpack,
   type FridgeDraft,
   furnLevel,
@@ -53,7 +57,13 @@ import {
   ensureDailyMenu as rollDailyMenu,
   submitDailyMenu as applySubmitDailyMenu,
   submitNeighborOrder as applySubmitNeighborOrder,
+  refreshNeighborOrderByAd,
+  unlockExtraDailyMenuByAd,
+  activateChefFireByAd,
+  claimDexEntryReward,
+  claimAllDexRewards,
   drawRecipeGacha,
+  type GachaDrawMode,
   canVisitSpecial as saveCanVisitSpecial,
   markSpecialVisit as saveMarkSpecialVisit,
   specialVisitCount as saveSpecialVisitCount,
@@ -61,7 +71,8 @@ import {
   type KitchenSave,
   type RecipeId,
 } from '@/sim/kitchen';
-import { consumeOutingBuffs } from '@/sim/dishEffects';
+import { type DexTab } from '@/sim/dex';
+import { consumeOutingBuffs, recipeEatStaminaGain } from '@/sim/dishEffects';
 import type { Rarity } from '@/sim/rarity';
 import {
   NEIGHBOR_COOLDOWN,
@@ -180,16 +191,22 @@ class KitchenManagerClass {
     this.emit();
   }
 
-  /** 没体力时看激励视频加体力。 */
+  /** 补体力：优先看激励视频；仅当广告拉取失败时提供每日 1 次分享兜底。 */
   async offerShareStamina(): Promise<void> {
     const now = regenNow();
     if (now.stamina >= staminaMax(now)) {
       Platform.showToast('体力已经满了');
       return;
     }
+    const staminaDish = now.fridge.find(
+      (it) => fridgeKind(it) === 'dish' && isRecipeId(it.defId) && recipeEatStaminaGain(it.defId) > 0,
+    );
+    const dishHint = staminaDish
+      ? `\n（冰箱里的${fridgeItemName(staminaDish)}点开吃一口也能垫体力）`
+      : '';
     const ok = await showPrompt({
-      title: '体力不够了',
-      content: `看一段广告，回来加 ${STAMINA_AD_GAIN} 点体力`,
+      title: now.stamina <= 0 ? '体力用完了' : '补充体力',
+      content: `看一段广告，回来加 ${STAMINA_AD_GAIN} 点体力${dishHint}`,
       confirmText: '看广告',
       cancelText: '再等等',
       icon: 'subpkg_images/hud_stamina.png',
@@ -206,7 +223,38 @@ class KitchenManagerClass {
       this.emit();
       const gained = Math.max(0, save.stamina - before);
       Platform.showToast(gained > 0 ? `体力 +${gained}` : '体力已经满了');
+    }, (result) => {
+      if (result === 'unavailable' || result === 'error') {
+        void this._offerShareStaminaFallback();
+      }
     });
+  }
+
+  private async _offerShareStaminaFallback(): Promise<void> {
+    const today = todayKey();
+    if (sameDayKey(this.save.shareStaminaDate, today)) return;
+    const shareOk = await showPrompt({
+      title: '广告暂时没加载出来',
+      content: `分享给好友也能恢复 ${STAMINA_SHARE_GAIN} 点体力（今日限 1 次）`,
+      confirmText: '去分享',
+      cancelText: '算了',
+      icon: 'subpkg_images/hud_stamina.png',
+    });
+    if (!shareOk) return;
+    const shared = Platform.shareAppMessage({
+      title: this._shareTitle(),
+      imageUrl: this._shareImage(),
+    });
+    if (!shared && Platform.isMinigame) {
+      Platform.showToast('当前环境暂不支持分享');
+      return;
+    }
+    const before = regenNow().stamina;
+    const next = addStamina({ ...this.save, shareStaminaDate: today }, STAMINA_SHARE_GAIN);
+    SaveManager.replace(next);
+    this.emit();
+    const gained = Math.max(0, next.stamina - before);
+    if (gained > 0) Platform.showToast(`体力 +${gained}`, 'success');
   }
 
   receiveExtract(items: ExtractedItem[]): { needsPick: boolean } {
@@ -370,7 +418,7 @@ class KitchenManagerClass {
   cook(recipeId: RecipeId, times = 1): void {
     this.sweepNeighborOrders();
     const fromLevel = this.save.level;
-    const { save, error, xp, levels, cooked, doubled, foldGold } = cookRecipe(this.save, recipeId, times);
+    const { save, error, xp, levels, cooked, doubled, foldGold, masteryTickets } = cookRecipe(this.save, recipeId, times);
     if (error) {
       AudioManager.play('ui_deny');
       Platform.showToast(error);
@@ -386,15 +434,69 @@ class KitchenManagerClass {
     };
     SaveManager.replace(save);
     this.emit();
-    if (doubled) {
+    if ((masteryTickets ?? 0) > 0) {
+      AudioManager.play('recipe_paper');
+      Platform.showToast(`练成金勺招牌菜！获赠菜谱券 ×${masteryTickets}`, 'success');
+    } else if (doubled) {
       Platform.showToast(
-        foldGold ? `出了两份，冰箱满了第二份折成 ${foldGold} 金` : '出了两份',
+        foldGold ? `旺火出了两份，冰箱满了第二份折成 ${foldGold} 金` : '出了两份！',
         'success',
       );
     }
     if ((levels ?? 0) > 0) {
       this.enqueueCookLevelUp(fromLevel, save.level, true);
     }
+  }
+
+  activateChefFire(): boolean {
+    const { save, error } = activateChefFireByAd(this.save);
+    if (error) {
+      AudioManager.play('ui_deny');
+      Platform.showToast(error);
+      return false;
+    }
+    AudioManager.play('cook_sizzle');
+    SaveManager.replace(save);
+    this.emit();
+    Platform.showToast('大厨旺火已点燃（15 分钟）！', 'success');
+    return true;
+  }
+
+  claimDexEntry(kind: DexTab, id: string): number {
+    const { save, gold, claimed } = claimDexEntryReward(this.save, kind, id);
+    if (!claimed) return 0;
+    AudioManager.play('coin_gain');
+    SaveManager.replace(save);
+    this.emit();
+    return gold;
+  }
+
+  claimAllDex(): { gold: number; tickets: number; entriesCount: number; milestonesCount: number } {
+    const res = claimAllDexRewards(this.save);
+    if (res.gold <= 0 && res.tickets <= 0) return res;
+    AudioManager.play(res.tickets > 0 ? 'recipe_paper' : 'coin_gain');
+    SaveManager.replace(res.save);
+    this.emit();
+    return {
+      gold: res.gold,
+      tickets: res.tickets,
+      entriesCount: res.entriesCount,
+      milestonesCount: res.milestonesCount,
+    };
+  }
+
+  unlockExtraDailyMenu(): boolean {
+    const { save, error } = unlockExtraDailyMenuByAd(this.save);
+    if (error) {
+      AudioManager.play('ui_deny');
+      Platform.showToast(error);
+      return false;
+    }
+    AudioManager.play('recipe_paper');
+    SaveManager.replace(save);
+    this.emit();
+    Platform.showToast('晚市新开一桌！交齐再领菜谱券', 'success');
+    return true;
   }
 
   beginKitchenVisit(): void {
@@ -424,9 +526,9 @@ class KitchenManagerClass {
     return { gold, foldGold, foodDefId, foodFolded, tickets };
   }
 
-  submitNeighborOrder(orderId: string): RewardCollectGain | null {
+  submitNeighborOrder(orderId: string, opts?: { doubled?: boolean }): RewardCollectGain | null {
     this.sweepNeighborOrders(false);
-    const { save, error, gold, foldGold, foodDefId, foodFolded } = applySubmitNeighborOrder(this.save, orderId);
+    const { save, error, gold, foldGold, foodDefId, foodFolded } = applySubmitNeighborOrder(this.save, orderId, Date.now(), opts);
     if (error) {
       AudioManager.play('ui_deny');
       Platform.showToast(error);
@@ -437,7 +539,24 @@ class KitchenManagerClass {
     return { gold, foldGold, foodDefId, foodFolded };
   }
 
-  drawRecipe(opts?: { reveal?: boolean }): {
+  refreshNeighborOrder(orderId: string): boolean {
+    this.sweepNeighborOrders(false);
+    const { save, error, nextOrder } = refreshNeighborOrderByAd(this.save, orderId);
+    if (error || !nextOrder) {
+      AudioManager.play('ui_deny');
+      Platform.showToast(error ?? '换单失败');
+      return false;
+    }
+    AudioManager.play('event_pop');
+    SaveManager.replace(save);
+    this.emit();
+    const npc = neighborNpc(nextOrder.npcId);
+    const rName = recipeById(nextOrder.recipeId)?.name ?? '家常菜';
+    Platform.showToast(`${npc.name}来换单：想吃${rName}`, 'success');
+    return true;
+  }
+
+  drawRecipe(opts?: { reveal?: boolean; mode?: GachaDrawMode }): {
     ok: boolean;
     recipeId?: RecipeId;
     foodDefId?: string;
@@ -451,7 +570,7 @@ class KitchenManagerClass {
     const empty = { ok: false, duplicate: false, gold: 0, toast: '', foodFolded: false, foldGold: 0 };
     const {
       save, error, toast, recipeUnlock, recipeId, duplicate, gold, foodDefId, foodQty, foodFolded, foldGold,
-    } = drawRecipeGacha(this.save);
+    } = drawRecipeGacha(this.save, Date.now(), opts?.mode ?? 'ticket');
     if (error) {
       AudioManager.play('ui_deny');
       Platform.showToast(error);
@@ -677,6 +796,26 @@ class KitchenManagerClass {
   setTutorialStep(step: number): void {
     if (this.save.tutorialStep === step) return;
     SaveManager.replace({ ...this.save, tutorialStep: step });
+  }
+
+  /** 新手指引兜底：确保冰箱里至少有 minQty 棵可用菜苔，避免炒菜苔卡死或断线回退。 */
+  ensureTutorialCaitai(minQty = 1): void {
+    const have = this.save.fridge
+      .filter((it) => fridgeKind(it) !== 'dish' && it.defId === 'caitai' && it.quality !== 'rotten')
+      .reduce((sum, it) => sum + (it.qty ?? 1), 0);
+    if (have >= minQty) return;
+    const need = minQty - have;
+    const items: ExtractedItem[] = Array.from({ length: need }, (_, i) => ({
+      uid: `tut_caitai_${Date.now()}_${i}`,
+      defId: 'caitai',
+      quality: 'fresh',
+      inspected: true,
+      freshness: 2,
+      name: '新鲜菜苔',
+      sell: 8,
+    }));
+    SaveManager.replace(ingestExtract(this.save, items));
+    this.emit();
   }
 
   grantCoins(n: number, toast?: string): void {

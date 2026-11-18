@@ -1,7 +1,7 @@
 import { analytics } from '@/analytics';
 import { scopeStorageKey, getScopedGameKey } from '@/config/gameKeyScope';
 import type { RewardedAdScene } from '@/config/AdsConfig';
-import { playRewardedAd } from '@/services/RewardedAdService';
+import { playRewardedAd, type RewardedAdResult } from '@/services/RewardedAdService';
 import {
   detectMinigamePlatform,
   getNativePlatformApi,
@@ -498,10 +498,14 @@ class PlatformServiceClass {
   }
 
   /** 看完激励视频才发奖。浏览器 / 模拟器没有广告 SDK 时直接发，方便本地试。 */
-  showRewardedVideo(scene: RewardedAdScene, onReward: () => void, onSettle?: () => void): void {
+  showRewardedVideo(
+    scene: RewardedAdScene,
+    onReward: () => void,
+    onSettle?: (result?: RewardedAdResult) => void,
+  ): void {
     if (this.isDevtools || !this.api?.createRewardedVideoAd) {
       onReward();
-      onSettle?.();
+      onSettle?.('completed');
       return;
     }
     void playRewardedAd(scene).then((result) => {
@@ -513,7 +517,7 @@ class PlatformServiceClass {
         if (result === 'skipped') this.showToast('看完才能领');
         else this.showToast('广告暂时播不了');
       } finally {
-        onSettle?.();
+        onSettle?.(result);
       }
     });
   }

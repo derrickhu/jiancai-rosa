@@ -162,12 +162,22 @@ export class DestinationScene implements Scene {
     money.position.set(resX, pillY);
     this._ui.addChild(money);
 
+    const staMax = staminaMax(KitchenManager.save);
+    const staShort = KitchenManager.save.stamina < staMax;
     const staPill = makeStatPill({
       icon: HUD_ICON.stamina,
-      text: `${KitchenManager.save.stamina}/${staminaMax(KitchenManager.save)}`,
+      text: `${KitchenManager.save.stamina}/${staMax}`,
       width: 188,
-      fill: KitchenManager.save.stamina / staminaMax(KitchenManager.save),
+      fill: KitchenManager.save.stamina / staMax,
       fillColor: 0x6BA368,
+      plus: staShort,
+      pulsePlus: KitchenManager.save.stamina <= 0,
+      onTap: staShort
+        ? () => {
+          if (TutorialManager.isActive && !TutorialManager.isStep(TutorialStep.HINT_DOOR)) return;
+          void KitchenManager.offerShareStamina();
+        }
+        : undefined,
       onIconReady: redraw,
     });
     staPill.position.set(resX + 172, pillY);

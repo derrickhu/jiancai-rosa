@@ -1,0 +1,20 @@
+# P0 商业化与玩法扩展 UI 美术 Prompt 归档
+# 统一风格锁见 ./_style_block.txt，全部白底 #FFFFFF 生成后连通去底入库 minigame/subpkg_kitchen/
+
+[ui_ad_clapper.png] (1:1)
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft flat cel shading, warm terracotta-and-walnut wooden clapperboard tilted slightly, cream-and-brown diagonal stripes on top clap stick, centered cream play-triangle symbol, tiny golden star sparkle at top-right corner. Isolated on flat solid #FFFFFF white background. NO TEXT.
+
+[ui_dusk_flashlight.png] (4:3)
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft flat cel shading. Retro brass-and-terracotta handheld flashlight tilted diagonally, projecting a warm golden-cream light cone onto a small woven bamboo market basket holding one whole leafy green bok choy and two whole brown mushrooms. Isolated on flat solid #FFFFFF white background. NO TEXT.
+
+[ui_chef_fire.png] (1:1)
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft flat cel shading. Traditional round seasoned dark-iron Chinese wok with two warm wooden ear handles sitting over cheerful roaring orange-and-gold stove flames underneath. Isolated on flat solid #FFFFFF white background. NO TEXT.
+
+[ui_spoon_1.png / ui_spoon_2.png / ui_spoon_3.png] (16:9 3-in-1 row)
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft flat cel shading. Three distinct cooking ladle icons arranged horizontally with wide #FFFFFF spacing, tilted 45 degrees: (1) warm walnut-wood soup ladle, (2) brushed silver-steel chef ladle with celadon cord wrap, (3) gleaming coin-gold master chef ladle with festive red cord tassel. NO TEXT.
+
+[ui_dex_stamp.png] (1:1)
+Cozy casual mobile-game cartoon, clean medium-thick dark-brown outlines (#2A2018), soft flat cel shading. Chunky carved walnut-and-cinnabar-red wooden seal stamp tilted slightly onto a round cinnabar-red ink mark underneath. Isolated on flat solid #FFFFFF white background. NO TEXT.
+
+[ui_gacha_stage.png] (3:4)
+Cozy casual mobile-game cartoon matching ui_gameclub_panel.png, clean medium-thick dark-brown outlines (#2A2018), soft flat cel shading. Vertical 3:4 walnut wooden raffle notice board shell with top rope hanging loop, two cozy red-and-gold paper market lanterns at top corners, blank wooden header plaque, smooth warm cream oil-paper (#F6EDE0) interior with subtle pale-gold radial sunburst center stage, and blank cream-tan footer band. Isolated on flat solid #FFFFFF white background. NO TEXT.

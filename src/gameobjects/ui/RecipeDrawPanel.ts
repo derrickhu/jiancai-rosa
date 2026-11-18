@@ -6,9 +6,19 @@ import { Platform } from '@/core/PlatformService';
 import { Ease, TweenManager } from '@/core/TweenManager';
 import { KitchenManager } from '@/managers/KitchenManager';
 import { ensureRecipeUnlockPanel } from '@/gameobjects/ui/RecipeUnlockPanel';
-import { RECIPE_GACHA_COST, itemRarity, type RecipeId } from '@/sim';
+import {
+  DAILY_AD_LIMITS,
+  RECIPE_GACHA_COST,
+  canUseDailyAd,
+  dailyAdLeft,
+  freshGachaRecipes,
+  itemRarity,
+  recipeUnlockView,
+  type GachaDrawMode,
+  type RecipeId,
+} from '@/sim';
 import { playRewardCollect } from '@/utils/coinCollect';
-import { fillRect, makeLabel, makeRarityFlare } from '@/utils/ui';
+import { P0_ART, fillRect, makeAdButton, makeLabel, makeRarityFlare, makeSlicedButton } from '@/utils/ui';
 import {
   fitSpriteInBox,
   gameTexture,
@@ -24,9 +34,10 @@ const TICKET = 'subpkg_images/ui_menu_ticket.png';
 const BOX = 'subpkg_images/hud_gacha_box.png';
 const PAPER = 'subpkg_kitchen/ui_recipe_paper.png';
 const FLARE = 'subpkg_kitchen/ui_pickup_flare.png';
-const LACK_HINT = '完成小饭桌任务可以获得菜谱券';
-const TEASE = '箱子里不定是菜谱，也可能是好食材。';
+const LACK_HINT = '做小饭桌或盖图鉴章可拿菜谱券';
 const TITLE_FONT = 'Songti SC, STSong, PingFang SC, serif';
+const INK = 0x2A2018;
+const MUTED = 0x7A5A34;
 const SHAKE_SEC = 0.4;
 const SPIN_SEC = 0.95;
 const LAND_SEC = 0.18;
@@ -48,8 +59,10 @@ export class RecipeDrawPanel extends PIXI.Container {
   private _box: PIXI.Container | null = null;
   private _paper: PIXI.Container | null = null;
   private _playing = false;
+  private _adBusy = false;
   private _pending: DrawResult | null = null;
   private _lastTap = 0;
+  private _paintQueued = false;
 
   constructor() {
     super();
@@ -64,6 +77,7 @@ export class RecipeDrawPanel extends PIXI.Container {
     if (!this._isOpen) AudioManager.play('ui_open');
     this._isOpen = true;
     this.visible = true;
+    this._adBusy = false;
     this.relayout();
     OverlayManager.bringToFront();
   }
@@ -72,6 +86,8 @@ export class RecipeDrawPanel extends PIXI.Container {
     const pending = this._pending;
     this._clearFx();
     this._playing = false;
+    this._adBusy = false;
+    this._paintQueued = false;
     this._pending = null;
     if (this._isOpen && !silent) AudioManager.play('ui_close');
     this._isOpen = false;
@@ -81,6 +97,18 @@ export class RecipeDrawPanel extends PIXI.Container {
     if (pending) this._deliver(pending);
   }
 
+  private _scheduleRelayout = (): void => {
+    if (!this._isOpen || this._playing || this._paintQueued) return;
+    this._paintQueued = true;
+    const later = typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame
+      : (cb: () => void) => setTimeout(cb, 0);
+    later(() => {
+      this._paintQueued = false;
+      if (this._isOpen && !this._playing) this.relayout();
+    });
+  };
+
   relayout(): void {
     if (this._playing) return;
     this._clearFx();
@@ -88,42 +116,102 @@ export class RecipeDrawPanel extends PIXI.Container {
     this._box = null;
     if (!this._isOpen) return;
 
-    watchTextures([BOX, TICKET, PAPER, FLARE], () => {
-      if (this._isOpen && !this._playing) this.relayout();
-    });
+    watchTextures([P0_ART.gachaStage, P0_ART.adClapper, BOX, TICKET, PAPER, FLARE], this._scheduleRelayout);
 
     const w = Game.designWidth;
     const h = Game.logicHeight;
     this.hitArea = new PIXI.Rectangle(0, 0, w, h);
 
     const dim = new PIXI.Graphics();
-    fillRect(dim, 0, 0, w, h, 0x000000);
-    dim.alpha = 0.78;
+    fillRect(dim, 0, 0, w, h, 0x160F0A);
+    dim.alpha = 0.72;
     dim.eventMode = 'static';
     dim.on('pointertap', () => {
-      if (!this._playing) this.close();
+      if (!this._playing && !this._adBusy) this.close();
     });
     this._root.addChild(dim);
 
-    const boxSize = Math.min(460, w - 48);
-    const btnW = 280;
-    const btnH = 58;
-    const gap = 28;
-    const hintH = 64;
-    const blockH = hintH + boxSize + gap + btnH;
-    const top = Math.round(Math.max(Game.safeTop + 24, (h - blockH) / 2 - 12));
-    const cx = w / 2;
+    const boardW = Math.min(w - 36, 628);
+    const boardH = Math.round(boardW * (694 / 508));
+    const bx = Math.round((w - boardW) / 2);
+    const by = Math.round(Math.max(Game.safeTop + 12, (h - boardH) / 2));
 
-    const tease = makeLabel(TEASE, 28, 0xFFF6E8, {
+    const shell = new PIXI.Container();
+    shell.position.set(bx, by);
+    shell.eventMode = 'static';
+    shell.hitArea = new PIXI.Rectangle(0, 0, boardW, boardH);
+    shell.on('pointertap', (e) => e.stopPropagation());
+    this._root.addChild(shell);
+
+    const stageTex = gameTexture(P0_ART.gachaStage);
+    if (isTextureReady(stageTex)) {
+      const bg = new PIXI.Sprite(stageTex);
+      bg.width = boardW;
+      bg.height = boardH;
+      bg.eventMode = 'none';
+      shell.addChild(bg);
+    } else {
+      const fb = new PIXI.Graphics();
+      fb.lineStyle(6, 0x8B5A2B, 1);
+      fb.beginFill(0xF6EDE0, 1);
+      fb.drawRoundedRect(0, 0, boardW, boardH, 28);
+      fb.endFill();
+      shell.addChild(fb);
+    }
+
+    // Top-right close circle
+    const closeBtn = new PIXI.Container();
+    const cg = new PIXI.Graphics();
+    cg.lineStyle(3, INK, 1);
+    cg.beginFill(0xC46A3A, 1);
+    cg.drawCircle(22, 22, 20);
+    cg.endFill();
+    const cxTxt = makeLabel('×', 28, 0xFFF8F0, { fontWeight: '700' });
+    cxTxt.anchor.set(0.5);
+    cxTxt.position.set(22, 20);
+    closeBtn.addChild(cg, cxTxt);
+    closeBtn.position.set(boardW - 56, 48);
+    closeBtn.eventMode = 'static';
+    closeBtn.cursor = 'pointer';
+    closeBtn.hitArea = new PIXI.Circle(22, 22, 24);
+    closeBtn.on('pointertap', () => {
+      if (!this._playing && !this._adBusy) this.close();
+    });
+    shell.addChild(closeBtn);
+
+    // Header Title on Wooden Plaque
+    const title = makeLabel('菜 谱 抽 箱', 34, INK, {
       fontFamily: TITLE_FONT,
       fontWeight: '700',
-      stroke: 0x2A2018,
+      stroke: 0xFFF6E8,
       strokeThickness: 5,
     });
-    tease.anchor.set(0.5, 0.5);
-    tease.position.set(cx, top + hintH / 2);
-    tease.eventMode = 'none';
-    this._root.addChild(tease);
+    title.anchor.set(0.5);
+    title.position.set(boardW / 2, Math.round(boardH * 0.145));
+    shell.addChild(title);
+
+    const save = KitchenManager.save;
+    const tickets = save.recipeTickets;
+    const remainRecipes = freshGachaRecipes(recipeUnlockView(save)).length;
+
+    // Ticket Pill + Pool Info
+    const subY = Math.round(boardH * 0.255);
+    const subText = remainRecipes > 0
+      ? `池内还有 ${remainRecipes} 本隐藏菜谱  ·  或出 3~5 份好食材`
+      : '秘传菜谱已抽齐  ·  必出 3~5 份稀有以上好食材';
+    const sub = makeLabel(subText, 18, MUTED, { fontWeight: '700' });
+    sub.anchor.set(0.5);
+    sub.position.set(boardW / 2, subY);
+    shell.addChild(sub);
+
+    const ticketPill = this._ticketBadge(tickets);
+    ticketPill.position.set(Math.round((boardW - 168) / 2), subY + 22);
+    shell.addChild(ticketPill);
+
+    // Center Gacha Box (positioned in stage coordinates on _root so shake/spin coordinates stay clean)
+    const boxSize = Math.round(Math.min(320, boardW * 0.54));
+    const boxStageX = bx + Math.round(boardW / 2);
+    const boxStageY = by + Math.round(boardH * 0.525);
 
     const box = new PIXI.Container();
     const tex = gameTexture(BOX);
@@ -134,35 +222,182 @@ export class RecipeDrawPanel extends PIXI.Container {
       spr.eventMode = 'none';
       box.addChild(spr);
     }
-    box.position.set(cx, top + hintH + boxSize / 2);
+    box.position.set(boxStageX, boxStageY);
     box.eventMode = 'static';
     box.hitArea = new PIXI.Rectangle(-boxSize / 2, -boxSize / 2, boxSize, boxSize);
     box.on('pointertap', (e) => e.stopPropagation());
     this._root.addChild(box);
     this._box = box;
 
-    const tickets = KitchenManager.save.recipeTickets;
-    const ready = tickets >= RECIPE_GACHA_COST;
-    const btn = this._drawBtn(tickets, ready, btnW, btnH);
-    btn.position.set(cx - btnW / 2, top + hintH + boxSize + gap);
-    btn.on('pointertap', (e) => {
+    // Footer Action Area (Bottom 22% band)
+    const btnY = Math.round(boardH * 0.798);
+    const btnH = 56;
+    const gap = 14;
+    const padX = 44;
+    const colW = Math.floor((boardW - padX * 2 - gap) / 2);
+
+    const canTicket = tickets >= RECIPE_GACHA_COST;
+    const topupLeft = dailyAdLeft(save, 'gacha_topup');
+    const canTopup = !canTicket && tickets === 1 && canUseDailyAd(save, 'gacha_topup');
+    const freeAvail = canUseDailyAd(save, 'gacha_free');
+
+    // Left Button: Ticket Draw OR 1-Ticket Ad Top-up
+    let leftBtn: PIXI.Container;
+    if (canTicket) {
+      leftBtn = this._ticketDrawBtn(tickets, colW, btnH, true);
+      leftBtn.on('pointertap', (e) => {
+        e.stopPropagation();
+        this._runDraw('ticket');
+      });
+    } else if (canTopup) {
+      leftBtn = makeAdButton({
+        label: '差1券 · 补齐开',
+        width: colW,
+        height: btnH,
+        skin: 'terracotta',
+        badge: `剩${topupLeft}/${DAILY_AD_LIMITS.gacha_topup}`,
+        onReady: this._scheduleRelayout,
+      });
+      leftBtn.on('pointertap', (e) => {
+        e.stopPropagation();
+        if (this._playing || this._adBusy) return;
+        this._adBusy = true;
+        Platform.showRewardedVideo(
+          'gacha_topup',
+          () => {
+            this._adBusy = false;
+            this._runDraw('ad_topup');
+          },
+          () => {
+            this._adBusy = false;
+          },
+        );
+      });
+    } else {
+      leftBtn = this._ticketDrawBtn(tickets, colW, btnH, false);
+      leftBtn.on('pointertap', (e) => {
+        e.stopPropagation();
+        AudioManager.play('ui_deny');
+        Platform.showToast(LACK_HINT);
+      });
+    }
+    leftBtn.position.set(padX, btnY);
+    shell.addChild(leftBtn);
+
+    // Right Button: Daily Free Ad Draw
+    const rightBtn = freeAvail
+      ? makeAdButton({
+        label: '免费开一箱',
+        width: colW,
+        height: btnH,
+        skin: 'wood',
+        badge: '每日1次',
+        onReady: this._scheduleRelayout,
+      })
+      : makeSlicedButton({
+        label: '今日免费已领',
+        width: colW,
+        height: btnH,
+        skin: 'cream',
+        textColor: 0x8A7358,
+        onReady: this._scheduleRelayout,
+        silent: true,
+      });
+    if (!freeAvail) {
+      rightBtn.alpha = 0.72;
+      rightBtn.cursor = 'default';
+    }
+    rightBtn.position.set(padX + colW + gap, btnY);
+    rightBtn.on('pointertap', (e) => {
       e.stopPropagation();
-      this._onDraw(ready);
+      if (this._playing || this._adBusy) return;
+      if (!freeAvail) {
+        Platform.showToast('今天的免费箱子已经开过啦，明天再来');
+        return;
+      }
+      this._adBusy = true;
+      Platform.showRewardedVideo(
+        'gacha_free',
+        () => {
+          this._adBusy = false;
+          this._runDraw('ad_free');
+        },
+        () => {
+          this._adBusy = false;
+        },
+      );
     });
-    this._root.addChild(btn);
+    shell.addChild(rightBtn);
+
+    const footTip = makeLabel(
+      tickets === 1 && canTopup ? '手里已有 1 张券，看视频可免第 2 张券直接开箱！' : LACK_HINT,
+      16,
+      MUTED,
+      { fontWeight: '600' },
+    );
+    footTip.anchor.set(0.5);
+    footTip.position.set(boardW / 2, btnY + btnH + 22);
+    shell.addChild(footTip);
   }
 
-  private _onDraw(ready: boolean): void {
+  private _ticketBadge(tickets: number): PIXI.Container {
+    const wrap = new PIXI.Container();
+    const w = 168;
+    const h = 34;
+    const bg = new PIXI.Graphics();
+    bg.lineStyle(2, 0x8B5A2B, 1);
+    bg.beginFill(0xFFF8F0, 1);
+    bg.drawRoundedRect(0, 0, w, h, h / 2);
+    bg.endFill();
+    wrap.addChild(bg);
+
+    const tex = gameTexture(TICKET);
+    if (isTextureReady(tex)) {
+      const sp = new PIXI.Sprite(tex);
+      fitSpriteInBox(sp, 34, 28);
+      sp.anchor.set(0.5);
+      sp.position.set(30, h / 2);
+      wrap.addChild(sp);
+    }
+    const lbl = makeLabel(`菜谱券  ${tickets}/${RECIPE_GACHA_COST}`, 17, INK, { fontWeight: '700' });
+    lbl.anchor.set(0, 0.5);
+    lbl.position.set(52, h / 2 + 0.5);
+    wrap.addChild(lbl);
+    wrap.eventMode = 'none';
+    return wrap;
+  }
+
+  private _ticketDrawBtn(tickets: number, width: number, height: number, ready: boolean): PIXI.Container {
+    const btn = makeSlicedButton({
+      label: ready ? `开一箱 (${tickets}/${RECIPE_GACHA_COST})` : `券不足 (${tickets}/${RECIPE_GACHA_COST})`,
+      width,
+      height,
+      skin: ready ? 'terracotta' : 'cream',
+      textColor: ready ? 0xFFF8F0 : 0x8A7358,
+      labelOffsetX: 16,
+      onReady: this._scheduleRelayout,
+      silent: !ready,
+    });
+    const ticketTex = gameTexture(TICKET);
+    if (isTextureReady(ticketTex)) {
+      const spr = new PIXI.Sprite(ticketTex);
+      fitSpriteInBox(spr, 34, 34);
+      spr.anchor.set(0.5);
+      spr.position.set(28, height / 2);
+      spr.eventMode = 'none';
+      if (!ready) spr.alpha = 0.55;
+      btn.addChild(spr);
+    }
+    if (!ready) btn.alpha = 0.78;
+    return btn;
+  }
+
+  private _runDraw(mode: GachaDrawMode): void {
     const now = Date.now();
     if (now - this._lastTap < 280) return;
     this._lastTap = now;
     if (this._playing) return;
-    if (!ready) {
-      AudioManager.play('ui_deny');
-      Platform.showToast(LACK_HINT);
-      return;
-    }
-    const result = KitchenManager.drawRecipe({ reveal: false });
+    const result = KitchenManager.drawRecipe({ reveal: false, mode });
     if (!result.ok) return;
     this._playing = true;
     this._pending = result;
@@ -335,7 +570,7 @@ export class RecipeDrawPanel extends PIXI.Container {
     TweenManager.to({ target: wrap, props: { alpha: 1 }, duration: 0.08 });
     TweenManager.to({
       target: wrap,
-      props: { y: box.y - 80 },
+      props: { y: box.y - 60 },
       duration: SPIN_SEC,
       ease: Ease.easeOutQuad,
     });
@@ -372,7 +607,7 @@ export class RecipeDrawPanel extends PIXI.Container {
 
   private _deliver(result: DrawResult): void {
     const from = this._box
-      ? { x: this._box.x, y: this._box.y - 80 }
+      ? { x: this._box.x, y: this._box.y - 60 }
       : { x: Game.designWidth / 2, y: Math.round(Game.logicHeight * 0.42) };
     if (result.foodDefId) {
       if (result.foodFolded && result.toast) Platform.showToast(result.toast, 'success');
@@ -410,41 +645,5 @@ export class RecipeDrawPanel extends PIXI.Container {
       if (!this._paper.destroyed) this._paper.destroy({ children: true });
       this._paper = null;
     }
-  }
-
-  private _drawBtn(tickets: number, ready: boolean, width: number, height: number): PIXI.Container {
-    const root = new PIXI.Container();
-    const bg = new PIXI.Graphics();
-    bg.lineStyle(4, ready ? 0x8B5A2B : 0xC4A574, 1);
-    bg.beginFill(ready ? 0xC46A3A : 0x2A2018);
-    bg.drawRoundedRect(0, 0, width, height, height / 2);
-    bg.endFill();
-    root.addChild(bg);
-
-    const label = makeLabel(`${tickets} / ${RECIPE_GACHA_COST}`, 26, ready ? 0xFFF8F0 : 0xF0D9A8, {
-      fontWeight: '700',
-    });
-    const iconSize = 40;
-    const ticketTex = gameTexture(TICKET);
-    const iconW = isTextureReady(ticketTex) ? iconSize + 10 : 0;
-    const groupW = iconW + label.width;
-    const x0 = (width - groupW) / 2;
-    if (isTextureReady(ticketTex)) {
-      const spr = new PIXI.Sprite(ticketTex);
-      fitSpriteInBox(spr, iconSize, iconSize);
-      spr.anchor.set(0, 0.5);
-      spr.position.set(x0, height / 2);
-      spr.eventMode = 'none';
-      if (!ready) spr.alpha = 0.92;
-      root.addChild(spr);
-    }
-    label.anchor.set(0, 0.5);
-    label.position.set(x0 + iconW, height / 2 + 1);
-    root.addChild(label);
-
-    root.eventMode = 'static';
-    root.cursor = 'pointer';
-    root.hitArea = new PIXI.Rectangle(0, 0, width, height);
-    return root;
   }
 }

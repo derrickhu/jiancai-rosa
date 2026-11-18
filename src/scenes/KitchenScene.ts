@@ -46,6 +46,8 @@ import {
   cookXpView,
   furnCookNeed,
   cookLevel,
+  canUseDailyAd,
+  dexRedDotCount,
   neighborOfferLog,
   neighborNpc,
   bagDryCols,
@@ -76,7 +78,7 @@ import { OutingCurtain } from '@/gameobjects/ui/OutingCurtain';
 import { destinationBootPaths } from '@/utils/outingAssets';
 import { RunManager } from '@/managers/RunManager';
 import { TutorialManager, TutorialStep } from '@/managers/TutorialManager';
-import { TutorialOverlay, worldRectToStage } from '@/gameobjects/ui/TutorialOverlay';
+import { TutorialOverlay, worldRectToStage, type SpotlightRect, type TutorialTarget } from '@/gameobjects/ui/TutorialOverlay';
 import { TutorialGuard } from '@/systems/TutorialGuard';
 
 type HotspotId = 'door' | 'basket' | 'fridge' | 'foam' | 'board';
@@ -125,6 +127,8 @@ export class KitchenScene implements Scene {
   private _furnRoots = new Map<FurnId, PIXI.Container>();
   private _upgradePick: UpgradePick | null = null;
   private _spotRects = new Map<HotspotId, { x: number; y: number; w: number; h: number }>();
+  private _tableUpgradeRect: { x: number; y: number; w: number; h: number } | null = null;
+  private _upgradeConfirmRect: { x: number; y: number; w: number; h: number } | null = null;
   private _bootRetryLeft = 8;
   private _bootRetryTimer = 0;
   private _wipeArmed = 0;
@@ -302,6 +306,8 @@ export class KitchenScene implements Scene {
     this._fit = fit;
     this._furnRoots.clear();
     this._spotRects.clear();
+    this._tableUpgradeRect = null;
+    this._upgradeConfirmRect = null;
 
     const fallback = new PIXI.Graphics();
     fillRect(fallback, 0, 0, worldW, worldH, 0xF3E2C6);
@@ -333,7 +339,7 @@ export class KitchenScene implements Scene {
       }
       this._drawKitchenSlip();
       this._drawFridgeSlip();
-      if (!TutorialManager.isActive) {
+      if (!TutorialManager.isActive || TutorialManager.isStep(TutorialStep.HINT_DOOR)) {
         for (const id of FURN_IDS) {
           const badge = this._upgradeBadge(id, this._furnSpriteRect(id));
           if (badge) this._world.addChild(badge);
@@ -379,13 +385,44 @@ export class KitchenScene implements Scene {
     }, 700) as unknown as number;
   }
 
-  tutorialRect(): { x: number; y: number; w: number; h: number; r?: number } | null {
+  tutorialRect(): SpotlightRect | TutorialTarget | null {
     if (!TutorialManager.isActive) return null;
     const step = TutorialManager.currentStep;
+    if (step === TutorialStep.HINT_DOOR) {
+      const save = KitchenManager.save;
+      if (furnLevel(save, 'table') === 0 && furnUpgradeState(save, 'table').status === 'ready') {
+        if (this._upgradePick === 'table' && this._upgradeConfirmRect) {
+          const rect = worldRectToStage(this._ui, this._upgradeConfirmRect, 8);
+          if (rect) {
+            return {
+              dim: false,
+              holes: [rect],
+              fingerAt: { x: rect.x + rect.w * 0.5, y: rect.y + rect.h * 0.5 },
+              speech: 'bottom',
+              title: '点升级学新菜',
+              body: '升到 2 级烹饪台，立刻解锁「清炒土豆丝」！\n做熟菜才能涨厨艺开新菜场。',
+            };
+          }
+        }
+        if (this._tableUpgradeRect) {
+          const rect = worldRectToStage(this._world, this._tableUpgradeRect, 10);
+          if (rect) {
+            return {
+              dim: false,
+              holes: [rect],
+              fingerAt: { x: rect.x + rect.w * 0.5, y: rect.y + rect.h * 0.5 },
+              speech: 'top',
+              title: '升级灶台学新菜',
+              body: '刚挣了菜钱！点灶台上的圆箭头升级，\n解锁新菜谱，做熟菜才能涨厨艺。',
+            };
+          }
+        }
+      }
+      return worldRectToStage(this._world, this._spotRects.get('door') ?? { x: 20, y: 220, w: 160, h: 280 }, 12);
+    }
     if (
       step === TutorialStep.GO_OUT
       || step === TutorialStep.PICK_XIANGKO
-      || step === TutorialStep.HINT_DOOR
     ) {
       return worldRectToStage(this._world, this._spotRects.get('door') ?? { x: 20, y: 220, w: 160, h: 280 }, 12);
     }
@@ -606,12 +643,22 @@ export class KitchenScene implements Scene {
     money.position.set(resX, pillY);
     this._ui.addChild(money);
 
+    const staMax = staminaMax(save);
+    const staShort = save.stamina < staMax;
     const sta = makeStatPill({
       icon: 'subpkg_images/hud_stamina.png',
-      text: `${save.stamina}/${staminaMax(save)}`,
+      text: `${save.stamina}/${staMax}`,
       width: 188,
-      fill: save.stamina / staminaMax(save),
+      fill: save.stamina / staMax,
       fillColor: 0x6BA368,
+      plus: staShort,
+      pulsePlus: save.stamina <= 0,
+      onTap: staShort
+        ? () => {
+          if (TutorialManager.isActive && !TutorialManager.isStep(TutorialStep.HINT_DOOR)) return;
+          void KitchenManager.offerShareStamina();
+        }
+        : undefined,
       onIconReady: redraw,
     });
     sta.position.set(resX + 172, pillY);
@@ -750,14 +797,17 @@ export class KitchenScene implements Scene {
     label.position.set(size / 2, size);
     root.addChild(chip, label);
 
-    const left = dailyMenuRemain(KitchenManager.save.dailyMenu);
-    if (left > 0) {
-      const badgeW = 22;
+    const save = KitchenManager.save;
+    const left = dailyMenuRemain(save.dailyMenu);
+    const canExtra = !!save.dailyMenu?.boardClaimed && canUseDailyAd(save, 'daily_extra');
+    if (left > 0 || canExtra) {
+      const text = left > 0 ? `${Math.min(9, left)}` : '加';
+      const badgeW = 24;
       const badge = new PIXI.Graphics();
-      badge.beginFill(0xD94A3A, 1);
+      badge.beginFill(left > 0 ? 0xD94A3A : 0xC48A14, 1);
       badge.drawRoundedRect(size - badgeW - 2, 2, badgeW, 22, 11);
       badge.endFill();
-      const count = makeLabel(`${Math.min(9, left)}`, 13, 0xFFF8F0, { fontWeight: '700' });
+      const count = makeLabel(text, 13, 0xFFF8F0, { fontWeight: '700' });
       count.anchor.set(0.5);
       count.position.set(size - badgeW / 2 - 2, 13);
       root.addChild(badge, count);
@@ -798,14 +848,17 @@ export class KitchenScene implements Scene {
     label.position.set(size / 2, size);
     root.addChild(chip, label);
 
-    const tickets = KitchenManager.save.recipeTickets;
-    if (tickets > 0) {
-      const badgeW = 22;
+    const save = KitchenManager.save;
+    const tickets = save.recipeTickets;
+    const freeBox = canUseDailyAd(save, 'gacha_free');
+    if (tickets > 0 || freeBox) {
+      const text = tickets >= 2 ? `${Math.min(9, tickets)}` : (freeBox ? '免' : `${tickets}`);
+      const badgeW = 24;
       const badge = new PIXI.Graphics();
-      badge.beginFill(0xD94A3A, 1);
+      badge.beginFill(tickets >= 2 || freeBox ? 0xD94A3A : 0xC48A14, 1);
       badge.drawRoundedRect(size - badgeW - 2, 2, badgeW, 22, 11);
       badge.endFill();
-      const count = makeLabel(`${Math.min(9, tickets)}`, 13, 0xFFF8F0, { fontWeight: '700' });
+      const count = makeLabel(text, 13, 0xFFF8F0, { fontWeight: '700' });
       count.anchor.set(0.5);
       count.position.set(size - badgeW / 2 - 2, 13);
       root.addChild(badge, count);
@@ -942,6 +995,21 @@ export class KitchenScene implements Scene {
     label.anchor.set(0.5, 0);
     label.position.set(size / 2, size);
     root.addChild(chip, label);
+    if (!TutorialManager.isActive) {
+      const redCount = dexRedDotCount(KitchenManager.save);
+      if (redCount > 0) {
+        const text = redCount > 99 ? '99+' : `${redCount}`;
+        const badgeW = text.length > 1 ? 30 : 22;
+        const badge = new PIXI.Graphics();
+        badge.beginFill(0xD94A3A, 1);
+        badge.drawRoundedRect(size - badgeW - 2, 2, badgeW, 22, 11);
+        badge.endFill();
+        const count = makeLabel(text, 12, 0xFFF8F0, { fontWeight: '700' });
+        count.anchor.set(0.5);
+        count.position.set(size - badgeW / 2 - 2, 13);
+        root.addChild(badge, count);
+      }
+    }
     root.position.set(10, y);
     root.eventMode = 'static';
     root.cursor = 'pointer';
@@ -1377,7 +1445,12 @@ export class KitchenScene implements Scene {
     const open = this._upgradePick === id;
     const size = 44;
     const root = this._makeUpgradeBadge(size, ready, open);
-    root.position.set(rect.x + rect.w / 2 - size / 2, rect.y - size + 10);
+    const bx = rect.x + rect.w / 2 - size / 2;
+    const by = rect.y - size + 10;
+    root.position.set(bx, by);
+    if (id === 'table') {
+      this._tableUpgradeRect = { x: bx, y: by, w: size, h: size };
+    }
     root.on('pointertap', () => {
       if (this._dragMoved) return;
       this._upgradePick = this._upgradePick === id ? null : id;
@@ -1556,9 +1629,18 @@ export class KitchenScene implements Scene {
       const btn = makeButton(btnText, cardW - 36, 52, ready ? 0xC46A3A : 0xC9B8A4, ready ? 0xFFF8F0 : 0x6A5A4A);
       btn.position.set(18, 82);
       btn.alpha = ready ? 1 : 0.7;
+      if (id === 'table') {
+        this._upgradeConfirmRect = { x: x + 18, y: y + 82, w: cardW - 36, h: 52 };
+      }
       btn.on('pointertap', () => {
         if (!ready) {
           if (state.status === 'blocked') Platform.showToast(state.error);
+          return;
+        }
+        if (TutorialManager.isStep(TutorialStep.HINT_DOOR) && id === 'table') {
+          this._upgradePick = null;
+          KitchenManager.upgrade(id);
+          TutorialManager.advanceIf(TutorialStep.HINT_DOOR);
           return;
         }
         KitchenManager.upgrade(id);

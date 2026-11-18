@@ -182,7 +182,7 @@ export function setButtonFill(btn: PIXI.Container, fill: number): void {
   bg.endFill();
 }
 
-/** 顶栏货币/体力条：左侧专有图标压在胶囊上，右侧数字。 */
+/** 顶栏货币/体力条：左侧专有图标压在胶囊上，右侧数字；可选右侧加号与点击回调。 */
 export function makeStatPill(opts: {
   icon?: string;
   text: string;
@@ -190,6 +190,9 @@ export function makeStatPill(opts: {
   height?: number;
   fill?: number;
   fillColor?: number;
+  plus?: boolean;
+  pulsePlus?: boolean;
+  onTap?: () => void;
   onIconReady?: () => void;
 }): PIXI.Container {
   const height = opts.height ?? 44;
@@ -215,14 +218,16 @@ export function makeStatPill(opts: {
 
   if (opts.fill != null) {
     const ratio = Math.max(0, Math.min(1, opts.fill));
-    const fx = barX + inset;
-    const fy = inset;
-    const fw = Math.max(8, (barW - inset * 2) * ratio);
-    const fill = new PIXI.Graphics();
-    fill.beginFill(opts.fillColor ?? 0x6BA368, 0.88);
-    fill.drawRoundedRect(fx, fy, fw, height - inset * 2, r - inset);
-    fill.endFill();
-    root.addChild(fill);
+    if (ratio > 0) {
+      const fx = barX + inset;
+      const fy = inset;
+      const fw = Math.max(8, (barW - inset * 2) * ratio);
+      const fill = new PIXI.Graphics();
+      fill.beginFill(opts.fillColor ?? 0x6BA368, 0.88);
+      fill.drawRoundedRect(fx, fy, fw, height - inset * 2, r - inset);
+      fill.endFill();
+      root.addChild(fill);
+    }
   }
 
   const label = new PIXI.Text(opts.text, {
@@ -232,9 +237,49 @@ export function makeStatPill(opts: {
     fontWeight: 'bold',
   });
   label.anchor.set(0.5);
-  label.position.set(barX + barW / 2 + (opts.icon ? 8 : 0), height / 2);
+  const textShift = opts.plus ? (opts.icon ? -5 : -12) : (opts.icon ? 8 : 0);
+  label.position.set(barX + barW / 2 + textShift, height / 2);
   label.eventMode = 'none';
   root.addChild(label);
+
+  if (opts.plus) {
+    const plusWrap = new PIXI.Container();
+    plusWrap.position.set(opts.width - 18, height / 2);
+    plusWrap.eventMode = 'none';
+    const g = new PIXI.Graphics();
+    g.lineStyle(2.5, 0x2A2018, 1);
+    g.beginFill(opts.pulsePlus ? 0xE24B3A : 0xC46A3A, 1);
+    g.drawCircle(0, 0, 15);
+    g.endFill();
+    g.beginFill(0xFFF8F0, 1);
+    g.drawRoundedRect(-7, -2, 14, 4, 2);
+    g.drawRoundedRect(-2, -7, 4, 14, 2);
+    g.endFill();
+    plusWrap.addChild(g);
+    root.addChild(plusWrap);
+    if (opts.pulsePlus) {
+      const pulse = (): void => {
+        if (!tagAlive(plusWrap)) return;
+        TweenManager.to({
+          target: plusWrap.scale,
+          props: { x: 1.18, y: 1.18 },
+          duration: 0.42,
+          ease: Ease.easeOutQuad,
+          onComplete: () => {
+            if (!tagAlive(plusWrap)) return;
+            TweenManager.to({
+              target: plusWrap.scale,
+              props: { x: 1, y: 1 },
+              duration: 0.42,
+              ease: Ease.easeInOutQuad,
+              onComplete: pulse,
+            });
+          },
+        });
+      };
+      pulse();
+    }
+  }
 
   if (opts.icon) {
     const tex = gameTexture(opts.icon);
@@ -244,11 +289,24 @@ export function makeStatPill(opts: {
       fitSpriteInBox(sp, 52, 52);
       sp.anchor.set(0.5);
       sp.position.set(24, height / 2);
+      sp.eventMode = 'none';
       root.addChild(sp);
     }
   }
 
-  root.eventMode = 'none';
+  if (opts.onTap) {
+    root.eventMode = 'static';
+    root.cursor = 'pointer';
+    root.hitArea = new PIXI.Rectangle(0, -4, opts.width + 6, height + 8);
+    root.on('pointerdown', (e) => e.stopPropagation());
+    root.on('pointertap', (e) => {
+      e.stopPropagation();
+      AudioManager.play('ui_click');
+      opts.onTap?.();
+    });
+  } else {
+    root.eventMode = 'none';
+  }
   return root;
 }
 
@@ -658,6 +716,34 @@ export function makeNewFoodTag(size = 24): PIXI.Container {
   return root;
 }
 
+/** 小饭桌 / 街坊点菜正缺这味食材：深松绿底奶油字，轻呼吸提示。 */
+export function makeUrgentFoodTag(size = 20): PIXI.Container {
+  const root = new PIXI.Container();
+  root.eventMode = 'none';
+  const label = makeLabel('急需', size, 0xFFF8F0, {
+    fontFamily: FONT,
+    fontWeight: '700',
+    dropShadow: true,
+    dropShadowColor: '#163A28',
+    dropShadowAlpha: 0.45,
+    dropShadowBlur: 0,
+    dropShadowDistance: 1,
+    dropShadowAngle: Math.PI / 2,
+  });
+  label.anchor.set(0.5);
+  const padX = Math.round(size * 0.62);
+  const padY = Math.round(size * 0.28);
+  const w = Math.ceil(label.width + padX * 2);
+  const h = Math.max(Math.round(size * 1.56), Math.ceil(label.height + padY * 2));
+  const chip = new PIXI.Graphics();
+  chip.lineStyle(Math.max(2, Math.round(size * 0.1)), 0x163A28, 1);
+  chip.beginFill(0x2E6B4E);
+  chip.drawRoundedRect(-w / 2, -h / 2, w, h, h / 2);
+  chip.endFill();
+  root.addChild(chip, label);
+  return root;
+}
+
 /** 摊上菜名：粗体字，不描边。普通白，良品绿，上品蓝。 */
 export function makeStallNameTag(
   text: string,
@@ -858,6 +944,120 @@ export function makeHudBuffRow(opts: {
       opts.onTap?.(buff);
     });
     root.addChild(cell);
+  });
+  return root;
+}
+
+export const P0_ART = {
+  adClapper: 'subpkg_kitchen/ui_ad_clapper.png',
+  duskFlashlight: 'subpkg_kitchen/ui_dusk_flashlight.png',
+  chefFire: 'subpkg_kitchen/ui_chef_fire.png',
+  dexStamp: 'subpkg_kitchen/ui_dex_stamp.png',
+  gachaStage: 'subpkg_kitchen/ui_gacha_stage.png',
+  spoons: [
+    'subpkg_kitchen/ui_spoon_1.png',
+    'subpkg_kitchen/ui_spoon_2.png',
+    'subpkg_kitchen/ui_spoon_3.png',
+  ] as const,
+} as const;
+
+/** 统一激励视频动作钮：九切片底板 + 手绘场记板播放徽章 + 可选右上角次数角标。 */
+export function makeAdButton(opts: {
+  label: string;
+  width: number;
+  height?: number;
+  skin?: keyof typeof UI_BTN;
+  textColor?: number;
+  badge?: string;
+  disabled?: boolean;
+  onReady?: () => void;
+}): PIXI.Container {
+  const height = opts.height ?? 50;
+  const iconSize = Math.min(36, Math.round(height * 0.72));
+  const btn = makeSlicedButton({
+    label: opts.label,
+    width: opts.width,
+    height,
+    skin: opts.disabled ? 'cream' : (opts.skin ?? 'terracotta'),
+    textColor: opts.disabled ? 0x8A7358 : (opts.textColor ?? 0xFFF8F0),
+    labelOffsetX: Math.round(iconSize * 0.44),
+    onReady: opts.onReady,
+    silent: opts.disabled,
+  });
+  whenTextureReady(P0_ART.adClapper, () => opts.onReady?.());
+  const tex = gameTexture(P0_ART.adClapper);
+  if (isTextureReady(tex)) {
+    const spr = new PIXI.Sprite(tex);
+    fitSpriteInBox(spr, iconSize, iconSize);
+    spr.anchor.set(0.5);
+    // Align neatly to the left of centered text
+    const approxTextW = opts.label.length * Math.min(22, height * 0.39);
+    const groupW = iconSize + 6 + approxTextW;
+    const leftX = Math.max(14 + iconSize / 2, (opts.width - groupW) / 2 + iconSize / 2);
+    spr.position.set(leftX, height / 2);
+    spr.eventMode = 'none';
+    if (opts.disabled) spr.alpha = 0.5;
+    btn.addChild(spr);
+  }
+  if (opts.badge) {
+    const tag = new PIXI.Container();
+    const txt = makeLabel(opts.badge, 14, 0x2A2018, { fontWeight: '700' });
+    const tw = Math.max(38, Math.ceil(txt.width) + 14);
+    const th = 22;
+    const pill = new PIXI.Graphics();
+    pill.lineStyle(2, 0x2A2018, 1);
+    pill.beginFill(opts.disabled ? 0xD8CABA : 0xF5C85B, 1);
+    pill.drawRoundedRect(0, 0, tw, th, th / 2);
+    pill.endFill();
+    txt.anchor.set(0.5);
+    txt.position.set(tw / 2, th / 2 + 0.5);
+    tag.addChild(pill, txt);
+    tag.position.set(opts.width - tw + 4, -9);
+    tag.eventMode = 'none';
+    btn.addChild(tag);
+  }
+  if (opts.disabled) {
+    btn.alpha = 0.72;
+    btn.cursor = 'default';
+  }
+  return btn;
+}
+
+/** 菜谱三勺熟练度条：铜木勺(1) / 银铁勺(2) / 金炒勺(3)，未达成显示暖棕暗影。 */
+export function makeMasterySpoonRow(opts: {
+  stars: 0 | 1 | 2 | 3;
+  size?: number;
+  gap?: number;
+  onReady?: () => void;
+}): PIXI.Container {
+  const size = opts.size ?? 30;
+  const gap = opts.gap ?? 4;
+  const root = new PIXI.Container();
+  root.eventMode = 'none';
+  P0_ART.spoons.forEach((path, idx) => {
+    whenTextureReady(path, () => opts.onReady?.());
+    const earned = opts.stars >= idx + 1;
+    const slot = new PIXI.Container();
+    slot.position.set(idx * (size + gap), 0);
+    const tex = gameTexture(path);
+    if (isTextureReady(tex)) {
+      const spr = new PIXI.Sprite(tex);
+      fitSpriteInBox(spr, size, size);
+      spr.anchor.set(0.5);
+      spr.position.set(size / 2, size / 2);
+      if (!earned) {
+        spr.tint = 0x8A7358;
+        spr.alpha = 0.34;
+      }
+      slot.addChild(spr);
+    } else {
+      const g = new PIXI.Graphics();
+      g.beginFill(earned ? 0xE6B442 : 0xC9B8A4, earned ? 1 : 0.45);
+      g.drawCircle(size / 2, size / 2, size * 0.34);
+      g.endFill();
+      slot.addChild(g);
+    }
+    root.addChild(slot);
   });
   return root;
 }

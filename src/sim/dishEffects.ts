@@ -496,7 +496,19 @@ export type HudBuffIconKey =
   | 'stall_meat'
   | 'sell_up'
   | 'cook_xp'
-  | 'cook_double';
+  | 'cook_double'
+  | 'chef_fire';
+
+export const CHEF_FIRE_MS = 15 * 60 * 1000;
+export const CHEF_FIRE_XP_MUL = 1.3;
+export const CHEF_FIRE_DOUBLE_CHANCE = 0.35;
+
+export function formatChefFireRemain(ms: number): string {
+  const sec = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
 
 export interface HudBuff {
   kind: DishEffectId;
@@ -522,6 +534,7 @@ export function buffIconKey(kind: DishEffectId): HudBuffIconKey | null {
 }
 
 export function buffIconPath(icon: HudBuffIconKey): string {
+  if (icon === 'chef_fire') return 'subpkg_kitchen/ui_chef_fire.png';
   return `subpkg_images/buff_${icon}.png`;
 }
 
@@ -538,6 +551,7 @@ export const HUD_BUFF_ICON_KEYS: HudBuffIconKey[] = [
   'sell_up',
   'cook_xp',
   'cook_double',
+  'chef_fire',
 ];
 
 export function hudBuffPaths(): string[] {
@@ -549,8 +563,17 @@ export function liveHudBuffs<T extends {
   outingBuff?: OutingBuff;
   kitchenBuffs?: KitchenBuff[];
   kitchenBuff?: KitchenBuff;
+  chefFireUntil?: number;
 }>(save: T, now = Date.now()): HudBuff[] {
   const out: HudBuff[] = [];
+  if (typeof save.chefFireUntil === 'number' && save.chefFireUntil > now) {
+    out.push({
+      kind: 'cook_double',
+      icon: 'chef_fire',
+      label: `大厨旺火：下锅经验 +30% · 35% 多出一份（剩 ${formatChefFireRemain(save.chefFireUntil - now)}）`,
+      until: save.chefFireUntil,
+    });
+  }
   for (const buff of liveKitchenBuffs(save, now)) {
     const icon = buffIconKey(buff.kind);
     const label = formatKitchenBuff(buff, now);

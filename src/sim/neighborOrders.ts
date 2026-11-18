@@ -202,12 +202,15 @@ export function rollNeighborOffer(
   view: NeighborRollView,
   hanging: readonly NeighborOrder[],
   rng: Rng,
+  excludeRecipeId?: RecipeId,
 ): NeighborOfferDraft | null {
   if (hanging.length >= NEIGHBOR_ORDER_MAX) return null;
   const taken = new Set(hanging.map((o) => o.recipeId));
   const usedNpc = new Set(hanging.map((o) => o.npcId));
-  const known = unlockedRecipes(view).filter((r) => !taken.has(r.id) && !SKIP_RECIPES.has(r.id));
-  if (!known.length) return null;
+  const baseKnown = unlockedRecipes(view).filter((r) => !taken.has(r.id) && !SKIP_RECIPES.has(r.id));
+  if (!baseKnown.length) return null;
+  const filtered = excludeRecipeId ? baseKnown.filter((r) => r.id !== excludeRecipeId) : baseKnown;
+  const known = filtered.length ? filtered : baseKnown;
   const hard = known.filter((r) => !recipeCanCook(view, r.id));
   const pool = hard.length ? hard : known;
   const recipe = rngPick(rng, pool);

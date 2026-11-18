@@ -2,14 +2,23 @@ import * as PIXI from 'pixi.js';
 import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
+import { Platform } from '@/core/PlatformService';
 import { KitchenManager } from '@/managers/KitchenManager';
 import {
+  CHEF_FIRE_XP_MUL,
+  DAILY_AD_LIMITS,
   RARITY_STYLE,
+  canUseDailyAd,
+  chefFireRemainMs,
+  dailyAdLeft,
+  formatChefFireRemain,
+  isChefFireActive,
   itemRarity,
   rarityLabel,
   recipeCanCook,
   recipeCookCount,
   recipeCookMax,
+  recipeMasteryView,
   recipeNeeds,
   recipeUnlockView,
   recipeXp,
@@ -19,7 +28,7 @@ import {
   recipeEatLabel,
   type RecipeId,
 } from '@/sim';
-import { FONT, bindUiClick, drawRarityFrame, fillRect, makeCornerMark, makeLabel } from '@/utils/ui';
+import { FONT, P0_ART, bindUiClick, drawRarityFrame, fillRect, makeCornerMark, makeLabel, makeMasterySpoonRow } from '@/utils/ui';
 import { VerticalScroller } from '@/utils/scroll';
 import {
   dishTexture,
@@ -71,6 +80,8 @@ export class CookPanel extends PIXI.Container {
   private _scroller: VerticalScroller;
   private _cookBtn: PIXI.Container | null = null;
   private _paintQueued = false;
+  private _fireTimer = 0;
+  private _adBusy = false;
 
   constructor() {
     super();
@@ -100,6 +111,8 @@ export class CookPanel extends PIXI.Container {
     }
     this._scroller.reset();
     this._scroller.enable();
+    this._adBusy = false;
+    this._armFireTimer();
     this.relayout();
     OverlayManager.bringToFront();
     if (this._isOpen) TutorialOverlay.register('cook', () => this.tutorialCookRect());
@@ -112,8 +125,23 @@ export class CookPanel extends PIXI.Container {
     if (this._isOpen && !silent) AudioManager.play('ui_close');
     this._isOpen = false;
     this.visible = false;
+    this._adBusy = false;
+    this._clearFireTimer();
     this._scroller.disable();
     TutorialOverlay.unregister('cook');
+  }
+
+  private _armFireTimer(): void {
+    this._clearFireTimer();
+    this._fireTimer = globalThis.setInterval(() => {
+      if (!this._isOpen || this._inspect) return;
+      if (isChefFireActive(KitchenManager.save)) this.relayout();
+    }, 1000) as unknown as number;
+  }
+
+  private _clearFireTimer(): void {
+    if (this._fireTimer) globalThis.clearInterval?.(this._fireTimer);
+    this._fireTimer = 0;
   }
 
   tutorialCookRect(): TutorialTarget | null {
@@ -139,7 +167,15 @@ export class CookPanel extends PIXI.Container {
   }
 
   private _warm(): void {
-    watchTextures(cookPanelPaths(KitchenManager.save, this._pick), this._scheduleRelayout);
+    watchTextures(
+      [
+        ...cookPanelPaths(KitchenManager.save, this._pick),
+        P0_ART.chefFire,
+        P0_ART.adClapper,
+        ...P0_ART.spoons,
+      ],
+      this._scheduleRelayout,
+    );
   }
 
   private _scheduleRelayout = (): void => {
@@ -180,7 +216,12 @@ export class CookPanel extends PIXI.Container {
     this._root.addChild(shell);
     this._paintBg(shell, box.w, box.h);
 
-    shell.addChild(this._title(box.w * (PAGE.x + PAGE.w * 0.5), box.h * (PAGE.y + 0.045)));
+    const showFire = !TutorialManager.isActive;
+    const titleX = showFire ? box.w * 0.39 : box.w * (PAGE.x + PAGE.w * 0.5);
+    shell.addChild(this._title(titleX, box.h * (PAGE.y + 0.045)));
+    if (showFire) {
+      shell.addChild(this._chefFireWidget(box.w, box.h));
+    }
     shell.addChild(this._sideList(box.x, box.y, box.w, box.h));
     shell.addChild(this._stage(box.w, box.h));
 
@@ -252,6 +293,97 @@ export class CookPanel extends PIXI.Container {
     name.position.set(cx, cy);
     name.eventMode = 'none';
     root.addChild(name);
+    return root;
+  }
+
+  private _chefFireWidget(bw: number, bh: number): PIXI.Container {
+    const save = KitchenManager.save;
+    const now = Date.now();
+    const active = isChefFireActive(save, now);
+    const remain = chefFireRemainMs(save, now);
+    const left = dailyAdLeft(save, 'chef_buff', now);
+    const canAd = canUseDailyAd(save, 'chef_buff', now);
+
+    const pillW = Math.min(226, Math.round(bw * 0.315));
+    const pillH = 50;
+    const root = new PIXI.Container();
+    root.position.set(Math.round(bw * 0.862 - pillW), Math.round(bh * (PAGE.y + 0.045) - pillH / 2));
+
+    const bg = new PIXI.Graphics();
+    bg.lineStyle(2.5, active ? 0xD4711E : 0x8B5A2B, 1);
+    bg.beginFill(active ? 0xFFF1D6 : (canAd ? 0xC46A3A : 0xE6DAC8), 1);
+    bg.drawRoundedRect(0, 0, pillW, pillH, pillH / 2);
+    bg.endFill();
+    root.addChild(bg);
+
+    const wokTex = gameTexture(P0_ART.chefFire);
+    if (isTextureReady(wokTex)) {
+      const wok = new PIXI.Sprite(wokTex);
+      fitSpriteInBox(wok, 46, 46);
+      wok.anchor.set(0.5);
+      wok.position.set(26, pillH / 2 - 1);
+      wok.eventMode = 'none';
+      if (!active && !canAd) wok.alpha = 0.55;
+      root.addChild(wok);
+    }
+
+    const line1Text = active
+      ? `旺火 ${formatChefFireRemain(remain)}`
+      : canAd
+        ? '点旺火 15分'
+        : '今日旺火已满';
+    const line2Text = active
+      ? '经验+30% · 概率双份'
+      : canAd
+        ? `经验+30%·双份 (${left}/${DAILY_AD_LIMITS.chef_buff})`
+        : '明天再来升旺火';
+
+    const t1 = makeLabel(line1Text, 17, active ? TERRACOTTA : (canAd ? PAPER : MUTED), { fontWeight: '700' });
+    t1.position.set(50, 6);
+    const t2 = makeLabel(line2Text, 13, active ? INK : (canAd ? 0xFFEAD2 : MUTED), { fontWeight: '600' });
+    t2.position.set(50, 27);
+    root.addChild(t1, t2);
+
+    if (!active && canAd) {
+      const clapTex = gameTexture(P0_ART.adClapper);
+      if (isTextureReady(clapTex)) {
+        const clap = new PIXI.Sprite(clapTex);
+        fitSpriteInBox(clap, 26, 26);
+        clap.anchor.set(0.5);
+        clap.position.set(pillW - 14, 6);
+        clap.eventMode = 'none';
+        root.addChild(clap);
+      }
+    }
+
+    root.eventMode = 'static';
+    root.cursor = canAd || active ? 'pointer' : 'default';
+    root.hitArea = new PIXI.Rectangle(0, 0, pillW, pillH);
+    bindUiClick(root);
+    root.on('pointertap', (e) => {
+      e.stopPropagation();
+      if (this._adBusy) return;
+      if (active && !canAd) {
+        Platform.showToast(`旺火燃烧中（剩 ${formatChefFireRemain(remain)}）：下锅经验 +30%，35% 概率多盛一份！`);
+        return;
+      }
+      if (!canAd) {
+        Platform.showToast('今天的旺火次数已经用完啦，明天再来');
+        return;
+      }
+      this._adBusy = true;
+      Platform.showRewardedVideo(
+        'chef_buff',
+        () => {
+          this._adBusy = false;
+          KitchenManager.activateChefFire();
+          if (this._isOpen) this.relayout();
+        },
+        () => {
+          this._adBusy = false;
+        },
+      );
+    });
     return root;
   }
 
@@ -387,8 +519,47 @@ export class CookPanel extends PIXI.Container {
     });
     root.addChild(dishHit);
 
+    const save = KitchenManager.save;
+    const mastery = recipeMasteryView(save, recipe.id);
+    if (!TutorialManager.isActive) {
+      const mChip = new PIXI.Container();
+      const spoons = makeMasterySpoonRow({
+        stars: mastery.stars,
+        size: 24,
+        gap: 2,
+        onReady: this._scheduleRelayout,
+      });
+      const subTxt = mastery.stars >= 3
+        ? '+20%'
+        : mastery.stars === 2
+          ? '+10%'
+          : `${mastery.cooked}锅`;
+      const mLbl = makeLabel(subTxt, 14, mastery.stars >= 2 ? TERRACOTTA : MUTED, { fontWeight: '700' });
+      const pillW = 3 * 24 + 2 * 2 + 8 + Math.ceil(mLbl.width) + 16;
+      const pillH = 28;
+      const pillBg = new PIXI.Graphics();
+      pillBg.lineStyle(2, mastery.stars >= 3 ? 0xD49B28 : 0x8B5A2B, 1);
+      pillBg.beginFill(0xFFF8F0, 0.96);
+      pillBg.drawRoundedRect(0, 0, pillW, pillH, pillH / 2);
+      pillBg.endFill();
+      spoons.position.set(8, 2);
+      mLbl.anchor.set(0, 0.5);
+      mLbl.position.set(8 + 3 * 24 + 4 + 4, pillH / 2 + 0.5);
+      mChip.addChild(pillBg, spoons, mLbl);
+      mChip.position.set(Math.round(dishX + (dishSize - pillW) / 2), dy + dishSize - 22);
+      mChip.eventMode = 'static';
+      mChip.cursor = 'pointer';
+      mChip.hitArea = new PIXI.Rectangle(0, 0, pillW, pillH);
+      mChip.on('pointertap', (e) => {
+        e.stopPropagation();
+        AudioManager.play('ui_click');
+        Platform.showToast(`${recipe.name} · ${mastery.title}（已做${mastery.cooked}锅）\n${mastery.bonusText}`);
+      });
+      root.addChild(mChip);
+    }
+
     const cx = dx + dw / 2;
-    const nameY = dy + dishSize + 22;
+    const nameY = dy + dishSize + 24;
     const name = makeLabel(recipe.name, 28, INK, { fontWeight: '700' });
     name.anchor.set(0.5);
     name.position.set(cx, nameY);
@@ -400,11 +571,13 @@ export class CookPanel extends PIXI.Container {
       wait.position.set(cx, nameY + 28);
       root.addChild(wait);
     }
-    const xp = recipeXp(KitchenManager.save, recipe.id);
+    const baseXp = recipeXp(save, recipe.id);
+    const fireOn = isChefFireActive(save);
+    const shownXp = fireOn ? Math.round(baseXp * CHEF_FIRE_XP_MUL) : baseXp;
     const xpLabel = makeLabel(
-      `${rarityLabel(recipe.rarity)}  ·  +${xp} 经验`,
+      `${rarityLabel(recipe.rarity)}  ·  +${shownXp} 经验${fireOn ? ' (旺火)' : ''}`,
       18,
-      RARITY_STYLE[recipe.rarity].ink,
+      fireOn ? TERRACOTTA : RARITY_STYLE[recipe.rarity].ink,
       { fontWeight: '700' },
     );
     xpLabel.anchor.set(0.5);

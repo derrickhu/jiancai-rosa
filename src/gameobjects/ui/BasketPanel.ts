@@ -55,6 +55,7 @@ export class BasketPanel extends PIXI.Container {
   private _unsub: (() => void) | null = null;
   private _grid = { x: 0, y: 0, cell: 56, cols: 6, rows: 5 };
   private _closeBtn: PIXI.Container | null = null;
+  private _closeRect = { x: 0, y: 0, w: 0, h: 0 };
   private _stageRect = { x: 0, y: 0, w: 0, h: 0 };
   private _scroller: VerticalScroller;
   private _stageScroller: VerticalScroller;
@@ -94,6 +95,9 @@ export class BasketPanel extends PIXI.Container {
     OverlayManager.container.addChild(this);
     this._scroller = new VerticalScroller(this, { visible: () => this._isOpen && !this._drag });
     this._stageScroller = new VerticalScroller(this, { visible: () => this._isOpen && !this._drag });
+    EventBus.on(EV.tutorialCloseBasket, () => {
+      if (this._isOpen) this.close();
+    });
   }
 
   open(placingUid?: string): void {
@@ -163,6 +167,7 @@ export class BasketPanel extends PIXI.Container {
   }
 
   private _closeLocal(): { x: number; y: number; w: number; h: number } {
+    if (this._closeRect.w > 0 && this._closeRect.h > 0) return this._closeRect;
     if (this._closeBtn && !this._closeBtn.destroyed) {
       const b = this._closeBtn.getBounds();
       const tl = this.toLocal({ x: b.x, y: b.y });
@@ -226,7 +231,10 @@ export class BasketPanel extends PIXI.Container {
     const dim = new PIXI.Graphics();
     fillRect(dim, 0, 0, w, h, 0x000000);
     dim.alpha = 0.55;
-    dim.eventMode = 'none';
+    dim.eventMode = 'static';
+    dim.on('pointertap', () => {
+      if (!this._inspectUid && !this._drag) this.close();
+    });
     this._root.addChild(dim);
 
     const box = this._shellBox(w, h);
@@ -234,6 +242,7 @@ export class BasketPanel extends PIXI.Container {
     shell.position.set(box.x, box.y);
     shell.eventMode = 'static';
     shell.hitArea = new PIXI.Rectangle(0, 0, box.w, box.h);
+    shell.on('pointertap', (e) => e.stopPropagation());
     this._root.addChild(shell);
     this._paintBg(shell, box.w, box.h);
 
@@ -312,9 +321,11 @@ export class BasketPanel extends PIXI.Container {
         if (this._isOpen && !this._drag) this.relayout();
       },
     });
-    close.position.set(bx + (btnW + gap) * 2, btnY);
+    const closeX = bx + (btnW + gap) * 2;
+    close.position.set(closeX, btnY);
     close.on('pointertap', () => this.close());
     this._closeBtn = close;
+    this._closeRect = { x: box.x + closeX, y: box.y + btnY, w: btnW, h: 46 };
     shell.addChild(close);
 
     const inspecting = this._inspectUid ? this._foodByUid(this._inspectUid) : null;
@@ -584,9 +595,21 @@ export class BasketPanel extends PIXI.Container {
     root.eventMode = 'static';
     root.cursor = 'pointer';
     root.hitArea = new PIXI.Rectangle(0, 0, w, h);
+    let downX = 0;
+    let downY = 0;
+    let armed = false;
     root.on('pointerdown', (e) => {
+      if (this._drag) return;
+      downX = e.global.x;
+      downY = e.global.y;
+      armed = true;
+    });
+    root.on('pointertap', (e) => {
+      if (!armed) return;
+      armed = false;
+      if (this._drag || this._scroller.moved) return;
+      if (Math.hypot(e.global.x - downX, e.global.y - downY) > 14) return;
       e.stopPropagation();
-      this._scroller.cancel();
       this._onFlexTap();
     });
     return root;

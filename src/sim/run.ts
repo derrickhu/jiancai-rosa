@@ -77,6 +77,8 @@ export interface GatherPlay {
 
 export type PlayState = GatherPlay;
 
+export const DUSK_EXTEND_STEPS = 3;
+
 export interface RunState {
   seed: number;
   marketId: MarketId;
@@ -84,6 +86,10 @@ export interface RunState {
   map: MarketMap;
   stepsMax: number;
   stepsLeft: number;
+  /** 本局是否已借过手电筒续步（每局限 1 次）。 */
+  duskExtended?: boolean;
+  /** 天黑续步询问弹窗挂起中。 */
+  duskPromptPending?: boolean;
   /** 已经站上的卡，null 表示还在巷口没迈第一步 */
   atNodeId: string | null;
   /** 这一层能点的卡 */
@@ -249,16 +255,19 @@ export function createRun(opts: {
   };
 }
 
-/** 教学局：脚下第一排保底有翻摊，货箱最前是干净菜苔。 */
-export function seedTutorialOuting(state: RunState): string {
-  const nodeId = ensureTutorialFrontRummage(state);
-  const pile = state.piles[nodeId] ?? [];
-  const hit = pile.findIndex((it) => it.defId === 'caitai' && it.quality !== 'rotten');
-  if (hit > 0) {
-    const [item] = pile.splice(hit, 1);
-    pile.unshift(item);
-  } else if (hit < 0) {
-    pile.unshift({
+function ensureCleanCaitai(pile: PileItem[], count: number): PileItem[] {
+  const next = pile.slice();
+  const hitIdxs: number[] = [];
+  for (let i = 0; i < next.length; i++) {
+    if (next[i].defId === 'caitai' && next[i].quality !== 'rotten') hitIdxs.push(i);
+  }
+  const front: PileItem[] = [];
+  for (let i = hitIdxs.length - 1; i >= 0; i--) {
+    const [item] = next.splice(hitIdxs[i], 1);
+    front.unshift(item);
+  }
+  while (front.length < count) {
+    front.push({
       uid: nextUid('p'),
       defId: 'caitai',
       quality: 'fresh',
@@ -268,7 +277,20 @@ export function seedTutorialOuting(state: RunState): string {
       drawn: false,
     });
   }
-  state.piles[nodeId] = pile;
+  return [...front, ...next];
+}
+
+/** 教学局：脚下第一排保底有翻摊且至少两棵干净菜苔，下一排翻摊也保底有一棵菜苔。 */
+export function seedTutorialOuting(state: RunState): string {
+  const nodeId = ensureTutorialFrontRummage(state);
+  state.piles[nodeId] = ensureCleanCaitai(state.piles[nodeId] ?? [], 2);
+  const nextIds = state.map.nodes[nodeId]?.next ?? [];
+  for (const nid of nextIds) {
+    const node = state.map.nodes[nid];
+    if (node && isRummageNode(node)) {
+      state.piles[nid] = ensureCleanCaitai(state.piles[nid] ?? [], 1);
+    }
+  }
   return nodeId;
 }
 

@@ -157,3 +157,54 @@ export function computeFridgeSlip(save: KitchenSave, now = Date.now()): FridgeSl
   }
   return lines;
 }
+
+/**
+ * 市集摊面提示用：当前「小饭桌（未交齐）」与「街坊点菜（挂单中）」还缺的原材料 id。
+ * 已做成现成菜放在冰箱的扣除，本趟出门篮里刚捡到的可用食材也实时扣除。
+ */
+export function urgentTaskFoodIds(
+  save: KitchenSave,
+  basketItems: ReadonlyArray<{ defId: string; quality?: string }> = [],
+  now = Date.now(),
+): Set<string> {
+  const dishDemand = new Map<RecipeId, number>();
+  if (save.dailyMenu && !save.dailyMenu.boardClaimed) {
+    for (const line of save.dailyMenu.lines) {
+      const left = Math.max(0, line.need - line.done);
+      if (left > 0) {
+        dishDemand.set(line.recipeId, (dishDemand.get(line.recipeId) ?? 0) + left);
+      }
+    }
+  }
+  for (const order of liveNeighborOrders(save.neighborOrders, now)) {
+    dishDemand.set(order.recipeId, (dishDemand.get(order.recipeId) ?? 0) + 1);
+  }
+  if (!dishDemand.size) return new Set();
+
+  const ingDemand = new Map<string, number>();
+  for (const [recipeId, neededPortions] of dishDemand) {
+    const haveDish = save.fridge
+      .filter((it) => fridgeKind(it) === 'dish' && it.defId === recipeId)
+      .reduce((sum, it) => sum + fridgeItemQty(it), 0);
+    const missingPortions = Math.max(0, neededPortions - haveDish);
+    if (missingPortions <= 0) continue;
+    const recipe = recipeById(recipeId);
+    if (!recipe) continue;
+    for (const ingId of recipe.needs) {
+      ingDemand.set(ingId, (ingDemand.get(ingId) ?? 0) + missingPortions);
+    }
+  }
+  if (!ingDemand.size) return new Set();
+
+  const out = new Set<string>();
+  for (const [ingId, totalNeed] of ingDemand) {
+    const haveFridge = save.fridge
+      .filter((it) => fridgeKind(it) !== 'dish' && it.quality !== 'rotten' && it.defId === ingId)
+      .reduce((sum, it) => sum + fridgeItemQty(it), 0);
+    const haveBasket = basketItems.filter((it) => it.quality !== 'rotten' && it.defId === ingId).length;
+    if (haveFridge + haveBasket < totalNeed) {
+      out.add(ingId);
+    }
+  }
+  return out;
+}

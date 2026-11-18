@@ -61,6 +61,7 @@ export interface DailyMenuState {
   lines: DailyMenuLine[];
   boardClaimed: boolean;
   board?: DailyMenuBoard;
+  extraRound?: boolean;
 }
 
 export interface DailyMenuRollView {
@@ -146,6 +147,7 @@ export function migrateDailyMenu(raw: unknown): DailyMenuState | undefined {
     lines,
     boardClaimed: rec.boardClaimed === true,
     board: parseBoard(rec.board),
+    extraRound: rec.extraRound === true,
   };
 }
 
@@ -231,6 +233,9 @@ function sameMenuDay(a?: string, b?: string): boolean {
 export function ensureDailyMenuState(view: DailyMenuRollView, date: string): DailyMenuState | undefined {
   if ((view.tutorialStep ?? 99) < 99) return view.dailyMenu;
   const menu = view.dailyMenu;
+  if (menu && sameMenuDay(menu.date, date) && menu.extraRound && !menu.boardClaimed && menu.lines.length >= 1) {
+    return attachDailyMenuBoard(view, menu, date);
+  }
   const claimedToday = sameMenuDay(view.dailyMenuClaimedOn, date)
     || (menu?.boardClaimed === true && sameMenuDay(menu.date, date));
   if (claimedToday) {
@@ -257,6 +262,32 @@ export function rollDailyMenu(view: DailyMenuRollView, date: string): DailyMenuS
     date,
     boardClaimed: false,
     board: dailyMenuBoardPrize(view, date),
+    lines: recipes.map((recipe) => ({
+      recipeId: recipe.id,
+      need: rollNeed(recipe, view.level, rng),
+      done: 0,
+      gold: dailyMenuLineGold(recipe.id),
+      food: rollLineFood(view, recipe, rng),
+    })),
+  };
+}
+
+export function rollExtraDailyMenu(view: DailyMenuRollView, date: string, salt = 1): DailyMenuState | undefined {
+  const prevIds = new Set((view.dailyMenu?.lines ?? []).map((l) => l.recipeId));
+  const rngPickPool = dateRng(`${date}:extra:${salt}`);
+  // Prefer recipes not already on the daytime board if enough unlocked recipes exist
+  const unlocked = unlockedRecipes(unlockView(view)).filter((r) => !SKIP_RECIPES.has(r.id));
+  const freshView: DailyMenuRollView = unlocked.filter((r) => !prevIds.has(r.id)).length >= DAILY_MENU_LINES
+    ? { ...view, hangingRecipeIds: [...view.hangingRecipeIds, ...prevIds] }
+    : view;
+  const recipes = pickDailyRecipes(freshView, rngPickPool);
+  if (!recipes.length) return undefined;
+  const rng = dateRng(`${date}:extra_reward:${salt}`);
+  return {
+    date,
+    extraRound: true,
+    boardClaimed: false,
+    board: { tickets: 1 },
     lines: recipes.map((recipe) => ({
       recipeId: recipe.id,
       need: rollNeed(recipe, view.level, rng),

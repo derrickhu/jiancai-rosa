@@ -8,4 +8,6 @@ export const EV = {
   tutorialStepChanged: 'tutorial:stepChanged',
   tutorialCompleted: 'tutorial:completed',
   tutorialCook: 'tutorial:cook',
+  tutorialCloseBasket: 'tutorial:closeBasket',
+  runDuskPrompt: 'run:duskPrompt',
 } as const;

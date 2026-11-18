@@ -88,7 +88,8 @@ function rewardedUnits(): Record<RewardedAdScene, string> {
 }
 
 export function warmupRewardedAds(): void {
-  for (const unitId of Object.values(rewardedUnits())) {
+  const uniqueUnits = new Set(Object.values(rewardedUnits()));
+  for (const unitId of uniqueUnits) {
     if (!unitId) continue;
     const ad = getAd(unitId);
     ad?.load().catch((error) => {

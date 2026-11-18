@@ -2,6 +2,7 @@ import { analytics } from '@/analytics';
 import { EventBus } from '@/core/EventBus';
 import { EV } from '@/config/events';
 import {
+  DUSK_EXTEND_STEPS,
   applyEncounter,
   cardBlock,
   createBasket,
@@ -29,6 +30,7 @@ import {
   tryRotateItem,
   rollFreebie,
   settleExtract,
+  stallDisplayName,
   eventVoice,
   MARKET_RECIPE_POOL,
   remainingMarketRecipes,
@@ -212,7 +214,7 @@ class RunManagerClass {
 
   enterNode(id: string): void {
     const run = this.run;
-    if (!run || run.ended || run.mode !== 'map') return;
+    if (!run || run.ended || run.mode !== 'map' || run.duskPromptPending) return;
     if (!run.options.includes(id)) return;
     const node = run.map.nodes[id];
     const block = cardBlock(run, node, KitchenManager.save.money, KitchenManager.save.level);
@@ -512,15 +514,84 @@ class RunManagerClass {
   private checkDayEnd(): void {
     const run = this.run;
     if (!run || run.ended || run.mode === 'rummage' || run.mode === 'play') return;
-    if (run.stepsLeft <= 0) {
-      Platform.showToast('天黑了，收摊');
-      this.extract(false);
-      return;
-    }
     if (run.options.length === 0) {
       Platform.showToast('逛到街尾了，回家');
       this.extract(true);
+      return;
     }
+    if (run.stepsLeft <= 0) {
+      if (!TutorialManager.isActive && !run.duskExtended) {
+        if (!run.duskPromptPending) {
+          this.run = { ...run, duskPromptPending: true };
+          this.emit();
+          EventBus.emit(EV.runDuskPrompt);
+        }
+        return;
+      }
+      Platform.showToast('天黑了，收摊');
+      this.extract(false);
+    }
+  }
+
+  /** 看激励视频借手电筒：再走 DUSK_EXTEND_STEPS 步（每局限 1 次）。 */
+  extendDuskSteps(extra = DUSK_EXTEND_STEPS): boolean {
+    const run = this.run;
+    if (!run || run.ended || run.duskExtended) return false;
+    const add = Math.max(1, Math.floor(extra));
+    const stepsLeft = Math.max(0, run.stepsLeft) + add;
+    this.run = {
+      ...run,
+      stepsLeft,
+      stepsMax: Math.max(run.stepsMax, stepsLeft),
+      duskExtended: true,
+      duskPromptPending: false,
+      note: `借到摊主手电筒，还能摸黑再逛 ${add} 步！`,
+    };
+    Platform.showToast(`借到手电筒！再逛 ${add} 步`, 'success');
+    this.emit();
+    return true;
+  }
+
+  /** 放弃借手电筒，正常按天黑收摊回家。 */
+  declineDuskExtend(): void {
+    const run = this.run;
+    if (!run || run.ended) return;
+    this.run = { ...run, duskPromptPending: false };
+    Platform.showToast('天黑了，收摊');
+    this.extract(false);
+  }
+
+  /** 扫描前方三层可达路线里的亮点卡，用于天黑借手电筒弹窗提示。 */
+  duskAheadHighlights(): string[] {
+    const run = this.run;
+    if (!run || run.ended) return [];
+    const seen = new Set<string>();
+    const out: string[] = [];
+    let frontier = run.options.slice();
+    for (let depth = 0; depth < 3 && frontier.length; depth++) {
+      const next: string[] = [];
+      for (const id of frontier) {
+        const node = run.map.nodes[id];
+        if (!node) continue;
+        const enc = nodeEncounter(node);
+        let tag = '';
+        if (enc.type === 'recipe' || node.kind === 'recipe') tag = '油纸菜谱';
+        else if (enc.type === 'rummage' && enc.specialty) tag = node.title || '特色好货摊';
+        else if (enc.type === 'gather') tag = node.title || '野生采集点';
+        else if (enc.type === 'branch') tag = node.title || '隐秘支线';
+        else if (node.kind === 'paystall') tag = '压箱好货摊';
+        else if (enc.type === 'rummage' && node.stall) tag = `${stallDisplayName(run.marketId, node.stall)}`;
+        if (tag && !seen.has(tag)) {
+          seen.add(tag);
+          out.push(tag);
+        }
+        for (const nid of node.next) {
+          if (!next.includes(nid)) next.push(nid);
+        }
+      }
+      frontier = next;
+    }
+    return out.slice(0, 3);
   }
 
   currentPile(): PileItem[] {

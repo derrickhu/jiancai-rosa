@@ -18,11 +18,11 @@ import {
   type NeighborOrder,
   type RecipeId,
 } from '@/sim';
-import { HUD_ICON } from '@/utils/ui';
+import { HUD_ICON, P0_ART } from '@/utils/ui';
 import { imgPath } from '@/utils/assets';
 
 export const PANEL_SHELL = {
-  dex: ['subpkg_kitchen/ui_dex_panel.png'],
+  dex: ['subpkg_kitchen/ui_dex_panel.png', P0_ART.dexStamp, ...P0_ART.spoons],
   fridge: [
     'subpkg_kitchen/ui_fridge_panel.png',
     'subpkg_kitchen/ui_fridge_btn_terracotta.png',
@@ -34,6 +34,9 @@ export const PANEL_SHELL = {
     'subpkg_kitchen/ui_cook_btn.png',
     'subpkg_kitchen/ui_fridge_btn_terracotta.png',
     'subpkg_kitchen/ui_fridge_btn_cream.png',
+    P0_ART.chefFire,
+    P0_ART.adClapper,
+    ...P0_ART.spoons,
   ],
   basket: ['subpkg_kitchen/ui_basket_panel.png'],
   gameClub: ['subpkg_kitchen/ui_gameclub_panel.png', HUD_ICON.coin],
@@ -48,7 +51,7 @@ export function dishIconPath(id: string): string {
 }
 
 export function dexViewPaths(save: KitchenSave, view: { kind: 'home'; tab: 'food' | 'dish' } | { kind: 'food'; cat: string } | { kind: 'dish'; group: string }): string[] {
-  const paths = [...PANEL_SHELL.dex];
+  const paths: string[] = [...PANEL_SHELL.dex];
   if (view.kind === 'home') {
     if (view.tab === 'food') {
       for (const cat of DEX_FOOD_CATS) paths.push(itemIconPath(cat.icon));
@@ -82,7 +85,7 @@ export function cookPanelPaths(save: KitchenSave, pick: RecipeId): string[] {
   const view = recipeUnlockView(save);
   const known = unlockedRecipes(view);
   const recipe = known.find((r) => r.id === pick) ?? known[0];
-  const paths = [...PANEL_SHELL.cook];
+  const paths: string[] = [...PANEL_SHELL.cook];
   if (!recipe) return paths;
   paths.push(dishIconPath(recipe.id));
   for (const need of recipeNeeds(view, recipe.id)) {
@@ -104,7 +107,7 @@ const DAILY_MENU_SHELL = [
 ] as const;
 
 export function dailyMenuPanelPaths(save: KitchenSave): string[] {
-  const paths = [...DAILY_MENU_SHELL];
+  const paths: string[] = [...DAILY_MENU_SHELL, P0_ART.adClapper];
   const menu = save.dailyMenu;
   if (!menu) return paths;
   const view = recipeUnlockView(save);
@@ -119,7 +122,7 @@ export function dailyMenuPanelPaths(save: KitchenSave): string[] {
 }
 
 export function orderPanelPaths(save: KitchenSave, orders: readonly NeighborOrder[]): string[] {
-  const paths = [HUD_ICON.coin];
+  const paths: string[] = [HUD_ICON.coin, P0_ART.adClapper];
   const view = recipeUnlockView(save);
   for (const order of orders) {
     paths.push(neighborNpc(order.npcId).portrait);

@@ -92,3 +92,84 @@ export function isDishUnlocked(
 ): boolean {
   return save.recipesCooked.includes(id) || !!save.recipesFound?.includes(id);
 }
+
+export const DEX_ENTRY_GOLD = 2;
+export const DEX_MILESTONE_STEP = 6;
+export const DEX_MILESTONE_GOLD = 12;
+export const DEX_MILESTONE_TICKETS = 1;
+
+export interface DexRewardView {
+  dexSeen: readonly string[];
+  dexInspected: readonly string[];
+  recipesCooked: readonly RecipeId[];
+  recipesFound?: readonly RecipeId[];
+  dexClaimed?: readonly string[];
+  dexMilestones?: number;
+}
+
+export function dexEntryKey(kind: DexTab, id: string): string {
+  return `${kind}:${id}`;
+}
+
+export function isDexEntryClaimed(save: Pick<DexRewardView, 'dexClaimed'>, kind: DexTab, id: string): boolean {
+  return (save.dexClaimed ?? []).includes(dexEntryKey(kind, id));
+}
+
+export function allUnlockedDexKeys(save: DexRewardView): string[] {
+  const keys: string[] = [];
+  for (const cat of DEX_FOOD_CATS) {
+    for (const it of foodsInCat(cat.id)) {
+      if (isFoodUnlocked(save, it.id)) keys.push(dexEntryKey('food', it.id));
+    }
+  }
+  const found = save.recipesFound ?? [];
+  for (const group of dishGroups()) {
+    for (const r of dishesInGroup(group, found)) {
+      if (isDishUnlocked(save, r.id)) keys.push(dexEntryKey('dish', r.id));
+    }
+  }
+  return keys;
+}
+
+export function unclaimedDexKeys(save: DexRewardView): string[] {
+  const claimed = new Set(save.dexClaimed ?? []);
+  return allUnlockedDexKeys(save).filter((k) => !claimed.has(k));
+}
+
+export function unclaimedDexInFoodCat(save: DexRewardView, cat: DexFoodCat): number {
+  const claimed = new Set(save.dexClaimed ?? []);
+  return foodsInCat(cat).filter((it) => isFoodUnlocked(save, it.id) && !claimed.has(dexEntryKey('food', it.id))).length;
+}
+
+export function unclaimedDexInDishGroup(save: DexRewardView, group: string): number {
+  const claimed = new Set(save.dexClaimed ?? []);
+  return dishesInGroup(group, save.recipesFound ?? []).filter(
+    (r) => isDishUnlocked(save, r.id) && !claimed.has(dexEntryKey('dish', r.id)),
+  ).length;
+}
+
+export function dexMilestoneStatus(save: DexRewardView): {
+  totalUnlocked: number;
+  claimedSteps: number;
+  readySteps: number;
+  stepProgress: number;
+  stepNeed: number;
+} {
+  const totalUnlocked = allUnlockedDexKeys(save).length;
+  const claimedSteps = Math.max(0, Math.floor(save.dexMilestones ?? 0));
+  const earnedSteps = Math.floor(totalUnlocked / DEX_MILESTONE_STEP);
+  const readySteps = Math.max(0, earnedSteps - claimedSteps);
+  const base = claimedSteps * DEX_MILESTONE_STEP;
+  const stepProgress = Math.min(DEX_MILESTONE_STEP, Math.max(0, totalUnlocked - base));
+  return {
+    totalUnlocked,
+    claimedSteps,
+    readySteps,
+    stepProgress,
+    stepNeed: DEX_MILESTONE_STEP,
+  };
+}
+
+export function dexRedDotCount(save: DexRewardView): number {
+  return unclaimedDexKeys(save).length + dexMilestoneStatus(save).readySteps;
+}

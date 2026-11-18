@@ -28,11 +28,13 @@ import {
   stallPileArt,
   stallRummageArt,
   liveHudBuffs,
+  urgentTaskFoodIds,
 } from '@/sim';
 import { ensureHudBuffPanel } from '@/gameobjects/ui/HudBuffPanel';
+import { DuskExtendPanel } from '@/gameobjects/ui/DuskExtendPanel';
 import { layoutRouteMap, type RouteCell, type RouteMapView } from '@/gameobjects/market/MapView';
 import { AudioManager } from '@/core/AudioManager';
-import { FONT, HUD_BUFF, HUD_ICON, bindUiClick, fillRect, makeHudBuffRow, makeLabel, makeNewFoodTag, makeRarityFlare, makeSlicedButton, makeStallNameTag, makeStatPill } from '@/utils/ui';
+import { FONT, HUD_BUFF, HUD_ICON, bindUiClick, fillRect, makeHudBuffRow, makeLabel, makeNewFoodTag, makeRarityFlare, makeSlicedButton, makeStallNameTag, makeStatPill, makeUrgentFoodTag } from '@/utils/ui';
 import { Platform } from '@/core/PlatformService';
 import { TweenManager, Ease } from '@/core/TweenManager';
 import { applyFit, fitCover, fitSpriteInBox, fitWidthBottom, gameTexture, isTextureFailed, isTextureReady, itemLookTexture, itemTexture, whenTextureReady } from '@/utils/assets';
@@ -59,8 +61,13 @@ export class MarketScene implements Scene {
   private _body = new PIXI.Container();
   private _basket = new BasketPanel();
   private _result = new ResultPanel();
+  private _duskExtend = new DuskExtendPanel();
+  private _duskWaitTimer = 0;
   private _onRun = () => this._sync();
+  private _onDuskPrompt = () => this._checkDuskPrompt();
   private _onExtract = (result: ExtractResult) => {
+    this._clearDuskWait();
+    this._duskExtend.close(true);
     this._basket.close(true);
     this._result.open(result);
     TutorialManager.advanceTo(TutorialStep.WAIT_RESULT);
@@ -93,6 +100,7 @@ export class MarketScene implements Scene {
   private _tutToken: PIXI.Container | null = null;
   private _leaveBtn: PIXI.Container | null = null;
   private _backBtn: PIXI.Container | null = null;
+  private _urgentFoods = new Set<string>();
   private _coinHud = { x: 120, y: 220 };
 
   constructor() {
@@ -109,6 +117,7 @@ export class MarketScene implements Scene {
     this.container.hitArea = new PIXI.Rectangle(0, 0, Game.designWidth, Game.logicHeight);
     EventBus.on(EV.runChanged, this._onRun);
     EventBus.on(EV.runExtracted, this._onExtract);
+    EventBus.on(EV.runDuskPrompt, this._onDuskPrompt);
     this._bodyKey = '';
     this._crateMax = {};
     this._tablePins.clear();
@@ -124,6 +133,8 @@ export class MarketScene implements Scene {
   onExit(): void {
     EventBus.off(EV.runChanged, this._onRun);
     EventBus.off(EV.runExtracted, this._onExtract);
+    EventBus.off(EV.runDuskPrompt, this._onDuskPrompt);
+    this._clearDuskWait();
     this._walking = false;
     this._mapView = null;
     this._body.alpha = 1;
@@ -131,6 +142,7 @@ export class MarketScene implements Scene {
     this._clearGodPick();
     this._tablePins.clear();
     this._clearDusk();
+    this._duskExtend.close(true);
     this._basket.close(true);
     this._event.close(true);
     TutorialOverlay.unregister('market');
@@ -165,9 +177,48 @@ export class MarketScene implements Scene {
         }
         const loot = this._aim(this._tutToken, 8, { dim: false, speech: 'bottom' });
         if (loot) return { ...loot, ...stallCopy };
+        const hasCrate = RunManager.crateLeft().length > 0;
+        const hasCleanPile = RunManager.currentPile().some((it) => it.quality !== 'rotten');
+        if (!hasCrate && !hasCleanPile) {
+          const backAim = this._aim(this._backBtn, 6, { dim: false, speech: 'bottom' });
+          const doneCopy = {
+            title: '这摊翻完啦',
+            body: '点左上角回菜场，或直接点右上角「回家」开火。',
+          };
+          return backAim ? { ...backAim, ...doneCopy } : { dim: false, speech: 'bottom', ...doneCopy };
+        }
+        if (hasCrate) {
+          const pileAim = this._aim(this._tutPile, 8, { dim: false, speech: 'bottom' });
+          if (pileAim) return { ...pileAim, ...stallCopy };
+        }
         return { dim: false, speech: 'bottom', ...stallCopy };
       }
-      return { dim: false, speech: 'top', speechY: top };
+      const caitaiCount = RunManager.basket.items.filter(
+        (it) => it.defId === 'caitai' && it.quality !== 'rotten',
+      ).length;
+      const visitedCount = RunManager.run?.visited.length ?? 0;
+      if (caitaiCount < 1) {
+        const cardAim = this._aim(this._tutCard, 6, { dim: false, speech: 'top', speechY: top });
+        const needCopy = {
+          title: '再捡一棵菜苔',
+          body: '篮里还没菜苔！点脚下的卡再翻一棵，\n回家才能下锅炒菜苔。',
+        };
+        return cardAim ? { ...cardAim, ...needCopy } : { dim: false, speech: 'top', speechY: top, ...needCopy };
+      }
+      if (visitedCount < 2) {
+        const cardAim = this._aim(this._tutCard, 6, { dim: false, speech: 'top', speechY: top });
+        const moreCopy = {
+          title: '再逛一摊',
+          body: '点脚下的卡再翻一摊多带点菜，\n也能随时点右上角「回家」开火。',
+        };
+        return cardAim ? { ...cardAim, ...moreCopy } : { dim: false, speech: 'top', speechY: top, ...moreCopy };
+      }
+      const homeAim = this._aim(this._leaveBtn, 6, { dim: false, speech: 'top', speechY: top });
+      const homeCopy = {
+        title: '收获不少啦',
+        body: '材料够下锅了！点右上角「回家」开火炒菜，\n想多捡点也能继续逛到天黑。',
+      };
+      return homeAim ? { ...homeAim, ...homeCopy } : { dim: false, speech: 'top', speechY: top, ...homeCopy };
     }
     return null;
   }
@@ -197,6 +248,7 @@ export class MarketScene implements Scene {
       return;
     }
     const run = RunManager.run;
+    this._urgentFoods = urgentTaskFoodIds(KitchenManager.save, RunManager.basket.items);
     this._drawHud();
     if (!run) {
       if (force || this._bodyKey !== 'empty') {
@@ -222,7 +274,36 @@ export class MarketScene implements Scene {
       else if (run.mode === 'play') this._drawPlay(Game.designWidth, Game.logicHeight);
       else this._drawRummage(Game.designWidth, Game.logicHeight);
     }
+    this._checkDuskPrompt();
     TutorialOverlay.refresh();
+  }
+
+  private _clearDuskWait(): void {
+    if (this._duskWaitTimer) {
+      globalThis.clearTimeout?.(this._duskWaitTimer);
+      this._duskWaitTimer = 0;
+    }
+  }
+
+  private _checkDuskPrompt(): void {
+    const run = RunManager.run;
+    if (!run || run.ended || !run.duskPromptPending) {
+      this._clearDuskWait();
+      if (this._duskExtend._isOpen) this._duskExtend.close(true);
+      return;
+    }
+    if (this._walking || this._event._isOpen || ensureRecipeUnlockPanel()._isOpen) {
+      if (!this._duskWaitTimer) {
+        this._duskWaitTimer = globalThis.setTimeout(() => {
+          this._duskWaitTimer = 0;
+          this._checkDuskPrompt();
+        }, 280) as unknown as number;
+      }
+      return;
+    }
+    this._clearDuskWait();
+    this._basket.close(true);
+    this._duskExtend.open();
   }
 
   private _pileKey(): string {
@@ -232,7 +313,8 @@ export class MarketScene implements Scene {
       const pile = (run.piles[run.currentNodeId] ?? [])
         .map((it) => `${it.uid}:${it.drawn?1:0}${it.revealed?1:0}${it.inspected?1:0}${it.washed?1:0}`)
         .join(',');
-      return `rummage|${run.currentNodeId}|${pile}`;
+      const urg = [...this._urgentFoods].sort().join(',');
+      return `rummage|${run.currentNodeId}|${pile}|${urg}`;
     }
     if (run.mode === 'play' && run.play?.type === 'gather') {
       const spots = run.play.spots.map((s) => `${s.uid}:${s.taken ? 1 : 0}`).join(',');
@@ -331,9 +413,10 @@ export class MarketScene implements Scene {
       && !RunManager.crateLeft().length;
     const basketFull = isBasketFull(RunManager.basket);
     if (run.mode === 'rummage' || run.mode === 'play') {
+      const duskOut = run.stepsLeft <= 0 && !TutorialManager.isActive;
       const back = this._roundIconBtn(
         HUD_ICON.back,
-        '返回菜场',
+        duskOut ? '收摊回家' : '返回菜场',
         () => {
           if (TutorialGuard.block('leaveStall')) return;
           if (run.mode === 'play') RunManager.leavePlay();
@@ -1318,10 +1401,20 @@ export class MarketScene implements Scene {
     root.addChild(icon);
     tag.position.set(tw / 2, th - 1);
     root.addChild(tag);
+    const isUrgent = item.quality !== 'rotten' && this._urgentFoods.has(def.id);
     if (item.firstSeen && item.quality !== 'rotten') {
       const badge = makeNewFoodTag(24);
       badge.position.set(tw / 2, icon.y - icon.height * 0.5 + 6);
       root.addChild(badge);
+      if (isUrgent) {
+        const urg = makeUrgentFoodTag(18);
+        urg.position.set(tw / 2, icon.y - icon.height * 0.5 + 36);
+        root.addChild(urg);
+      }
+    } else if (isUrgent) {
+      const urg = makeUrgentFoodTag(20);
+      urg.position.set(tw / 2, icon.y - icon.height * 0.5 + 6);
+      root.addChild(urg);
     }
 
     root.eventMode = 'static';

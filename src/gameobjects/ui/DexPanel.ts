@@ -5,14 +5,21 @@ import { OverlayManager } from '@/core/OverlayManager';
 import { Platform } from '@/core/PlatformService';
 import { KitchenManager } from '@/managers/KitchenManager';
 import {
+  DEX_ENTRY_GOLD,
   DEX_FOOD_CATS,
+  dexMilestoneStatus,
+  dexRedDotCount,
   dishGroupCatIcon,
   dishGroupTheme,
   dishGroups,
   dishesInGroup,
   foodsInCat,
+  isDexEntryClaimed,
   isDishUnlocked,
   isFoodUnlocked,
+  recipeMasteryView,
+  unclaimedDexInDishGroup,
+  unclaimedDexInFoodCat,
   type DexFoodCat,
   type DexTab,
   type KitchenSave,
@@ -20,7 +27,17 @@ import {
   isRecipeId,
   recipeEatLabel,
 } from '@/sim';
-import { drawRarityFrame, fillRect, makeDexName, makeLabel, makeSlicedButton, makeStrokeLabel } from '@/utils/ui';
+import { kitchenGachaHudPos, playRewardCollect, playTicketCollect } from '@/utils/coinCollect';
+import {
+  P0_ART,
+  drawRarityFrame,
+  fillRect,
+  makeDexName,
+  makeLabel,
+  makeMasterySpoonRow,
+  makeSlicedButton,
+  makeStrokeLabel,
+} from '@/utils/ui';
 import {
   applyGray,
   dishTexture,
@@ -186,27 +203,83 @@ export class DexPanel extends PIXI.Container {
 
     const save = KitchenManager.save;
     const { have, total } = this._progress(save);
-    const pill = makeLabel(`已收集  ${have}/${total}`, 20, 0xFFF8F0, { fontWeight: '700' });
-    const pw = Math.max(168, pill.width + 28);
-    const bg = new PIXI.Graphics();
-    fillRect(bg, 0, 0, pw, 34, 0x8B5A2B, 16);
-    const wrap = new PIXI.Container();
-    wrap.addChild(bg);
-    pill.anchor.set(0.5);
-    pill.position.set(pw / 2, 17);
-    wrap.addChild(pill);
-    wrap.position.set(page.x + (page.w - pw) / 2, page.y + 8);
-    shell.addChild(wrap);
+    const ms = dexMilestoneStatus(save);
+    const claimable = dexRedDotCount(save) > 0;
+
+    const barH = 54;
+    const bar = new PIXI.Container();
+    bar.position.set(page.x, page.y + 4);
+    const barBg = new PIXI.Graphics();
+    barBg.lineStyle(2.5, 0x8B5A2B, 1);
+    barBg.beginFill(0xFFF6E8, 0.96);
+    barBg.drawRoundedRect(0, 0, page.w, barH, 16);
+    barBg.endFill();
+    bar.addChild(barBg);
+
+    const stampTex = gameTexture(P0_ART.dexStamp);
+    if (isTextureReady(stampTex)) {
+      const sp = new PIXI.Sprite(stampTex);
+      fitSpriteInBox(sp, 42, 42);
+      sp.anchor.set(0.5);
+      sp.position.set(28, barH / 2);
+      sp.eventMode = 'none';
+      bar.addChild(sp);
+    }
+
+    const line1 = makeLabel(
+      `已收集 ${have}/${total}  ·  集章 ${ms.stepProgress}/${ms.stepNeed}`,
+      17,
+      INK,
+      { fontWeight: '700' },
+    );
+    line1.position.set(52, 7);
+    const line2 = makeLabel(
+      ms.readySteps > 0 ? `集章满档！可领菜谱券 ×${ms.readySteps}` : '每集满 6 项送菜谱券×1 + 12金',
+      13,
+      ms.readySteps > 0 ? 0xC46A3A : MUTED,
+      { fontWeight: '600' },
+    );
+    line2.position.set(52, 30);
+    bar.addChild(line1, line2);
+
+    if (claimable) {
+      const btnW = 122;
+      const btnH = 38;
+      const claimBtn = makeSlicedButton({
+        label: '盖章领赏',
+        width: btnW,
+        height: btnH,
+        skin: 'terracotta',
+        textColor: 0xFFF8F0,
+        onReady: redraw,
+      });
+      claimBtn.position.set(page.w - btnW - 8, Math.round((barH - btnH) / 2));
+      claimBtn.on('pointertap', (e) => {
+        e.stopPropagation();
+        const res = KitchenManager.claimAllDex();
+        if (res.gold <= 0 && res.tickets <= 0) return;
+        const from = { x: Game.designWidth / 2, y: Math.round(Game.logicHeight * 0.28) };
+        if (res.gold > 0) playRewardCollect({ gold: res.gold, from });
+        if (res.tickets > 0) playTicketCollect(from, kitchenGachaHudPos(), 0);
+        const parts: string[] = [];
+        if (res.gold > 0) parts.push(`+${res.gold} 金`);
+        if (res.tickets > 0) parts.push(`菜谱券 ×${res.tickets}`);
+        Platform.showToast(`盖章领赏：${parts.join('  ')}`, 'success');
+        if (this.visible) this.relayout();
+      });
+      bar.addChild(claimBtn);
+    }
+    shell.addChild(bar);
 
     if (this._view.kind === 'home') {
-      const tabY = page.y + 52;
+      const tabY = page.y + 66;
       const tw = (page.w - 12) / 2;
       (['food', 'dish'] as const).forEach((tab, i) => {
         const on = this._tab === tab;
         const btn = makeSlicedButton({
           label: tab === 'food' ? '食材' : '菜品',
           width: tw,
-          height: 48,
+          height: 46,
           skin: on ? 'terracotta' : 'cream',
           textColor: on ? 0xFFF8F0 : INK,
           onReady: redraw,
@@ -256,7 +329,7 @@ export class DexPanel extends PIXI.Container {
     page: { x: number; y: number; w: number; h: number },
     redraw: () => void,
   ): void {
-    const top = this._view.kind === 'home' ? page.y + 112 : page.y + 52;
+    const top = this._view.kind === 'home' ? page.y + 122 : page.y + 66;
     const bottom = page.y + page.h - (this._inspect ? 88 : 8);
     const area = { x: page.x, y: top, w: page.w, h: Math.max(80, bottom - top) };
     const list = new PIXI.Container();
@@ -309,11 +382,13 @@ export class DexPanel extends PIXI.Container {
       DEX_FOOD_CATS.map((cat) => {
         const items = foodsInCat(cat.id);
         const have = items.filter((it) => isFoodUnlocked(save, it.id)).length;
+        const unclaimed = unclaimedDexInFoodCat(save, cat.id);
         return {
           label: cat.label,
           icon: cat.icon,
           have,
           total: items.length,
+          unclaimed,
           ink: cat.ink,
           bar: cat.bar,
           onTap: () => {
@@ -336,11 +411,13 @@ export class DexPanel extends PIXI.Container {
       dishGroups().map((group) => {
         const items = dishesInGroup(group, save.recipesFound);
         const have = items.filter((it) => isDishUnlocked(save, it.id)).length;
+        const unclaimed = unclaimedDexInDishGroup(save, group);
         return {
           label: group,
           icon: dishGroupCatIcon(group),
           have,
           total: items.length,
+          unclaimed,
           ...dishGroupTheme(group),
           onTap: () => {
             this._view = { kind: 'dish', group };
@@ -357,7 +434,7 @@ export class DexPanel extends PIXI.Container {
   private _paintCatGrid(
     list: PIXI.Container,
     width: number,
-    cats: Array<{ label: string; icon: string; have: number; total: number; ink: number; bar: number; onTap: () => void }>,
+    cats: Array<{ label: string; icon: string; have: number; total: number; unclaimed: number; ink: number; bar: number; onTap: () => void }>,
     redraw: () => void,
   ): number {
     const cols = 2;
@@ -387,8 +464,8 @@ export class DexPanel extends PIXI.Container {
     width: number,
     height: number,
     iconSize: number,
-    cat: { label: string; icon: string; have: number; total: number; ink: number; bar: number; onTap: () => void },
-    redraw: () => void,
+    cat: { label: string; icon: string; have: number; total: number; unclaimed: number; ink: number; bar: number; onTap: () => void },
+    _redraw: () => void,
   ): PIXI.Container {
     const root = new PIXI.Container();
     root.position.set(x, y);
@@ -437,6 +514,24 @@ export class DexPanel extends PIXI.Container {
     count.position.set(cx, by + barH / 2);
     root.addChild(count);
 
+    if (cat.unclaimed > 0) {
+      const badge = new PIXI.Container();
+      const txt = makeLabel(`新 ${cat.unclaimed}`, 14, 0xFFF8F0, { fontWeight: '700' });
+      const bw = Math.max(44, Math.ceil(txt.width) + 16);
+      const bh = 24;
+      const g = new PIXI.Graphics();
+      g.lineStyle(2, INK, 1);
+      g.beginFill(0xD94A3A, 1);
+      g.drawRoundedRect(0, 0, bw, bh, bh / 2);
+      g.endFill();
+      txt.anchor.set(0.5);
+      txt.position.set(bw / 2, bh / 2 + 0.5);
+      badge.addChild(g, txt);
+      badge.position.set(width - bw - 8, 8);
+      badge.eventMode = 'none';
+      root.addChild(badge);
+    }
+
     root.eventMode = 'static';
     root.cursor = 'pointer';
     root.hitArea = new PIXI.Rectangle(0, 0, width, height);
@@ -453,10 +548,10 @@ export class DexPanel extends PIXI.Container {
     const gap = 10;
     const cellW = (width - gap * (cols - 1)) / cols;
     const dish = this._view.kind === 'dish';
-    const cellH = dish ? 172 : 148;
-    const iconH = dish ? 120 : 88;
-    const iconY = dish ? 68 : 58;
-    const labelY = dish ? 136 : 112;
+    const cellH = dish ? 182 : 148;
+    const iconH = dish ? 112 : 88;
+    const iconY = dish ? 60 : 58;
+    const labelY = dish ? 142 : 112;
     let entries: Array<{ id: string; name: string; blurb: string; unlocked: boolean; dish: boolean; rarity: Rarity }>;
     if (this._view.kind === 'food') {
       entries = foodsInCat(this._view.cat).map((it) => ({
@@ -507,18 +602,62 @@ export class DexPanel extends PIXI.Container {
         if (!it.unlocked) applyGray(spr);
         card.addChild(spr);
       }
-      const label = makeDexName(it.unlocked ? it.name : '未解锁', dish ? 20 : 18, it.unlocked, cellW - 10);
+      const label = makeDexName(it.unlocked ? it.name : '未解锁', dish ? 19 : 18, it.unlocked, cellW - 10);
       label.anchor.set(0.5, 0);
       label.position.set(cellW / 2, labelY);
       card.addChild(label);
+
+      const entryKind: DexTab = it.dish ? 'dish' : 'food';
+      const unclaimed = it.unlocked && !isDexEntryClaimed(save, entryKind, it.id);
+      if (it.dish && it.unlocked && isRecipeId(it.id)) {
+        const mastery = recipeMasteryView(save, it.id);
+        const spoons = makeMasterySpoonRow({
+          stars: mastery.stars,
+          size: 20,
+          gap: 2,
+          onReady: redraw,
+        });
+        spoons.position.set(Math.round((cellW - (20 * 3 + 4)) / 2), 116);
+        card.addChild(spoons);
+      }
+      if (unclaimed) {
+        const tag = new PIXI.Container();
+        const txt = makeLabel(`新 +${DEX_ENTRY_GOLD}金`, 13, 0xFFF8F0, { fontWeight: '700' });
+        const tw = Math.ceil(txt.width) + 14;
+        const th = 22;
+        const bg = new PIXI.Graphics();
+        bg.lineStyle(1.8, INK, 1);
+        bg.beginFill(0xD94A3A, 1);
+        bg.drawRoundedRect(0, 0, tw, th, th / 2);
+        bg.endFill();
+        txt.anchor.set(0.5);
+        txt.position.set(tw / 2, th / 2 + 0.5);
+        tag.addChild(bg, txt);
+        tag.position.set(cellW - tw - 4, 4);
+        tag.eventMode = 'none';
+        card.addChild(tag);
+      }
+
       card.eventMode = 'static';
       card.cursor = it.unlocked ? 'pointer' : 'default';
       card.hitArea = new PIXI.Rectangle(0, 0, cellW, cellH);
-      card.on('pointertap', () => {
+      card.on('pointertap', (e) => {
         if (this._dragMoved || !it.unlocked) return;
+        if (unclaimed) {
+          const gold = KitchenManager.claimDexEntry(entryKind, it.id);
+          if (gold > 0) {
+            const p = e.global;
+            playRewardCollect({ gold, from: { x: p.x, y: p.y } });
+          }
+        }
+        let blurb = it.blurb;
+        if (it.dish && isRecipeId(it.id)) {
+          const m = recipeMasteryView(KitchenManager.save, it.id);
+          blurb = `${it.blurb}  ${recipeEatLabel(it.id)}（${m.title} · 已做${m.cooked}锅）`;
+        }
         this._inspect = {
           title: it.name,
-          blurb: it.dish && isRecipeId(it.id) ? `${it.blurb}  ${recipeEatLabel(it.id)}` : it.blurb,
+          blurb,
         };
         this.relayout();
       });
@@ -551,7 +690,10 @@ export class DexPanel extends PIXI.Container {
     const view = this._view.kind === 'home'
       ? { kind: 'home' as const, tab: this._tab }
       : this._view;
-    watchTextures(dexViewPaths(KitchenManager.save, view), this._scheduleRelayout);
+    watchTextures(
+      [...dexViewPaths(KitchenManager.save, view), P0_ART.dexStamp, ...P0_ART.spoons],
+      this._scheduleRelayout,
+    );
   }
 
   private _scheduleRelayout = (): void => {

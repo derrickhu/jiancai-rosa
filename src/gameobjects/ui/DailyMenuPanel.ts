@@ -2,9 +2,11 @@ import * as PIXI from 'pixi.js';
 import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
+import { Platform } from '@/core/PlatformService';
 import { KitchenManager } from '@/managers/KitchenManager';
 import {
   RECIPE_GACHA_COST,
+  canUseDailyAd,
   dailyMenuProgress,
   dailyMenuRewardChips,
   fridgeDishQty,
@@ -16,7 +18,7 @@ import {
 } from '@/sim';
 import { kitchenGachaHudPos, playRewardCollect, playTicketCollect } from '@/utils/coinCollect';
 import { playDailyMenuClearBanner } from '@/utils/dailyMenuClearFx';
-import { fillRect, makeLabel, makeRewardStrip, makeSlicedButton } from '@/utils/ui';
+import { P0_ART, fillRect, makeAdButton, makeLabel, makeRewardStrip, makeSlicedButton } from '@/utils/ui';
 import { dailyMenuPanelPaths } from '@/utils/panelAssets';
 import {
   dishTexture,
@@ -52,6 +54,7 @@ export class DailyMenuPanel extends PIXI.Container {
   private _root = new PIXI.Container();
   private _inspect: ItemInspectView | null = null;
   private _paintQueued = false;
+  private _adBusy = false;
 
   constructor() {
     super();
@@ -84,7 +87,7 @@ export class DailyMenuPanel extends PIXI.Container {
   }
 
   private _warm(): void {
-    watchTextures(dailyMenuPanelPaths(KitchenManager.save), this._scheduleRelayout);
+    watchTextures([...dailyMenuPanelPaths(KitchenManager.save), P0_ART.adClapper], this._scheduleRelayout);
   }
 
   private _scheduleRelayout = (): void => {
@@ -123,15 +126,16 @@ export class DailyMenuPanel extends PIXI.Container {
     });
     this._root.addChild(dim);
 
-    const rowH = 248;
+    const canExtra = menu.boardClaimed && canUseDailyAd(KitchenManager.save, 'daily_extra');
+    const rowH = canExtra ? 228 : 248;
     const boxW = w - 40;
     const titleH = 52;
-    const prizeH = 100;
+    const prizeH = 98;
     const headH = 16 + titleH + 8 + prizeH + 10;
-    const footH = 72;
-    const boxH = headH + menu.lines.length * (rowH + 14) + footH;
+    const footH = canExtra ? 142 : 72;
+    const boxH = headH + menu.lines.length * (rowH + 12) + footH;
     const x = 20;
-    const y = Math.round(Math.max(Game.safeTop + 16, (h - boxH) / 2));
+    const y = Math.round(Math.max(Game.safeTop + 10, (h - boxH) / 2));
 
     const panel = new PIXI.Graphics();
     panel.lineStyle(5, WALNUT, 1);
@@ -148,12 +152,55 @@ export class DailyMenuPanel extends PIXI.Container {
     inner.endFill();
     this._root.addChild(inner);
 
-    this._root.addChild(this._title(x + 20, y + 16, boxW - 40, titleH));
+    this._root.addChild(this._title(menu, x + 20, y + 16, boxW - 40, titleH));
     this._root.addChild(this._progress(menu, x + 28, y + 16 + titleH + 8, boxW - 56, prizeH));
 
     menu.lines.forEach((line, i) => {
-      this._root.addChild(this._row(line, x + 28, y + headH + i * (rowH + 14), boxW - 56, rowH));
+      this._root.addChild(this._row(line, x + 28, y + headH + i * (rowH + 12), boxW - 56, rowH));
     });
+
+    if (canExtra) {
+      const stripY = y + boxH - footH + 6;
+      const stripW = boxW - 56;
+      const stripX = x + 28;
+      const strip = new PIXI.Graphics();
+      strip.lineStyle(2.5, WALNUT, 0.9);
+      strip.beginFill(0xFFF6E8, 1);
+      strip.drawRoundedRect(stripX, stripY, stripW, 64, 16);
+      strip.endFill();
+      this._root.addChild(strip);
+
+      const note = makeLabel('街坊没吃尽兴！加开晚市再领 1 张菜谱券', 18, INK, { fontWeight: '700' });
+      note.anchor.set(0, 0.5);
+      note.position.set(stripX + 16, stripY + 32);
+      this._root.addChild(note);
+
+      const extraBtn = makeAdButton({
+        label: '加开晚市',
+        width: 196,
+        height: 46,
+        skin: 'terracotta',
+        badge: '送券×1',
+        onReady: this._scheduleRelayout,
+      });
+      extraBtn.position.set(stripX + stripW - 208, stripY + 9);
+      extraBtn.on('pointertap', () => {
+        if (this._adBusy) return;
+        this._adBusy = true;
+        Platform.showRewardedVideo(
+          'daily_extra',
+          () => {
+            this._adBusy = false;
+            KitchenManager.unlockExtraDailyMenu();
+            if (this._isOpen) this.relayout();
+          },
+          () => {
+            this._adBusy = false;
+          },
+        );
+      });
+      this._root.addChild(extraBtn);
+    }
 
     const closeW = 168;
     const close = makeSlicedButton({
@@ -182,7 +229,7 @@ export class DailyMenuPanel extends PIXI.Container {
     }
   }
 
-  private _title(x: number, y: number, width: number, height: number): PIXI.Container {
+  private _title(menu: DailyMenuState, x: number, y: number, width: number, height: number): PIXI.Container {
     const root = new PIXI.Container();
     const tex = gameTexture(TITLE);
     if (isTextureReady(tex)) {
@@ -202,6 +249,23 @@ export class DailyMenuPanel extends PIXI.Container {
       fallback.anchor.set(0.5);
       fallback.position.set(x + width / 2, y + height / 2);
       root.addChild(fallback);
+    }
+    if (menu.extraRound) {
+      const tag = new PIXI.Container();
+      const txt = makeLabel('晚市加桌', 16, 0xFFF8F0, { fontWeight: '700' });
+      const tw = Math.ceil(txt.width) + 20;
+      const th = 28;
+      const g = new PIXI.Graphics();
+      g.lineStyle(2, INK, 1);
+      g.beginFill(TERRACOTTA, 1);
+      g.drawRoundedRect(0, 0, tw, th, th / 2);
+      g.endFill();
+      txt.anchor.set(0.5);
+      txt.position.set(tw / 2, th / 2 + 0.5);
+      tag.addChild(g, txt);
+      tag.position.set(x + width - tw - 12, y + Math.round((height - th) / 2));
+      tag.eventMode = 'none';
+      root.addChild(tag);
     }
     return root;
   }

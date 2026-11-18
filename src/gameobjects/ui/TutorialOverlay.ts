@@ -288,6 +288,9 @@ class TutorialOverlayClass {
     if (step === TutorialStep.COOK_DISH) {
       for (const hole of holes) this._cookHoleCatcher(hole);
     }
+    if (step === TutorialStep.CLOSE_BASKET) {
+      for (const hole of holes) this._closeBasketHoleCatcher(hole);
+    }
 
     if (target.fingerAt && step !== TutorialStep.WAIT_RESULT) {
       this._startFinger(target.fingerAt);
@@ -326,6 +329,7 @@ class TutorialOverlayClass {
   }
 
   private _lastCookTap = 0;
+  private _lastCloseBasketTap = 0;
 
   private _cookHoleCatcher(sp: SpotlightRect): void {
     const g = new PIXI.Graphics();
@@ -339,6 +343,22 @@ class TutorialOverlayClass {
       if (now - this._lastCookTap < 280) return;
       this._lastCookTap = now;
       EventBus.emit(EV.tutorialCook);
+    });
+    this._layer.addChild(g);
+  }
+
+  private _closeBasketHoleCatcher(sp: SpotlightRect): void {
+    const g = new PIXI.Graphics();
+    g.beginFill(0xffffff, 0.001);
+    g.drawRoundedRect(sp.x, sp.y, sp.w, sp.h, sp.r ?? 16);
+    g.endFill();
+    g.eventMode = 'static';
+    g.cursor = 'pointer';
+    g.on('pointertap', () => {
+      const now = Date.now();
+      if (now - this._lastCloseBasketTap < 280) return;
+      this._lastCloseBasketTap = now;
+      EventBus.emit(EV.tutorialCloseBasket);
     });
     this._layer.addChild(g);
   }

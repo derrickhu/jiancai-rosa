@@ -200,6 +200,9 @@ class TutorialManagerClass {
       trackTutorialLeave(prev, 'done');
     }
     this._step = step;
+    if (step === TutorialStep.COOK_TABLE || step === TutorialStep.COOK_DISH) {
+      KitchenManager.ensureTutorialCaitai(1);
+    }
     this._write(step);
     if (step >= TutorialStep.COMPLETED) {
       trackTutorialLeave(TutorialStep.COMPLETED, 'done');
@@ -285,7 +288,7 @@ class TutorialManagerClass {
     KitchenManager.setTutorialStep(step);
   }
 
-  /** 出门局不进存档。杀进程后按冰箱里有没有菜苔/炒菜苔接回去。 */
+  /** 出门局不进存档。杀进程后按冰箱里有没有菜苔/炒菜苔接回去；已走到菜篮教学及之后的不再打回重走。 */
   private _reconcile(step: TutorialStep): TutorialStep {
     if (step >= TutorialStep.COMPLETED) return TutorialStep.COMPLETED;
     const fridge = KitchenManager.save.fridge;
@@ -293,8 +296,8 @@ class TutorialManagerClass {
     const hasCaitai = fridge.some((it) => it.defId === 'caitai');
     if (step === TutorialStep.GO_HOME) {
       if (hasStirfry) return TutorialStep.OPEN_FRIDGE;
-      if (hasCaitai) return TutorialStep.COOK_TABLE;
-      return TutorialStep.FREE_WALK;
+      KitchenManager.ensureTutorialCaitai(1);
+      return TutorialStep.COOK_TABLE;
     }
     if (hasStirfry && step >= TutorialStep.CLICK_CARD && step <= TutorialStep.COOK_DISH) {
       const uid = fridge.filter((it) => it.kind === 'dish' && it.defId === 'stirfry').at(-1)?.uid;
@@ -302,16 +305,25 @@ class TutorialManagerClass {
       return TutorialStep.OPEN_FRIDGE;
     }
     if (hasCaitai && step >= TutorialStep.CLICK_CARD && step <= TutorialStep.WAIT_RESULT) {
+      KitchenManager.ensureTutorialCaitai(1);
       return TutorialStep.COOK_TABLE;
     }
-    if (step >= TutorialStep.PICK_XIANGKO && step <= TutorialStep.WAIT_RESULT) {
+    if (
+      step === TutorialStep.OPEN_BASKET
+      || step === TutorialStep.WAIT_RESULT
+      || step === TutorialStep.COOK_TABLE
+      || step === TutorialStep.COOK_DISH
+      || (step >= TutorialStep.BASKET_DRY && step <= TutorialStep.FREE_WALK)
+    ) {
+      KitchenManager.ensureTutorialCaitai(1);
+      return TutorialStep.COOK_TABLE;
+    }
+    if (step >= TutorialStep.PICK_XIANGKO && step <= TutorialStep.TAKE_LOOT) {
       return TutorialStep.GO_OUT;
     }
-    if (step >= TutorialStep.BASKET_DRY && step <= TutorialStep.FREE_WALK) {
-      return hasCaitai ? TutorialStep.COOK_TABLE : TutorialStep.GO_OUT;
-    }
     if ((step === TutorialStep.INSPECT_DISH || step === TutorialStep.SELL_DISH) && !hasStirfry) {
-      return hasCaitai ? TutorialStep.COOK_TABLE : TutorialStep.OPEN_FRIDGE;
+      KitchenManager.ensureTutorialCaitai(1);
+      return TutorialStep.COOK_TABLE;
     }
     if (step === TutorialStep.CLAIM_GIFT && KitchenManager.save.tutorialGiftClaimed) {
       return TutorialStep.HINT_DOOR;
