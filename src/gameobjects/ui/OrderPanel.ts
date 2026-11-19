@@ -3,6 +3,7 @@ import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { Platform } from '@/core/PlatformService';
+import { warmupAdScene } from '@/services/RewardedAdService';
 import { KitchenManager } from '@/managers/KitchenManager';
 import {
   canUseDailyAd,
@@ -71,6 +72,7 @@ export class OrderPanel extends PIXI.Container {
     this._isOpen = true;
     this.visible = true;
     this._inspect = null;
+    warmupAdScene('order_double');
     this._armTimer();
     this._warm();
     this.relayout();

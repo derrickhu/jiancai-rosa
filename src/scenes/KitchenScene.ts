@@ -16,6 +16,8 @@ import { GameClubPanel } from '@/gameobjects/ui/GameClubPanel';
 import { DouyinWelfarePanel } from '@/gameobjects/ui/DouyinWelfarePanel';
 import { DouyinWelfareManager } from '@/managers/DouyinWelfareManager';
 import { UpgradePanel } from '@/gameobjects/ui/UpgradePanel';
+import { PicklePanel } from '@/gameobjects/ui/PicklePanel';
+import { StrayCatPanel } from '@/gameobjects/ui/StrayCatPanel';
 import { ensureRecipeUnlockPanel } from '@/gameobjects/ui/RecipeUnlockPanel';
 import { ensureCookLevelUpPanel } from '@/gameobjects/ui/CookLevelUpPanel';
 import { ensureTutorialGiftPanel } from '@/gameobjects/ui/TutorialGiftPanel';
@@ -47,7 +49,17 @@ import {
   furnCookNeed,
   cookLevel,
   canUseDailyAd,
+  CAT_BAY_POSE,
+  CAT_UNLOCK_LEVEL,
+  catStateView,
+  catUnlocked,
   dexRedDotCount,
+  PICKLE_BAY_POSE,
+  PICKLE_UNLOCK_LEVEL,
+  pickleFermentingCount,
+  pickleReadyCount,
+  pickleSlotView,
+  pickleUnlocked,
   neighborOfferLog,
   neighborNpc,
   bagDryCols,
@@ -69,7 +81,8 @@ import {
   type KitchenSave,
 } from '@/sim';
 import { AudioManager } from '@/core/AudioManager';
-import { HUD_ICON, PLAYER_LEVEL_HUD, bindUiClick, fillRect, hudBuffRowY, hudPillsY, makeButton, makeLabel, makeMuteButton, makeHudBuffRow, makePlayerLevelHud, makeStatPill } from '@/utils/ui';
+import { Ease, TweenManager } from '@/core/TweenManager';
+import { HUD_ICON, P2_ART, PLAYER_LEVEL_HUD, bindUiClick, fillRect, hudBuffRowY, hudPillsY, makeButton, makeLabel, makeMuteButton, makeHudBuffRow, makePlayerLevelHud, makeStatPill } from '@/utils/ui';
 import { applyFit, fitSpriteInBox, fitWidthBottom, gameTexture, isTextureFailed, isTextureReady, mapNorm, preloadTextures, retryTexture, watchTextures, whenTextureReady } from '@/utils/assets';
 import { kitchenBootPaths } from '@/utils/bootAssets';
 import { dailyMenuPanelPaths, orderPanelPaths } from '@/utils/panelAssets';
@@ -105,6 +118,13 @@ export class KitchenScene implements Scene {
   private _gameClub = new GameClubPanel();
   private _welfare = new DouyinWelfarePanel();
   private _upgrade = new UpgradePanel();
+  private _pickle = new PicklePanel();
+  private _strayCat = new StrayCatPanel();
+  private _p2WatchTimer: ReturnType<typeof setInterval> | null = null;
+  private _lastP2Sig = '';
+  private _panTween = { x: 0 };
+  private _toWindowTab: PIXI.Container | null = null;
+  private _toDoorTab: PIXI.Container | null = null;
   private _offerTimer = 0;
   private _onChange = () => {
     const fx = KitchenManager.consumeCookFx();
@@ -168,6 +188,10 @@ export class KitchenScene implements Scene {
       this._orders.close();
       this._cook.open(recipeId);
     };
+    this._pickle.onGoCook = (recipeId) => {
+      this._pickle.close();
+      this._cook.open(recipeId);
+    };
     ensureRecipeUnlockPanel();
     ensureCookLevelUpPanel();
     ensureTutorialGiftPanel();
@@ -211,6 +235,33 @@ export class KitchenScene implements Scene {
       this._warmPanelArt();
       this._queueNeighborOffer();
     }
+    this._startP2Watch();
+  }
+
+  private _p2Signature(): string {
+    const save = KitchenManager.save;
+    const now = Date.now();
+    return `${pickleReadyCount(save, now)}:${pickleFermentingCount(save, now)}:${catStateView(save, now).effectiveStatus}`;
+  }
+
+  private _startP2Watch(): void {
+    this._stopP2Watch();
+    this._lastP2Sig = this._p2Signature();
+    this._p2WatchTimer = setInterval(() => {
+      if (!this.container.parent || this._itemDrag || this._drag) return;
+      const sig = this._p2Signature();
+      if (sig !== this._lastP2Sig) {
+        this._lastP2Sig = sig;
+        this.relayout();
+      }
+    }, 2000);
+  }
+
+  private _stopP2Watch(): void {
+    if (this._p2WatchTimer) {
+      clearInterval(this._p2WatchTimer);
+      this._p2WatchTimer = null;
+    }
   }
 
   private _warmPanelArt(): void {
@@ -230,6 +281,8 @@ export class KitchenScene implements Scene {
       || this._event._isOpen
       || this._gameClub._isOpen
       || this._welfare._isOpen
+      || this._pickle._isOpen
+      || this._strayCat._isOpen
       || ensureRecipeUnlockPanel()._isOpen
       || ensureCookLevelUpPanel()._isOpen
       || ensureTutorialGiftPanel()._isOpen
@@ -248,7 +301,9 @@ export class KitchenScene implements Scene {
     try { Platform.api?.offTouchEnd?.(this._onUp); } catch (_) {}
     try { Platform.api?.offTouchCancel?.(this._onUp); } catch (_) {}
     this._endDrag();
+    TweenManager.cancelTarget(this._panTween);
     this._clearOfferTimer();
+    this._stopP2Watch();
     if (this._bootRetryTimer) {
       globalThis.clearTimeout(this._bootRetryTimer);
       this._bootRetryTimer = 0;
@@ -266,6 +321,8 @@ export class KitchenScene implements Scene {
     this._gameClub.close(true);
     this._welfare.close(true);
     this._upgrade.close(true);
+    this._pickle.close(true);
+    this._strayCat.close(true);
     this._upgradePick = null;
     clearCookReadyFx();
     TutorialOverlay.unregister('kitchen');
@@ -276,6 +333,8 @@ export class KitchenScene implements Scene {
     this._fridge.prune();
     this._world.removeChildren();
     this._ui.removeChildren();
+    this._toWindowTab = null;
+    this._toDoorTab = null;
     const w = Game.designWidth;
     const h = Game.logicHeight;
     this.container.hitArea = new PIXI.Rectangle(0, 0, w, h);
@@ -325,9 +384,15 @@ export class KitchenScene implements Scene {
     }
 
     // 干箱站在灶台后面，框会叠到台面上。灶台最后画，贴图永远盖在最上面。
-    const furnPaintOrder: FurnId[] = [...FURN_IDS.filter((id) => id !== 'table'), 'table'];
-    for (const id of furnPaintOrder) {
+    for (const id of FURN_IDS.filter((fid) => fid !== 'table')) {
       this._world.addChild(this._furniture(this._furnAt(id), save, fit));
+    }
+    if (!TutorialManager.isActive) {
+      this._drawPickleProp(save, fit);
+    }
+    this._world.addChild(this._furniture(this._furnAt('table'), save, fit));
+    if (!TutorialManager.isActive) {
+      this._drawCatProp(save, fit);
     }
 
     if (!this._gm) {
@@ -349,13 +414,8 @@ export class KitchenScene implements Scene {
       }
     }
 
-    this._applyPan();
     this._drawHud(w);
-    const fridgeSpot = this._spotRects.get('fridge');
-    if (fridgeSpot) {
-      const rect = worldRectToStage(this._world, fridgeSpot, 0);
-      if (rect) setKitchenFridgeHudPos({ x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 });
-    }
+    this._applyPan();
     if (!this._gm && this._upgradePick) this._drawUpgradeCard(this._upgradePick);
     this._scheduleBootRetry();
     if (TutorialManager.isStep(TutorialStep.COOK_DISH) && !this._cook._isOpen && !this._gm) {
@@ -446,6 +506,7 @@ export class KitchenScene implements Scene {
   }
 
   private _beginDrag(x: number, y: number): void {
+    TweenManager.cancelTarget(this._panTween);
     this._dragMoved = false;
     this._drag = { x, y, sx: x, sy: y, px: this._pan.x, py: this._pan.y };
   }
@@ -465,6 +526,15 @@ export class KitchenScene implements Scene {
       item.nx = Math.max(-item.nw * 0.35, Math.min(1.05, this._itemDrag.nx0 + (this._drag.x - this._drag.sx) / this._worldSize.w));
       item.ny = Math.max(-item.nh * 0.2, Math.min(0.96, this._itemDrag.ny0 + (this._drag.y - this._drag.sy) / this._worldSize.h));
       this._placeFurnRoot(item);
+      return;
+    }
+    if (!TutorialManager.isActive) {
+      if (this._upgradePick) {
+        this._upgradePick = null;
+        this.relayout();
+      }
+      this._pan.x = this._drag.px + (this._drag.x - this._drag.sx);
+      this._applyPan();
     }
   }
 
@@ -481,13 +551,42 @@ export class KitchenScene implements Scene {
     root.position.set(rect.x, rect.y);
   }
 
-  private _applyPan(): void {
+  private _minPanX(): number {
     const viewW = Game.designWidth;
     const worldW = this._fit.srcW * this._fit.scale;
-    const minX = Math.min(0, viewW - worldW);
+    return Math.min(0, viewW - worldW);
+  }
+
+  private _tweenPanTo(targetX: number): void {
+    const minX = this._minPanX();
+    const clamped = Math.max(minX, Math.min(0, targetX));
+    TweenManager.cancelTarget(this._panTween);
+    this._panTween.x = this._pan.x;
+    TweenManager.to({
+      target: this._panTween,
+      props: { x: clamped },
+      duration: 0.32,
+      ease: Ease.easeOutQuad,
+      onUpdate: () => {
+        this._pan.x = this._panTween.x;
+        this._applyPan();
+      },
+    });
+  }
+
+  private _applyPan(): void {
+    const minX = TutorialManager.isActive ? 0 : this._minPanX();
     this._pan.x = Math.max(minX, Math.min(0, this._pan.x));
     this._pan.y = 0;
     this._world.position.set(this._pan.x, 0);
+    const fridgeSpot = this._spotRects.get('fridge');
+    if (fridgeSpot) {
+      const rect = worldRectToStage(this._world, fridgeSpot, 0);
+      if (rect) setKitchenFridgeHudPos({ x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 });
+    }
+    const atWindow = minX < -24 && this._pan.x <= minX * 0.45;
+    if (this._toWindowTab) this._toWindowTab.visible = minX < -24 && !atWindow;
+    if (this._toDoorTab) this._toDoorTab.visible = minX < -24 && atWindow;
   }
 
   private _furniture(
@@ -706,6 +805,10 @@ export class KitchenScene implements Scene {
     mute.on('pointerdown', stopMute);
     this._ui.addChild(mute);
 
+    if (!TutorialManager.isActive) {
+      this._drawWindowCornerHud(w, save, redraw);
+    }
+
     if (this._gm) {
       const hint = makeLabel('GM：拖家具 · 屋+/屋-换房子 · 导出后发给我固化', 18, 0xF4EFE6);
       const hintBg = new PIXI.Graphics();
@@ -892,7 +995,14 @@ export class KitchenScene implements Scene {
   }
 
   private _presentNeighborOffer(): void {
-    if (this._event._isOpen || this._orders._isOpen || this._daily._isOpen || this._gacha._isOpen) return;
+    if (
+      this._event._isOpen
+      || this._orders._isOpen
+      || this._daily._isOpen
+      || this._gacha._isOpen
+      || this._pickle._isOpen
+      || this._strayCat._isOpen
+    ) return;
     const draft = KitchenManager.considerNeighborOffer();
     if (!draft) return;
     this._event.open(neighborOfferLog(draft), (i) => {
@@ -1172,6 +1282,8 @@ export class KitchenScene implements Scene {
     this._gameClub.close(true);
     this._welfare.close(true);
     this._upgrade.close(true);
+    this._pickle.close(true);
+    this._strayCat.close(true);
     this._upgradePick = null;
     ensureRecipeUnlockPanel().close();
     ensureCookLevelUpPanel().close();
@@ -1697,6 +1809,324 @@ export class KitchenScene implements Scene {
       this._upgradePick = id;
       this.relayout();
     }
+  }
+
+  private _makePropTag(text: string, tone: 'cream' | 'warm' | 'gold', pulse = false): PIXI.Container {
+    const tag = new PIXI.Container();
+    tag.eventMode = 'none';
+    const textColor = tone === 'cream' ? 0x2A2018 : 0xFFF8F0;
+    const fillColor = tone === 'gold' ? 0xC48A14 : tone === 'warm' ? 0xC46A3A : 0xFFF8F0;
+    const lbl = makeLabel(text, 14, textColor, { fontWeight: '700' });
+    const pw = Math.ceil(lbl.width) + 20;
+    const ph = 26;
+    const bg = new PIXI.Graphics();
+    bg.lineStyle(2, 0x2A2018, 1);
+    bg.beginFill(fillColor, 0.96);
+    bg.drawRoundedRect(-pw / 2, -ph / 2, pw, ph, ph / 2);
+    bg.endFill();
+    lbl.anchor.set(0.5);
+    lbl.position.set(0, 0.5);
+    tag.addChild(bg, lbl);
+    if (pulse) {
+      const bob = (): void => {
+        if (tag.destroyed || !tag.parent) return;
+        const y0 = tag.y;
+        TweenManager.to({
+          target: tag,
+          props: { y: y0 - 5 },
+          duration: 0.55,
+          ease: Ease.easeOutQuad,
+          onComplete: () => {
+            if (tag.destroyed || !tag.parent) return;
+            TweenManager.to({
+              target: tag,
+              props: { y: y0 },
+              duration: 0.55,
+              ease: Ease.easeInOutQuad,
+              onComplete: bob,
+            });
+          },
+        });
+      };
+      bob();
+    }
+    return tag;
+  }
+
+  private _drawWindowCornerHud(w: number, save: KitchenSave, redraw: () => void): void {
+    const minX = this._minPanX();
+    if (minX >= -24) return;
+
+    const top = Number.isFinite(Game.safeTop) ? Game.safeTop : 96;
+    const tabY = Math.round(Math.max(top + 168, Game.logicHeight * 0.34));
+    const now = Date.now();
+    const readyCount = pickleReadyCount(save, now);
+    const catView = catStateView(save, now);
+    const catGift = catView.effectiveStatus === 'gift';
+    const catNew = catView.unlocked && catView.effectiveStatus === 'unadopted';
+    const hasAlert = readyCount > 0 || catGift || catNew;
+
+    // 1. Tab to glide right to Sunlit Window Bay (老坛 & 阿橘)
+    const toWin = new PIXI.Container();
+    const winW = 132;
+    const winH = 66;
+    const wShadow = new PIXI.Graphics();
+    wShadow.beginFill(0x2A2018, 0.22);
+    wShadow.drawRoundedRect(0, 4, winW + 14, winH, 20);
+    wShadow.endFill();
+    toWin.addChild(wShadow);
+
+    const wBg = new PIXI.Graphics();
+    wBg.lineStyle(3, hasAlert ? 0xC48A14 : 0x8B5A2B, 1);
+    wBg.beginFill(hasAlert ? 0xFFFBF0 : 0xFFF8F0, 0.96);
+    wBg.drawRoundedRect(0, 0, winW + 14, winH, 20);
+    wBg.endFill();
+    toWin.addChild(wBg);
+
+    const iconPath = readyCount > 0
+      ? P2_ART.pickleReady
+      : catGift
+        ? P2_ART.catGift
+        : P2_ART.catIdle;
+    whenTextureReady(iconPath, redraw);
+    const itex = gameTexture(iconPath);
+    if (isTextureReady(itex)) {
+      const sp = new PIXI.Sprite(itex);
+      fitSpriteInBox(sp, 46, 46);
+      sp.anchor.set(0.5);
+      sp.position.set(30, winH / 2 + 1);
+      sp.eventMode = 'none';
+      toWin.addChild(sp);
+    }
+
+    const t1 = makeLabel('窗边角 ▶', 15, 0x2A2018, { fontWeight: '700' });
+    t1.position.set(54, 12);
+    const subText = readyCount > 0
+      ? '老坛可开！'
+      : catGift
+        ? '阿橘带礼！'
+        : catNew
+          ? '橘猫上门！'
+          : '老坛·阿橘';
+    const t2 = makeLabel(subText, 12, hasAlert ? 0xC46A3A : 0x7A5A34, { fontWeight: '700' });
+    t2.position.set(54, 35);
+    toWin.addChild(t1, t2);
+
+    if (hasAlert) {
+      const dot = new PIXI.Graphics();
+      dot.lineStyle(2, 0xFFF8F0, 1);
+      dot.beginFill(0xD94A3A, 1);
+      dot.drawCircle(8, 8, 8);
+      dot.endFill();
+      toWin.addChild(dot);
+    }
+
+    toWin.position.set(w - winW, tabY);
+    toWin.eventMode = 'static';
+    toWin.cursor = 'pointer';
+    toWin.hitArea = new PIXI.Rectangle(-6, -4, winW + 10, winH + 8);
+    toWin.on('pointerdown', (e) => e.stopPropagation());
+    toWin.on('pointertap', (e) => {
+      e.stopPropagation();
+      AudioManager.play('ui_click');
+      this._tweenPanTo(this._minPanX());
+    });
+    this._ui.addChild(toWin);
+    this._toWindowTab = toWin;
+
+    // 2. Tab to glide back left to Door & Stove when viewing Window Bay
+    const toDoor = new PIXI.Container();
+    const doorW = 116;
+    const doorH = 56;
+    const dShadow = new PIXI.Graphics();
+    dShadow.beginFill(0x2A2018, 0.2);
+    dShadow.drawRoundedRect(0, 4, doorW + 14, doorH, 18);
+    dShadow.endFill();
+    toDoor.addChild(dShadow);
+
+    const dBg = new PIXI.Graphics();
+    dBg.lineStyle(3, 0x8B5A2B, 1);
+    dBg.beginFill(0xFFF8F0, 0.95);
+    dBg.drawRoundedRect(0, 0, doorW + 14, doorH, 18);
+    dBg.endFill();
+    toDoor.addChild(dBg);
+
+    const dt1 = makeLabel('◀ 回门口', 15, 0x2A2018, { fontWeight: '700' });
+    dt1.position.set(16, 9);
+    const dt2 = makeLabel('出门·主灶', 12, 0x7A5A34, { fontWeight: '700' });
+    dt2.position.set(18, 31);
+    toDoor.addChild(dt1, dt2);
+
+    toDoor.position.set(w - doorW, tabY);
+    toDoor.eventMode = 'static';
+    toDoor.cursor = 'pointer';
+    toDoor.hitArea = new PIXI.Rectangle(-6, -4, doorW + 10, doorH + 8);
+    toDoor.on('pointerdown', (e) => e.stopPropagation());
+    toDoor.on('pointertap', (e) => {
+      e.stopPropagation();
+      AudioManager.play('ui_click');
+      this._tweenPanTo(0);
+    });
+    this._ui.addChild(toDoor);
+    this._toDoorTab = toDoor;
+  }
+
+  private _drawPickleProp(
+    save: KitchenSave,
+    fit: ReturnType<typeof fitWidthBottom>,
+  ): void {
+    const now = Date.now();
+    const unlocked = pickleUnlocked(save);
+    const readyCount = pickleReadyCount(save, now);
+    const fermCount = pickleFermentingCount(save, now);
+    const hasSecond = unlocked && !!save.secondJarUnlocked;
+    const slot0Ready = unlocked && pickleSlotView(save, 0, now).status === 'ready';
+    const slot1Ready = hasSecond && pickleSlotView(save, 1, now).status === 'ready';
+
+    const mainArt = slot0Ready ? P2_ART.pickleReady : P2_ART.pickleIdle;
+    whenTextureReady(mainArt, () => {
+      if (this.container.parent && !this._itemDrag) this.relayout();
+    });
+    if (hasSecond) {
+      const subArt = slot1Ready ? P2_ART.pickleReady : P2_ART.pickleIdle;
+      whenTextureReady(subArt, () => {
+        if (this.container.parent && !this._itemDrag) this.relayout();
+      });
+    }
+
+    const box = mapNorm(fit, PICKLE_BAY_POSE.nx, PICKLE_BAY_POSE.ny, PICKLE_BAY_POSE.nw, PICKLE_BAY_POSE.nh);
+    const root = new PIXI.Container();
+    root.position.set(box.x, box.y);
+
+    if (hasSecond) {
+      // Companion second jar along the 3/4 sunlit baseboard!
+      const tex0 = gameTexture(mainArt);
+      if (isTextureReady(tex0)) {
+        const spr0 = new PIXI.Sprite(tex0);
+        fitSpriteInBox(spr0, box.w * 0.84, box.h * 0.84);
+        spr0.anchor.set(0.5, 1);
+        spr0.position.set(box.w * 0.34, box.h * 0.88);
+        spr0.eventMode = 'none';
+        root.addChild(spr0);
+      }
+      const tex1 = gameTexture(slot1Ready ? P2_ART.pickleReady : P2_ART.pickleIdle);
+      if (isTextureReady(tex1)) {
+        const spr1 = new PIXI.Sprite(tex1);
+        fitSpriteInBox(spr1, box.w * 0.90, box.h * 0.90);
+        spr1.anchor.set(0.5, 1);
+        spr1.position.set(box.w * 0.82, box.h * 1.04);
+        spr1.eventMode = 'none';
+        root.addChild(spr1);
+      }
+    } else {
+      const tex = gameTexture(mainArt);
+      if (isTextureReady(tex)) {
+        const spr = new PIXI.Sprite(tex);
+        fitSpriteInBox(spr, box.w, box.h);
+        spr.anchor.set(0.5, 1);
+        spr.position.set(box.w / 2, box.h);
+        if (!unlocked) {
+          spr.tint = 0xD8CABA;
+          spr.alpha = 0.85;
+        }
+        spr.eventMode = 'none';
+        root.addChild(spr);
+      }
+    }
+
+    const tagText = !unlocked
+      ? `老坛·${PICKLE_UNLOCK_LEVEL}级开`
+      : readyCount > 0
+        ? '可开坛！'
+        : fermCount > 0
+          ? '发酵中'
+          : '老坛腌菜';
+    const tone = !unlocked ? 'cream' : readyCount > 0 ? 'gold' : fermCount > 0 ? 'warm' : 'cream';
+    const tag = this._makePropTag(tagText, tone, readyCount > 0);
+    tag.position.set(hasSecond ? box.w * 0.58 : box.w / 2, -6);
+    root.addChild(tag);
+
+    if (!this._gm) {
+      root.eventMode = 'static';
+      root.cursor = 'pointer';
+      const hitW = hasSecond ? box.w * 1.28 : box.w + 8;
+      root.hitArea = new PIXI.Rectangle(-4, -18, hitW, box.h + 26);
+      root.on('pointertap', (e) => {
+        e.stopPropagation();
+        if (this._dragMoved) return;
+        if (!unlocked) {
+          AudioManager.play('ui_deny');
+          Platform.showToast(`厨艺升到 ${PICKLE_UNLOCK_LEVEL} 级就能开启老坛腌制坊啦！`);
+          return;
+        }
+        this._pickle.open();
+      });
+    } else {
+      root.eventMode = 'none';
+    }
+    this._world.addChild(root);
+  }
+
+  private _drawCatProp(
+    save: KitchenSave,
+    fit: ReturnType<typeof fitWidthBottom>,
+  ): void {
+    const view = catStateView(save, Date.now());
+    const artPath = !view.unlocked || view.effectiveStatus === 'away'
+      ? P2_ART.catAway
+      : view.effectiveStatus === 'gift'
+        ? P2_ART.catGift
+        : P2_ART.catIdle;
+    whenTextureReady(artPath, () => {
+      if (this.container.parent && !this._itemDrag) this.relayout();
+    });
+
+    const box = mapNorm(fit, CAT_BAY_POSE.nx, CAT_BAY_POSE.ny, CAT_BAY_POSE.nw, CAT_BAY_POSE.nh);
+    const root = new PIXI.Container();
+    root.position.set(box.x, box.y);
+    const tex = gameTexture(artPath);
+    if (isTextureReady(tex)) {
+      const spr = new PIXI.Sprite(tex);
+      fitSpriteInBox(spr, box.w, box.h);
+      spr.anchor.set(0.5, 1);
+      spr.position.set(box.w / 2, box.h);
+      spr.eventMode = 'none';
+      root.addChild(spr);
+    }
+
+    const tagText = !view.unlocked
+      ? `猫窝·${CAT_UNLOCK_LEVEL}级来`
+      : view.effectiveStatus === 'unadopted'
+        ? '小橘猫来啦！'
+        : view.effectiveStatus === 'gift'
+          ? '阿橘带礼回！'
+          : view.effectiveStatus === 'away'
+            ? '阿橘巡街中'
+            : '阿橘';
+    const isUrgent = view.effectiveStatus === 'unadopted' || view.effectiveStatus === 'gift';
+    const tone = isUrgent ? 'gold' : view.effectiveStatus === 'away' ? 'warm' : 'cream';
+    const tag = this._makePropTag(tagText, tone, isUrgent);
+    tag.position.set(box.w / 2, -4);
+    root.addChild(tag);
+
+    if (!this._gm) {
+      root.eventMode = 'static';
+      root.cursor = 'pointer';
+      root.hitArea = new PIXI.Rectangle(-4, -16, box.w + 8, box.h + 22);
+      root.on('pointertap', (e) => {
+        e.stopPropagation();
+        if (this._dragMoved) return;
+        if (!view.unlocked) {
+          AudioManager.play('ui_deny');
+          Platform.showToast(`厨艺升到 ${CAT_UNLOCK_LEVEL} 级，流浪小橘猫就会闻香找上门啦！`);
+          return;
+        }
+        this._strayCat.open();
+      });
+    } else {
+      root.eventMode = 'none';
+    }
+    this._world.addChild(root);
   }
 
   private goMarket(): void {

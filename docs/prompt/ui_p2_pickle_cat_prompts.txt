@@ -1,0 +1,35 @@
+# P2 老坛腌制坊 & 流浪小橘猫「阿橘」美术生成提示词归档
+
+画风基准：
+- 《捡菜市集》温馨中式手绘卡通风，#2A2018 深棕手绘描边，暖琥珀/奶油赛璐璐上色，纯白背景抠图。
+- 厨房落地摆件采用 3/4 俯视室内透视（与厨房地砖透视一致）；食材图标为独立手绘小物；熟菜图标为正俯视圆瓷盘盛盘。
+
+1. `subpkg_kitchen/kitchen_pickle_idle.png` (240×240)
+Cozy Chinese 2D hand-drawn cartoon kitchen prop, 3/4 room floor perspective, a traditional amber-glazed earthenware water-seal pickle jar (四川老坛泡菜坛) with clear water rim and domed ceramic lid, resting on a low rustic round wooden stool, tied with a small red twine charm, #2A2018 dark-brown hand-inked outline, warm cel shading, isolated on pure solid white #FFFFFF background, no text.
+
+2. `subpkg_kitchen/kitchen_pickle_ready.png` (240×240)
+Cozy Chinese 2D hand-drawn cartoon kitchen prop, 3/4 room floor perspective, traditional amber-glazed earthenware pickle jar on a low wooden stool with its ceramic lid tilted open on the rim, revealing glistening golden pickled greens, emerald garlic cloves, and bright red chili inside, warm golden aroma swirls rising above, #2A2018 dark-brown outline, isolated on pure solid white #FFFFFF background, no text.
+
+3. `subpkg_kitchen/kitchen_cat_idle.png` (256×256)
+Cozy Chinese 2D hand-drawn cartoon illustration, 3/4 room floor perspective, a chubby round adorable stray orange tabby cat (小橘猫阿橘) loafing contentedly on a round braided straw floor cushion, eyes squinting happily, a tiny celadon ceramic saucer beside the cushion, #2A2018 dark-brown hand-inked outline, warm cel shading, isolated on pure solid white #FFFFFF background, no text.
+
+4. `subpkg_kitchen/kitchen_cat_away.png` (256×256)
+Cozy Chinese 2D hand-drawn cartoon illustration, 3/4 room floor perspective, an empty round braided straw cat cushion with two cute muddy pawprints, a fresh green bok-choy leaf left as a note, and a tiny celadon saucer beside it, #2A2018 dark-brown outline, warm cel shading, isolated on pure solid white #FFFFFF background, no text.
+
+5. `subpkg_kitchen/kitchen_cat_gift.png` (256×256)
+Cozy Chinese 2D hand-drawn cartoon illustration, 3/4 room floor perspective, a proud chubby orange tabby cat sitting upright on a braided straw cushion with one paw resting on a plump red-and-white gingham cloth bundle (小包袱) tied in a bow, sparkling happy expression, #2A2018 dark-brown outline, isolated on pure solid white #FFFFFF background, no text.
+
+6. `subpkg_kitchen/ui_cat_can.png` (104×104)
+Cozy Chinese 2D hand-drawn cartoon UI icon, a cute round gourmet fish cat-food tin can with a shiny silver pull-tab ring and a little golden fish emblem on a warm coral-cream label, #2A2018 dark-brown outline, isolated on pure solid white #FFFFFF background, no text.
+
+7. 腌菜食材 4 件（156×156，2×2 图表裁切）
+- `subpkg_kitchen/item_pickled_cucumber.png`：脆腌黄瓜段，油亮翠绿配小红椒圈
+- `subpkg_kitchen/item_pickled_garlic.png`：糖醋腊八蒜，晶莹翡翠绿蒜瓣盛在小陶碟中
+- `subpkg_kitchen/item_pickled_greens.png`：老坛酸菜把，金黄油润麻花捆扎酸菜
+- `subpkg_kitchen/item_pickled_chili.png`：红油剁椒小罐，红亮鲜椒碎冒油光
+
+8. 老坛私房大菜 4 道（208×208，正俯视圆盘，2×2 图表裁切）
+- `subpkg_kitchen/dish_crispy_cucumber_egg.png`：脆瓜炒蛋
+- `subpkg_kitchen/dish_jade_garlic_tofu.png`：翡翠蒜烧豆腐
+- `subpkg_kitchen/dish_sauerkraut_fish.png`：老坛酸菜鱼
+- `subpkg_kitchen/dish_chopped_chili_fish.png`：剁椒蒸鲜鱼

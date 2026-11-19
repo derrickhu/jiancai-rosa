@@ -3,6 +3,7 @@ import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { Platform } from '@/core/PlatformService';
+import { warmupAdScene } from '@/services/RewardedAdService';
 import { KitchenManager } from '@/managers/KitchenManager';
 import {
   CHEF_FIRE_XP_MUL,
@@ -101,6 +102,7 @@ export class CookPanel extends PIXI.Container {
     this.visible = true;
     this._inspect = null;
     this._cookQty = 1;
+    if (!TutorialManager.isActive) warmupAdScene('chef_buff');
     const known = unlockedRecipes(recipeUnlockView(KitchenManager.save));
     if (TutorialManager.at(TutorialStep.COOK_TABLE, TutorialStep.COOK_DISH)) {
       this._pick = 'stirfry';

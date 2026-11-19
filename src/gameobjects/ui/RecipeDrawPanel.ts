@@ -3,6 +3,7 @@ import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { Platform } from '@/core/PlatformService';
+import { warmupAdScene } from '@/services/RewardedAdService';
 import { Ease, TweenManager } from '@/core/TweenManager';
 import { KitchenManager } from '@/managers/KitchenManager';
 import { ensureRecipeUnlockPanel } from '@/gameobjects/ui/RecipeUnlockPanel';
@@ -78,6 +79,7 @@ export class RecipeDrawPanel extends PIXI.Container {
     this._isOpen = true;
     this.visible = true;
     this._adBusy = false;
+    warmupAdScene('gacha_free');
     this.relayout();
     OverlayManager.bringToFront();
   }

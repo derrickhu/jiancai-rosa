@@ -182,7 +182,20 @@ const SPECS: ItemSpec[] = [
   { id: 'seabass', name: '鲈鱼', w: 2, h: 1, zone: 'wet', rarity: 'epic', stalls: ['fish'], color: 0x7A9AAA, blurb: '银鳞一条，清蒸比红烧更认识它。', blurbRotten: '鳞先立起来，眼睛也浑了。' },
   { id: 'squid', name: '鱿鱼', w: 2, h: 2, zone: 'wet', rarity: 'legendary', stalls: ['fish'], color: 0xE8D5C4, blurb: '一整只，爆炒才肯卷起来。', blurbRotten: '身发黏，须子先断。' },
   { id: 'chicken_wing', name: '鸡翅', w: 1, h: 2, zone: 'dry', rarity: 'epic', stalls: ['meat'], color: 0xE0B07A, blurb: '摊上没有。街坊或抽谱食材奖才会塞到你手里。', blurbRotten: '皮发黏，骨还在硬撑。' },
+
+  // ── 老坛腌制坊出品（不进菜场摊池，靠自家老坛发酵所得） ──────────────
+  { id: 'pickled_cucumber', name: '脆腌黄瓜', w: 1, h: 1, zone: 'dry', rarity: 'rare', vegetable: true, stalls: ['root'], color: 0x3D8B40, blurb: '老坛盐水浸过一轮，咬下去比鲜黄瓜还响三声。', blurbRotten: '坛口进了生水，脆劲全散了。' },
+  { id: 'pickled_garlic', name: '糖醋腊八蒜', w: 1, h: 1, zone: 'dry', rarity: 'rare', stalls: ['egg'], color: 0x4E9E68, blurb: '米醋把白蒜泡成了翡翠色，酸甜不冲鼻，烧豆腐一绝。', blurbRotten: '醋味散尽，绿玉褪成了暗褐。' },
+  { id: 'pickled_greens', name: '老坛酸菜', w: 1, h: 2, zone: 'dry', rarity: 'epic', vegetable: true, stalls: ['leaf'], color: 0xC8A038, blurb: '琥珀老卤慢浸出来的金黄酸菜，一揭坛盖整条巷子都在咽口水。', blurbRotten: '起了白花，酸香变成了闷味。' },
+  { id: 'pickled_chili', name: '红油剁椒', w: 1, h: 1, zone: 'dry', rarity: 'epic', stalls: ['egg'], color: 0xD23828, blurb: '鲜椒切碎封进坛里，蒜香混着红亮辣意，专治一切腥气。', blurbRotten: '油面发暗，鲜辣气泄光了。' },
 ];
+
+export const PICKLE_ITEM_IDS: ReadonlySet<string> = new Set([
+  'pickled_cucumber',
+  'pickled_garlic',
+  'pickled_greens',
+  'pickled_chili',
+]);
 
 export const ITEMS: ItemDef[] = SPECS.map(priced);
 

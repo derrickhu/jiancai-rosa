@@ -87,10 +87,21 @@ function rewardedUnits(): Record<RewardedAdScene, string> {
   return Platform.isDouyin ? REWARDED_AD_UNITS_BY_PLATFORM.douyin : REWARDED_AD_UNITS_BY_PLATFORM.wechat;
 }
 
+const BOOT_WARMUP_SCENES: readonly RewardedAdScene[] = ['stamina', 'basket', 'special'];
+
+export function warmupAdScene(scene: RewardedAdScene): void {
+  const unitId = rewardedUnits()[scene];
+  if (!unitId) return;
+  const ad = getAd(unitId);
+  ad?.load().catch((error) => {
+    console.warn('[RewardedAd] scene warmup failed', scene, unitId, error);
+  });
+}
+
 export function warmupRewardedAds(): void {
-  const uniqueUnits = new Set(Object.values(rewardedUnits()));
-  for (const unitId of uniqueUnits) {
-    if (!unitId) continue;
+  const units = rewardedUnits();
+  const coreUnits = new Set(BOOT_WARMUP_SCENES.map((s) => units[s]).filter(Boolean));
+  for (const unitId of coreUnits) {
     const ad = getAd(unitId);
     ad?.load().catch((error) => {
       console.warn('[RewardedAd] warmup failed', unitId, error);

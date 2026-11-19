@@ -320,6 +320,12 @@ export const RECIPE_EAT: Record<RecipeId, DishEffectId> = {
   // 珍品
   squid_stir: 'luck_epic',
   dragon_beef: 'fee_free',
+
+  // 老坛私房大菜：开坛解锁，吃一口各有看家本事
+  crispy_cucumber_egg: 'steps_1',
+  jade_garlic_tofu: 'sell_up_small',
+  sauerkraut_fish: 'stamina_2',
+  chopped_chili_fish: 'sell_up',
 };
 
 {

@@ -1,12 +1,12 @@
-import { GOD_PICK, ITEMS, getItem } from './items';
-import { HIDDEN_RECIPE_IDS, isRecipeUnlocked, recipeById, recipeSellPrice, type RecipeId, type RecipeUnlockView } from './recipes';
+import { GOD_PICK, ITEMS, PICKLE_ITEM_IDS, getItem } from './items';
+import { HIDDEN_RECIPE_IDS, PICKLE_RECIPE_IDS, isRecipeUnlocked, recipeById, recipeSellPrice, type RecipeId, type RecipeUnlockView } from './recipes';
 import { DAILY_MENU_RECIPES } from './dailyMenu';
 import type { Rarity } from './rarity';
 import { mulberry32, type Rng } from './rng';
 
 export const RECIPE_GACHA_COST = 2;
 export const RECIPE_TICKET_PER_BOARD = 1;
-export const RECIPE_GACHA_SKIP = new Set<RecipeId>(['wild_fish_soup']);
+export const RECIPE_GACHA_SKIP = new Set<RecipeId>(['wild_fish_soup', ...PICKLE_RECIPE_IDS]);
 /** 还有没开过的菜谱时，抽到菜谱的比例。其余出高级食材。 */
 export const RECIPE_GACHA_RECIPE_RATE = 0.4;
 export const GACHA_FOOD_QTY_MIN = 3;
@@ -24,7 +24,7 @@ const FOOD_WEIGHT: Record<Rarity, number> = {
 };
 
 export const RECIPE_GACHA_FOODS: string[] = ITEMS
-  .filter((it) => it.id !== GOD_PICK.id && FOOD_WEIGHT[it.rarity] > 0)
+  .filter((it) => it.id !== GOD_PICK.id && !PICKLE_ITEM_IDS.has(it.id) && FOOD_WEIGHT[it.rarity] > 0)
   .map((it) => it.id);
 
 const WEIGHT_NEW_ACTIVITY = 8;

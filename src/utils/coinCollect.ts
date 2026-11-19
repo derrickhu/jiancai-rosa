@@ -4,7 +4,7 @@ import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { Ease, TweenManager } from '@/core/TweenManager';
 import { getItem, itemRarity } from '@/sim/items';
-import { fitSpriteInBox, gameTexture, isTextureFailed, isTextureReady, whenTextureReady } from './assets';
+import { fitSpriteInBox, gameTexture, isTextureFailed, isTextureReady, resolveItemAssetPath, whenTextureReady } from './assets';
 import { HUD_ICON, PLAYER_LEVEL_HUD, makeRarityFlare } from './ui';
 
 const COIN = HUD_ICON.coin;
@@ -169,7 +169,7 @@ function playItemCollect(
   to: { x: number; y: number },
   onDone?: () => void,
 ): void {
-  const path = `subpkg_images/${defId}.png`;
+  const path = resolveItemAssetPath(defId);
   const item = getItem(defId);
   const tex = gameTexture(path);
   if (isTextureReady(tex) && _fxHost()) {

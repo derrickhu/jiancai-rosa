@@ -87,6 +87,14 @@ export function houseUpgradeMark(_house = 0): { nx: number; ny: number } {
   return { nx: door.nx + door.nw * 0.5, ny: door.ny + door.nh * 0.28 };
 }
 
+/**
+ * 右侧阳光窗下阳角：所有档位房屋（0–4）与全部 15 级家具（0–14）的最大右边界为
+ * 冰箱 Lv.9 nx+nw=0.724、灶台 Lv.14 nx+nw=0.680。
+ * 老坛与猫窝锚定在 nx≥0.742 的窗下踢脚线与前景阳光地砖，全程零遮挡。
+ */
+export const PICKLE_BAY_POSE = { nx: 0.742, ny: 0.578, nw: 0.148, nh: 0.122 } as const;
+export const CAT_BAY_POSE = { nx: 0.742, ny: 0.760, nw: 0.180, nh: 0.148 } as const;
+
 /** 质变道具按当前形态显示名字（装修面板 / GM / 热区）。 */
 export function furnLabel(id: FurnId, level = 0): string {
   const lv = clampFurnLevel(level);

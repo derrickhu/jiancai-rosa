@@ -21,7 +21,8 @@ export type RecipeId =
   | 'bitter_egg' | 'apple_ribs' | 'asparagus_lamb' | 'pear_tremella' | 'steam_bass'
   | 'pineapple_pork' | 'mango_shrimp' | 'loofah_soup' | 'braised_lamb' | 'lychee_ribs' | 'papaya_fish'
   | 'orange_wings' | 'coconut_chicken'
-  | 'hawthorn_ribs' | 'pear_shrimp' | 'dragon_beef' | 'lemon_bass' | 'squid_stir' | 'pea_shrimp' | 'garlic_okra';
+  | 'hawthorn_ribs' | 'pear_shrimp' | 'dragon_beef' | 'lemon_bass' | 'squid_stir' | 'pea_shrimp' | 'garlic_okra'
+  | 'crispy_cucumber_egg' | 'jade_garlic_tofu' | 'sauerkraut_fish' | 'chopped_chili_fish';
 
 export interface RecipeFood {
   uid?: string;
@@ -236,6 +237,12 @@ export const RECIPES: RecipeDef[] = [
   dish('squid_stir', '爆炒鱿鱼', '水产', 'legendary', '一整只卷起来，蒜姜青椒一起响。', ['squid', 'garlic', 'pepper', 'ginger']),
   dish('pea_shrimp', '豌豆虾仁', '水产', 'epic', '绿荚和红虾，蒜是收尾。', ['pea', 'shrimp', 'garlic']),
   dish('garlic_okra', '蒜蓉秋葵', '家常', 'rare', '两头蒜才压得住那点黏。', ['okra', 'garlic', 'garlic']),
+
+  // ── 老坛私房菜：首坛开盖解锁，把平价鲜菜熬成高溢价招牌 ────────
+  dish('crispy_cucumber_egg', '脆瓜炒蛋', '家常', 'rare', '脆腌黄瓜丁撞进热油蛋花里，嚼得满屋咔嚓响。', ['pickled_cucumber', 'egg', 'egg']),
+  dish('jade_garlic_tofu', '翡翠蒜烧豆腐', '家常', 'epic', '焦黄豆腐吸饱浓汁，顶上几瓣翡翠蒜酸甜解腻。', ['pickled_garlic', 'tofu', 'tofu']),
+  dish('sauerkraut_fish', '老坛酸菜鱼', '水产', 'epic', '金汤滚白鱼，老坛酸菜把小杂鱼捧成了镇店大菜。', ['pickled_greens', 'smallfish', 'smallfish']),
+  dish('chopped_chili_fish', '剁椒蒸鲜鱼', '水产', 'legendary', '红亮剁椒盖满整条鲜鱼，热油一泼，白米饭自己往碗里跑。', ['pickled_chili', 'crucian', 'tofu']),
 ];
 
 /** 两道菜去重后的食材种类不能撞车，份数不同也算重复。 */
@@ -263,6 +270,13 @@ export function findDuplicateIngredientSets(recipes: readonly RecipeDef[] = RECI
 
 export const START_RECIPES: RecipeId[] = ['stirfry', 'tomato_egg', 'scallion_tofu'];
 
+export const PICKLE_RECIPE_IDS: readonly RecipeId[] = [
+  'crispy_cucumber_egg',
+  'jade_garlic_tofu',
+  'sauerkraut_fish',
+  'chopped_chili_fish',
+];
+
 /** 还留在表里，图鉴 / 菜谱本 / 下锅都不露。 */
 export const HIDDEN_RECIPE_IDS: ReadonlySet<RecipeId> = new Set([
   'smashed_cucumber',
@@ -288,6 +302,7 @@ export const HIDDEN_RECIPE_IDS: ReadonlySet<RecipeId> = new Set([
   'wild_fish_soup',
   'hawthorn_ribs',
   'squid_stir',
+  ...PICKLE_RECIPE_IDS,
 ]);
 
 export function listedRecipes(

@@ -30,6 +30,8 @@ import {
   gameTexture,
   isTextureReady,
   itemLookTexture,
+  resolveDishAssetPath,
+  resolveItemAssetPath,
   whenTextureReady,
 } from '@/utils/assets';
 
@@ -192,7 +194,7 @@ export function makeItemInspectCard(opts: {
       iconHost.addChild(icon);
     }
   } else if (view.kind === 'dish') {
-    const path = `subpkg_images/dish_${view.defId}.png`;
+    const path = resolveDishAssetPath(view.defId);
     whenTextureReady(path, () => opts.onReady?.());
     const tex = dishTexture(view.defId);
     if (isTextureReady(tex)) {
@@ -204,7 +206,7 @@ export function makeItemInspectCard(opts: {
     }
   } else {
     const look = view.quality === 'rotten' ? 'rotten' as const : 'clean' as const;
-    const path = `subpkg_images/${view.defId}${look === 'rotten' ? '_rotten' : ''}.png`;
+    const path = resolveItemAssetPath(view.defId, look === 'rotten');
     whenTextureReady(path, () => opts.onReady?.());
     const tex = itemLookTexture(view.defId, look);
     if (isTextureReady(tex)) {

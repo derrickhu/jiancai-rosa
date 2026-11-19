@@ -109,6 +109,14 @@ import {
   minHouseForFurn,
   type FurnId,
 } from './kitchenLayout';
+import {
+  defaultPickleJars,
+  defaultStrayCat,
+  migratePickleJars,
+  migrateStrayCat,
+  type PickleJarSlot,
+  type StrayCatState,
+} from './p2Systems';
 
 /** 1 级满体力。每升一级上限再加 STAMINA_PER_LEVEL。 */
 export const STAMINA_MAX = 10;
@@ -296,6 +304,12 @@ export interface KitchenSave {
   recipeCookCounts?: Partial<Record<RecipeId, number>>;
   /** 已发过 3 勺招牌菜谱券奖励的菜谱。 */
   recipeMasteryClaimed?: RecipeId[];
+  /** P2 老坛腌制坊两口坛位状态。 */
+  pickleJars?: Array<PickleJarSlot | null>;
+  /** P2 是否已花费金币添置二号老坛。 */
+  secondJarUnlocked?: boolean;
+  /** P2 菜场流浪小橘猫「阿橘」状态。 */
+  strayCat?: StrayCatState;
   /** 新手指引步骤。新号 0；老档缺字段时 normalize 写成 99，不重播。 */
   tutorialStep: number;
   /** 新手礼金是否已点领取。 */
@@ -308,7 +322,9 @@ export type DailyAdLimitKey =
   | 'chef_buff'
   | 'order_double'
   | 'order_refresh'
-  | 'daily_extra';
+  | 'daily_extra'
+  | 'pickle_boost'
+  | 'cat_treat';
 
 export const DAILY_AD_LIMITS: Record<DailyAdLimitKey, number> = {
   gacha_free: 1,
@@ -317,6 +333,8 @@ export const DAILY_AD_LIMITS: Record<DailyAdLimitKey, number> = {
   order_double: 2,
   order_refresh: 3,
   daily_extra: 1,
+  pickle_boost: 3,
+  cat_treat: 2,
 };
 
 export const RECIPE_MASTERY_NEEDS = [1, 5, 15] as const;
@@ -553,6 +571,9 @@ export function defaultSave(now = Date.now()): KitchenSave {
     dexMilestones: 0,
     recipeCookCounts: {},
     recipeMasteryClaimed: [],
+    pickleJars: defaultPickleJars(),
+    secondJarUnlocked: false,
+    strayCat: defaultStrayCat(),
     tutorialStep: 0,
     tutorialGiftClaimed: false,
   };
@@ -648,6 +669,9 @@ export function normalizeSave(raw: Partial<KitchenSave> | null, now = Date.now()
       migrateRecipeIds(raw.recipesCooked),
     ),
     recipeMasteryClaimed: migrateRecipeIds((raw as KitchenSave).recipeMasteryClaimed),
+    pickleJars: migratePickleJars((raw as KitchenSave).pickleJars),
+    secondJarUnlocked: !!(raw as KitchenSave).secondJarUnlocked,
+    strayCat: migrateStrayCat((raw as KitchenSave).strayCat),
     tutorialStep: typeof (raw as KitchenSave).tutorialStep === 'number'
       && Number.isFinite((raw as KitchenSave).tutorialStep)
       ? Math.floor((raw as KitchenSave).tutorialStep)
@@ -890,6 +914,28 @@ function consumePickedFoods(fridge: FridgeItem[], picked: { defId: string }[]): 
     next.push(left[i] === fridgeItemQty(fridge[i]) ? fridge[i] : { ...fridge[i], qty: left[i] });
   }
   return compactFridge(next);
+}
+
+export function countFridgeFood(fridge: readonly FridgeItem[], defId: string): number {
+  let sum = 0;
+  for (const it of fridge) {
+    if (fridgeKind(it) === 'dish' || it.quality === 'rotten') continue;
+    if (it.defId === defId) sum += fridgeItemQty(it);
+  }
+  return sum;
+}
+
+export function deductFridgeFoods(
+  fridge: FridgeItem[],
+  reqs: ReadonlyArray<{ defId: string; qty: number }>,
+): { fridge: FridgeItem[]; ok: boolean } {
+  const flat: Array<{ defId: string }> = [];
+  for (const r of reqs) {
+    const need = Math.max(0, Math.floor(r.qty));
+    if (countFridgeFood(fridge, r.defId) < need) return { fridge, ok: false };
+    for (let i = 0; i < need; i++) flat.push({ defId: r.defId });
+  }
+  return { fridge: consumePickedFoods(fridge, flat), ok: true };
 }
 
 export function regenStamina(save: KitchenSave, now = Date.now()): KitchenSave {

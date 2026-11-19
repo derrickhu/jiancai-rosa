@@ -1,7 +1,7 @@
 import { FURN_IDS, furnLevel, houseLevel, houseRoomCandidates, hudBuffPaths, type KitchenSave } from '@/sim';
-import { HUD_ICON } from '@/utils/ui';
+import { HUD_ICON, P2_ART } from '@/utils/ui';
 import { OUTING_CURTAIN } from '@/utils/outingAssets';
-import { BOOT_BG, BOOT_FISH, BOOT_TITLE } from '@/scenes/LoadingScene';
+import { BOOT_BG, BOOT_TITLE, BOOT_FISH } from '@/scenes/LoadingScene';
 
 /** 厨房首屏立刻看见的图：房间、家具、顶栏、教程角色。 */
 export function kitchenBootPaths(save: KitchenSave): string[] {
@@ -34,6 +34,12 @@ export function kitchenBootPaths(save: KitchenSave): string[] {
     'subpkg_images/ui_menu_ticket.png',
     'subpkg_kitchen/tutorial_hand.png',
     'subpkg_kitchen/tutorial_cabbage.png',
+    P2_ART.pickleIdle,
+    P2_ART.pickleReady,
+    P2_ART.catIdle,
+    P2_ART.catAway,
+    P2_ART.catGift,
+    P2_ART.catCan,
     OUTING_CURTAIN,
   ];
   for (const id of FURN_IDS) {

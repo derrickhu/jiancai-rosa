@@ -961,6 +961,15 @@ export const P0_ART = {
   ] as const,
 } as const;
 
+export const P2_ART = {
+  pickleIdle: 'subpkg_kitchen/kitchen_pickle_idle.png',
+  pickleReady: 'subpkg_kitchen/kitchen_pickle_ready.png',
+  catIdle: 'subpkg_kitchen/kitchen_cat_idle.png',
+  catAway: 'subpkg_kitchen/kitchen_cat_away.png',
+  catGift: 'subpkg_kitchen/kitchen_cat_gift.png',
+  catCan: 'subpkg_kitchen/ui_cat_can.png',
+} as const;
+
 /** 统一激励视频动作钮：九切片底板 + 手绘场记板播放徽章 + 可选右上角次数角标。 */
 export function makeAdButton(opts: {
   label: string;

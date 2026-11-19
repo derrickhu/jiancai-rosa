@@ -19,7 +19,7 @@ import {
   type RecipeId,
 } from '@/sim';
 import { HUD_ICON, P0_ART } from '@/utils/ui';
-import { imgPath } from '@/utils/assets';
+import { imgPath, resolveDishAssetPath, resolveItemAssetPath } from '@/utils/assets';
 
 export const PANEL_SHELL = {
   dex: ['subpkg_kitchen/ui_dex_panel.png', P0_ART.dexStamp, ...P0_ART.spoons],
@@ -43,11 +43,12 @@ export const PANEL_SHELL = {
 } as const;
 
 export function itemIconPath(id: string, rotten = false): string {
-  return imgPath(`${id}${rotten ? '_rotten' : ''}.png`);
+  if (id.startsWith('dex_cat_')) return imgPath(`${id}.png`);
+  return resolveItemAssetPath(id, rotten);
 }
 
 export function dishIconPath(id: string): string {
-  return imgPath(`dish_${id}.png`);
+  return resolveDishAssetPath(id);
 }
 
 export function dexViewPaths(save: KitchenSave, view: { kind: 'home'; tab: 'food' | 'dish' } | { kind: 'food'; cat: string } | { kind: 'dish'; group: string }): string[] {

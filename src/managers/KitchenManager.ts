@@ -96,6 +96,18 @@ import type { MarketId } from '@/sim/destinations';
 import { vehicleById, type VehicleId } from '@/sim/vehicles';
 import type { ExtractedItem } from '@/sim/run';
 import type { Quality } from '@/sim/items';
+import {
+  adoptStrayCat,
+  boostPickleByAd,
+  buySecondPickleJar,
+  claimCatGift,
+  feedCatFromFridge,
+  harvestPickle,
+  pickleFormulaById,
+  startPickle,
+  useCatCanByAd,
+  type PickleFormulaId,
+} from '@/sim/p2Systems';
 
 export interface CookLevelUp {
   from: number;
@@ -945,6 +957,162 @@ class KitchenManagerClass {
   staminaLabel(): string {
     const s = regenNow();
     return `体力 ${s.stamina}/${staminaMax(s)}`;
+  }
+
+  // ── P2 老坛腌制坊 & 流浪小橘猫阿橘 ────────────────────────────
+
+  buySecondJar(): boolean {
+    const { save, error } = buySecondPickleJar(this.save);
+    if (error) {
+      AudioManager.play('ui_deny');
+      Platform.showToast(error);
+      return false;
+    }
+    AudioManager.play('upgrade');
+    SaveManager.replace(save);
+    this.emit();
+    Platform.showToast('二号老坛搬进屋啦！', 'success');
+    return true;
+  }
+
+  startPickleJar(formulaId: PickleFormulaId, preferredSlot?: 0 | 1): boolean {
+    const { save, error } = startPickle(this.save, formulaId, preferredSlot);
+    if (error) {
+      AudioManager.play('ui_deny');
+      Platform.showToast(error);
+      return false;
+    }
+    AudioManager.play('event_pop');
+    SaveManager.replace(save);
+    this.emit();
+    const name = pickleFormulaById(formulaId)?.name ?? '腌菜';
+    Platform.showToast(`「${name}」已封水入坛！`, 'success');
+    return true;
+  }
+
+  boostPickleJar(slotIndex: 0 | 1): boolean {
+    const { save, error } = boostPickleByAd(this.save, slotIndex);
+    if (error) {
+      AudioManager.play('ui_deny');
+      Platform.showToast(error);
+      return false;
+    }
+    AudioManager.play('cook_sizzle');
+    SaveManager.replace(save);
+    this.emit();
+    Platform.showToast('老卤秘方催熟成功，分量还多出一份！', 'success');
+    return true;
+  }
+
+  harvestPickleJar(slotIndex: 0 | 1): {
+    ok: boolean;
+    outputDefId?: string;
+    outputName?: string;
+    qty: number;
+    foodFolded: boolean;
+    foldGold: number;
+    unlockedRecipeId?: RecipeId;
+  } {
+    const res = harvestPickle(this.save, slotIndex);
+    if (res.error) {
+      AudioManager.play('ui_deny');
+      Platform.showToast(res.error);
+      return { ok: false, qty: 0, foodFolded: false, foldGold: 0 };
+    }
+    AudioManager.play(res.unlockedRecipeId ? 'recipe_paper' : 'event_pop');
+    SaveManager.replace(res.save);
+    this.emit();
+    if (res.unlockedRecipeId) {
+      this.enqueueRecipeUnlocks([res.unlockedRecipeId], 240);
+    }
+    const baseMsg = res.foodFolded
+      ? `${res.outputName}×${res.qty} 冰箱满了，折成 ${res.foldGold} 金`
+      : `开坛收获 ${res.outputName}×${res.qty}！`;
+    Platform.showToast(baseMsg, 'success');
+    return {
+      ok: true,
+      outputDefId: res.outputDefId,
+      outputName: res.outputName,
+      qty: res.qty,
+      foodFolded: res.foodFolded,
+      foldGold: res.foldGold,
+      unlockedRecipeId: res.unlockedRecipeId,
+    };
+  }
+
+  adoptCat(): boolean {
+    const { save, error } = adoptStrayCat(this.save);
+    if (error) {
+      AudioManager.play('ui_deny');
+      Platform.showToast(error);
+      return false;
+    }
+    AudioManager.play('event_pop');
+    SaveManager.replace(save);
+    this.emit();
+    Platform.showToast('阿橘把草垫踩软了，以后这就是它的窝！', 'success');
+    return true;
+  }
+
+  feedCat(defId: string): boolean {
+    const { save, error, bondGain, outingMinutes } = feedCatFromFridge(this.save, defId);
+    if (error) {
+      AudioManager.play('ui_deny');
+      Platform.showToast(error);
+      return false;
+    }
+    AudioManager.play('eat');
+    SaveManager.replace(save);
+    this.emit();
+    Platform.showToast(`阿橘吃美了（亲密 +${bondGain ?? 1}），约 ${outingMinutes ?? 45} 分钟后叼礼回屋！`, 'success');
+    return true;
+  }
+
+  useCatCan(): 'deluxe_instant' | 'instant_recall' | null {
+    const { save, mode, error } = useCatCanByAd(this.save);
+    if (error || !mode) {
+      AudioManager.play('ui_deny');
+      Platform.showToast(error ?? '投喂失败');
+      return null;
+    }
+    AudioManager.play('event_pop');
+    SaveManager.replace(save);
+    this.emit();
+    Platform.showToast(
+      mode === 'instant_recall'
+        ? '阿橘听见拉环声，叼着加料包袱飞奔回屋！'
+        : '阿橘舔光鲜鱼罐头，当场叼回豪华礼袋！',
+      'success',
+    );
+    return mode;
+  }
+
+  claimCatGiftBundle(): {
+    ok: boolean;
+    foods: Array<{ defId: string; name: string; qty: number; folded: boolean }>;
+    foldGold: number;
+    gold: number;
+    totalGold: number;
+    tickets: number;
+    deluxe: boolean;
+  } {
+    const res = claimCatGift(this.save);
+    if (res.error) {
+      AudioManager.play('ui_deny');
+      Platform.showToast(res.error);
+      return { ok: false, foods: [], foldGold: 0, gold: 0, totalGold: 0, tickets: 0, deluxe: false };
+    }
+    AudioManager.play(res.tickets > 0 ? 'recipe_paper' : 'coin_gain');
+    SaveManager.replace(res.save);
+    this.emit();
+    const parts: string[] = [];
+    for (const f of res.foods) {
+      if (!f.folded) parts.push(`${f.name}×${f.qty}`);
+    }
+    if (res.totalGold > 0) parts.push(`+${res.totalGold}金`);
+    if (res.tickets > 0) parts.push(`菜谱券×${res.tickets}`);
+    Platform.showToast(`阿橘谢礼：${parts.join(' · ')}`, 'success');
+    return { ok: true, ...res };
   }
 }
 

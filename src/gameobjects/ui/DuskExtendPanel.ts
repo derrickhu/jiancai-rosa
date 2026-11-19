@@ -4,6 +4,7 @@ import { Ease, TweenManager } from '@/core/TweenManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { Platform } from '@/core/PlatformService';
+import { warmupAdScene } from '@/services/RewardedAdService';
 import { RunManager } from '@/managers/RunManager';
 import { DUSK_EXTEND_STEPS } from '@/sim';
 import { fitSpriteInBox, gameTexture, isTextureReady, watchTextures } from '@/utils/assets';
@@ -38,6 +39,7 @@ export class DuskExtendPanel extends PIXI.Container {
     this._isOpen = true;
     this.visible = true;
     this._busy = false;
+    warmupAdScene('dusk_steps');
     AudioManager.play('result_dusk');
     this.relayout();
     OverlayManager.bringToFront();

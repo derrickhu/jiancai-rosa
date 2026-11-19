@@ -146,20 +146,48 @@ export function retryTexture(path: string): PIXI.Texture {
 /** 微信分包根目录；勿再用 `images/`，开发者工具会把它当纯资源目录，导致 loadSubpackage module not found。 */
 export const IMG_DIR = 'subpkg_images';
 
+const KITCHEN_BUNDLED_ITEMS = new Set([
+  'pickled_cucumber',
+  'pickled_garlic',
+  'pickled_greens',
+  'pickled_chili',
+]);
+
+const KITCHEN_BUNDLED_DISHES = new Set([
+  'crispy_cucumber_egg',
+  'jade_garlic_tofu',
+  'sauerkraut_fish',
+  'chopped_chili_fish',
+]);
+
 export function imgPath(file: string): string {
   return `${IMG_DIR}/${file}`;
 }
 
+export function resolveItemAssetPath(id: string, rotten = false): string {
+  if (KITCHEN_BUNDLED_ITEMS.has(id)) {
+    return `subpkg_kitchen/item_${id}.png`;
+  }
+  return imgPath(`${id}${rotten ? '_rotten' : ''}.png`);
+}
+
+export function resolveDishAssetPath(recipeId: string): string {
+  if (KITCHEN_BUNDLED_DISHES.has(recipeId)) {
+    return `subpkg_kitchen/dish_${recipeId}.png`;
+  }
+  return imgPath(`dish_${recipeId}.png`);
+}
+
 export function itemTexture(id: string): PIXI.Texture {
-  return gameTexture(imgPath(`${id}.png`));
+  return gameTexture(resolveItemAssetPath(id));
 }
 
 export type ItemLook = 'clean' | 'rotten';
 
 /** 脏/坏图没有就回落到干净图，调用方可用 tint 区分。 */
 export function itemLookTexture(id: string, look: ItemLook): PIXI.Texture {
-  if (look === 'clean') return itemTexture(id);
-  const path = imgPath(`${id}_${look}.png`);
+  if (look === 'clean' || KITCHEN_BUNDLED_ITEMS.has(id)) return itemTexture(id);
+  const path = resolveItemAssetPath(id, true);
   if (failed.has(path)) return itemTexture(id);
   const named = gameTexture(path);
   if (isTextureReady(named)) return named;
@@ -167,7 +195,7 @@ export function itemLookTexture(id: string, look: ItemLook): PIXI.Texture {
 }
 
 export function dishTexture(recipeId: string): PIXI.Texture {
-  return gameTexture(imgPath(`dish_${recipeId}.png`));
+  return gameTexture(resolveDishAssetPath(recipeId));
 }
 
 export function isTextureReady(tex: PIXI.Texture): boolean {
