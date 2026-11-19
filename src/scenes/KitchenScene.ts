@@ -54,6 +54,7 @@ import {
   catStateView,
   catUnlocked,
   dexRedDotCount,
+  PICKLE_BAY_DUAL_POSES,
   PICKLE_BAY_POSE,
   PICKLE_UNLOCK_LEVEL,
   pickleFermentingCount,
@@ -1998,26 +1999,34 @@ export class KitchenScene implements Scene {
     const root = new PIXI.Container();
     root.position.set(box.x, box.y);
 
+    let topAnchorX = box.w / 2;
+    let topAnchorY = 0;
+
     if (hasSecond) {
-      // Companion second jar along the 3/4 sunlit baseboard!
+      const b0 = mapNorm(fit, PICKLE_BAY_DUAL_POSES[0].nx, PICKLE_BAY_DUAL_POSES[0].ny, PICKLE_BAY_DUAL_POSES[0].nw, PICKLE_BAY_DUAL_POSES[0].nh);
+      const b1 = mapNorm(fit, PICKLE_BAY_DUAL_POSES[1].nx, PICKLE_BAY_DUAL_POSES[1].ny, PICKLE_BAY_DUAL_POSES[1].nw, PICKLE_BAY_DUAL_POSES[1].nh);
       const tex0 = gameTexture(mainArt);
+      let top0 = b0.y - box.y;
       if (isTextureReady(tex0)) {
         const spr0 = new PIXI.Sprite(tex0);
-        fitSpriteInBox(spr0, box.w * 0.84, box.h * 0.84);
+        fitSpriteInBox(spr0, b0.w, b0.h);
         spr0.anchor.set(0.5, 1);
-        spr0.position.set(box.w * 0.34, box.h * 0.88);
+        spr0.position.set(b0.x - box.x + b0.w / 2, b0.y - box.y + b0.h);
         spr0.eventMode = 'none';
         root.addChild(spr0);
+        top0 = spr0.y - spr0.height * 0.975;
       }
       const tex1 = gameTexture(slot1Ready ? P2_ART.pickleReady : P2_ART.pickleIdle);
       if (isTextureReady(tex1)) {
         const spr1 = new PIXI.Sprite(tex1);
-        fitSpriteInBox(spr1, box.w * 0.90, box.h * 0.90);
+        fitSpriteInBox(spr1, b1.w, b1.h);
         spr1.anchor.set(0.5, 1);
-        spr1.position.set(box.w * 0.82, box.h * 1.04);
+        spr1.position.set(b1.x - box.x + b1.w / 2, b1.y - box.y + b1.h);
         spr1.eventMode = 'none';
         root.addChild(spr1);
       }
+      topAnchorX = ((b0.x + b0.w / 2) + (b1.x + b1.w / 2)) / 2 - box.x;
+      topAnchorY = top0;
     } else {
       const tex = gameTexture(mainArt);
       if (isTextureReady(tex)) {
@@ -2031,6 +2040,7 @@ export class KitchenScene implements Scene {
         }
         spr.eventMode = 'none';
         root.addChild(spr);
+        topAnchorY = spr.y - spr.height * 0.975;
       }
     }
 
@@ -2043,14 +2053,15 @@ export class KitchenScene implements Scene {
           : '老坛腌菜';
     const tone = !unlocked ? 'cream' : readyCount > 0 ? 'gold' : fermCount > 0 ? 'warm' : 'cream';
     const tag = this._makePropTag(tagText, tone, readyCount > 0);
-    tag.position.set(hasSecond ? box.w * 0.58 : box.w / 2, -6);
+    tag.position.set(topAnchorX, topAnchorY - 18);
     root.addChild(tag);
 
     if (!this._gm) {
       root.eventMode = 'static';
       root.cursor = 'pointer';
-      const hitW = hasSecond ? box.w * 1.28 : box.w + 8;
-      root.hitArea = new PIXI.Rectangle(-4, -18, hitW, box.h + 26);
+      const hitW = hasSecond ? box.w * 1.45 : box.w + 12;
+      const hitH = hasSecond ? box.h * 1.32 : box.h + 24;
+      root.hitArea = new PIXI.Rectangle(-10, topAnchorY - 30, hitW, hitH + 16);
       root.on('pointertap', (e) => {
         e.stopPropagation();
         if (this._dragMoved) return;
@@ -2072,7 +2083,8 @@ export class KitchenScene implements Scene {
     fit: ReturnType<typeof fitWidthBottom>,
   ): void {
     const view = catStateView(save, Date.now());
-    const artPath = !view.unlocked || view.effectiveStatus === 'away'
+    const isFlatCushion = !view.unlocked || view.effectiveStatus === 'away';
+    const artPath = isFlatCushion
       ? P2_ART.catAway
       : view.effectiveStatus === 'gift'
         ? P2_ART.catGift
@@ -2085,6 +2097,7 @@ export class KitchenScene implements Scene {
     const root = new PIXI.Container();
     root.position.set(box.x, box.y);
     const tex = gameTexture(artPath);
+    let visibleTopY = isFlatCushion ? box.h * 0.42 : box.h * 0.16;
     if (isTextureReady(tex)) {
       const spr = new PIXI.Sprite(tex);
       fitSpriteInBox(spr, box.w, box.h);
@@ -2092,6 +2105,8 @@ export class KitchenScene implements Scene {
       spr.position.set(box.w / 2, box.h);
       spr.eventMode = 'none';
       root.addChild(spr);
+      const visibleHeightRatio = isFlatCushion ? 0.664 : 0.86;
+      visibleTopY = spr.y - spr.height * visibleHeightRatio;
     }
 
     const tagText = !view.unlocked
@@ -2106,13 +2121,13 @@ export class KitchenScene implements Scene {
     const isUrgent = view.effectiveStatus === 'unadopted' || view.effectiveStatus === 'gift';
     const tone = isUrgent ? 'gold' : view.effectiveStatus === 'away' ? 'warm' : 'cream';
     const tag = this._makePropTag(tagText, tone, isUrgent);
-    tag.position.set(box.w / 2, -4);
+    tag.position.set(box.w / 2, visibleTopY - 18);
     root.addChild(tag);
 
     if (!this._gm) {
       root.eventMode = 'static';
       root.cursor = 'pointer';
-      root.hitArea = new PIXI.Rectangle(-4, -16, box.w + 8, box.h + 22);
+      root.hitArea = new PIXI.Rectangle(-6, visibleTopY - 30, box.w + 12, box.h - visibleTopY + 34);
       root.on('pointertap', (e) => {
         e.stopPropagation();
         if (this._dragMoved) return;

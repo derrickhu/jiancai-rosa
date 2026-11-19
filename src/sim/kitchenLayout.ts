@@ -88,12 +88,16 @@ export function houseUpgradeMark(_house = 0): { nx: number; ny: number } {
 }
 
 /**
- * 右侧阳光窗下阳角：所有档位房屋（0–4）与全部 15 级家具（0–14）的最大右边界为
- * 冰箱 Lv.9 nx+nw=0.724、灶台 Lv.14 nx+nw=0.680。
- * 老坛与猫窝锚定在 nx≥0.742 的窗下踢脚线与前景阳光地砖，全程零遮挡。
+ * 右侧阳光窗下阳角地砖坐标：
+ * 右墙踢脚线底沿斜率为 (0.718, 0.638) → (1.000, 0.895)。
+ * 老坛与猫窝全部落在踢脚线内侧平地上，且避开全部 15 级冰箱与双灶岛台。
  */
-export const PICKLE_BAY_POSE = { nx: 0.742, ny: 0.578, nw: 0.148, nh: 0.122 } as const;
-export const CAT_BAY_POSE = { nx: 0.742, ny: 0.760, nw: 0.180, nh: 0.148 } as const;
+export const PICKLE_BAY_POSE = { nx: 0.700, ny: 0.668, nw: 0.138, nh: 0.118 } as const;
+export const PICKLE_BAY_DUAL_POSES = [
+  { nx: 0.692, ny: 0.646, nw: 0.124, nh: 0.106 },
+  { nx: 0.740, ny: 0.698, nw: 0.130, nh: 0.112 },
+] as const;
+export const CAT_BAY_POSE = { nx: 0.718, ny: 0.808, nw: 0.178, nh: 0.146 } as const;
 
 /** 质变道具按当前形态显示名字（装修面板 / GM / 热区）。 */
 export function furnLabel(id: FurnId, level = 0): string {
