@@ -23,7 +23,19 @@ import {
   type Rarity,
   type RecipeId,
 } from '@/sim';
-import { FONT, bindUiClick, drawRarityFrame, fillRect, makeLabel, makeQtyMark } from '@/utils/ui';
+import {
+  FONT,
+  UI_PALETTE,
+  bindUiClick,
+  drawItemSlotBox,
+  drawRecessedWell,
+  drawSectionTray,
+  fillRect,
+  makeArtisanShell,
+  makeLabel,
+  makeSlicedButton,
+  makeSlotBadge,
+} from '@/utils/ui';
 import {
   dishTexture,
   fitSpriteInBox,
@@ -35,17 +47,12 @@ import {
   whenTextureReady,
 } from '@/utils/assets';
 
-const INK = 0x2A2018;
-const CREAM = 0xF6EDE0;
+const INK = UI_PALETTE.ink;
 const PAPER = 0xFFF8F0;
-const TERRACOTTA = 0xC46A3A;
-const MUTED = 0x8A6A40;
-const INDIGO = 0x3D6A82;
+const TERRACOTTA = UI_PALETTE.terracotta;
+const MUTED = UI_PALETTE.muted;
+const INDIGO = 0x35647B;
 const COIN = 'subpkg_images/hud_coin.png';
-const BTN = {
-  cream: 'subpkg_kitchen/ui_fridge_btn_cream.png',
-  terracotta: 'subpkg_kitchen/ui_fridge_btn_terracotta.png',
-} as const;
 
 export interface ItemInspectView {
   title: string;
@@ -145,8 +152,8 @@ export function makeItemInspectCard(opts: {
   const w = Game.designWidth;
   const h = Game.logicHeight;
   const dim = new PIXI.Graphics();
-  fillRect(dim, 0, 0, w, h, 0x000000);
-  dim.alpha = 0.35;
+  fillRect(dim, 0, 0, w, h, 0x160E08);
+  dim.alpha = 0.46;
   dim.eventMode = 'static';
   dim.on('pointertap', opts.onClose);
   root.addChild(dim);
@@ -154,35 +161,31 @@ export function makeItemInspectCard(opts: {
   const canEat = view.kind === 'dish' && !!view.eatLabel;
   const showUsage = !!view.eatLabel;
   const showStepper = opts.actions && view.maxQty > 1;
-  const cardW = Math.min(520, w - 64);
+  const cardW = Math.min(536, w - 56);
   const cardH = opts.actions
-    ? (showStepper || canEat ? 428 : 388)
-    : (showUsage ? 356 : 320);
-  const card = new PIXI.Container();
-  card.position.set((w - cardW) / 2, (h - cardH) / 2);
-  card.eventMode = 'static';
-  card.hitArea = new PIXI.Rectangle(0, 0, cardW, cardH);
-  card.on('pointertap', (e) => e.stopPropagation());
+    ? (showStepper || canEat ? 446 : 398)
+    : (showUsage ? 368 : 326);
+
+  const { shell: card } = makeArtisanShell({
+    width: cardW,
+    height: cardH,
+    onReady: opts.onReady,
+    closeSilent: true,
+    onClose: opts.onClose,
+  });
+  card.position.set(Math.round((w - cardW) / 2), Math.round((h - cardH) / 2));
   root.addChild(card);
 
-  const plate = new PIXI.Graphics();
-  plate.lineStyle(4, INK, 1);
-  plate.beginFill(CREAM);
-  plate.drawRoundedRect(0, 0, cardW, cardH, 22);
-  plate.endFill();
-  plate.beginFill(PAPER);
-  plate.drawRoundedRect(12, 12, cardW - 24, cardH - 24, 16);
-  plate.endFill();
-  card.addChild(plate);
+  const headerTray = new PIXI.Graphics();
+  drawSectionTray(headerTray, 26, 24, cardW - 52, 102, { radius: 14, tone: 'sand' });
+  card.addChild(headerTray);
 
-  const iconBox = 88;
+  const iconBox = 86;
   const iconHost = new PIXI.Container();
   const iconBg = new PIXI.Graphics();
-  iconBg.beginFill(0xE8DFD0, 0.7);
-  iconBg.drawRoundedRect(0, 0, iconBox, iconBox, 16);
-  iconBg.endFill();
-  drawRarityFrame(iconBg, 2, 2, iconBox - 4, iconBox - 4, view.rarity, { radius: 16 });
+  drawItemSlotBox(iconBg, 0, 0, iconBox, iconBox, { radius: 13, rarity: view.rarity });
   iconHost.addChild(iconBg);
+
   if (view.iconPath) {
     whenTextureReady(view.iconPath, () => opts.onReady?.());
     const tex = gameTexture(view.iconPath);
@@ -217,97 +220,112 @@ export function makeItemInspectCard(opts: {
       iconHost.addChild(icon);
     }
   }
-  iconHost.position.set(28, 28);
+  iconHost.position.set(34, 32);
   if (view.maxQty > 1) {
-    const n = makeQtyMark(view.maxQty, 20);
-    n.anchor.set(1, 1);
-    n.position.set(iconBox - 4, iconBox - 2);
-    iconHost.addChild(n);
+    const badge = makeSlotBadge(`×${view.maxQty}`, 'olive', 13);
+    badge.node.position.set(iconBox - badge.w - 3, iconBox - badge.h - 3);
+    iconHost.addChild(badge.node);
   }
   card.addChild(iconHost);
 
-  const name = makeLabel(view.title, 28, INK, { fontWeight: '700' });
-  name.position.set(132, 28);
+  const name = makeLabel(view.title, 24, INK, { fontWeight: '700' });
+  name.position.set(134, 32);
   card.addChild(name);
-  const grade = makeLabel(
-    view.note ? `${rarityLabel(view.rarity)} · ${view.note}` : rarityLabel(view.rarity),
-    20,
-    RARITY_STYLE[view.rarity].ink,
-    { fontWeight: '700' },
-  );
-  grade.position.set(132, 64);
-  card.addChild(grade);
+
+  const gradeText = view.note ? `${rarityLabel(view.rarity)} · ${view.note}` : rarityLabel(view.rarity);
+  const grade = makeLabel(gradeText, 15, RARITY_STYLE[view.rarity].ink, { fontWeight: '700' });
+  const gradePill = new PIXI.Graphics();
+  gradePill.lineStyle(1.4, 0x9C7D5A, 0.9);
+  gradePill.beginFill(0xFFFBF2, 1);
+  gradePill.drawRoundedRect(134, 65, Math.ceil(grade.width) + 18, 24, 8);
+  gradePill.endFill();
+  grade.position.set(143, 68);
+  card.addChild(gradePill, grade);
 
   const unit = view.unitPrice;
   const goldN = unit * qty;
   if (view.priceLine !== undefined) {
     if (view.priceLine) {
-      const gold = makeLabel(view.priceLine, 22, TERRACOTTA, { fontWeight: '700' });
-      gold.position.set(132, 90);
+      const gold = makeLabel(view.priceLine, 17, TERRACOTTA, { fontWeight: '700' });
+      gold.position.set(134, 94);
       card.addChild(gold);
     }
   } else if (unit > 0) {
-    const gold = makeLabel(`售价  ${unit}`, 22, TERRACOTTA, { fontWeight: '700' });
-    gold.position.set(132, 90);
+    const gold = makeLabel(`单价  ${unit}`, 17, 0x8F5808, { fontWeight: '700' });
+    gold.position.set(134, 94);
     card.addChild(gold);
     whenTextureReady(COIN, () => opts.onReady?.());
     const coinTex = gameTexture(COIN);
     if (isTextureReady(coinTex)) {
       const coin = new PIXI.Sprite(coinTex);
-      fitSpriteInBox(coin, 32, 32);
+      fitSpriteInBox(coin, 24, 24);
       coin.anchor.set(0, 0.5);
-      coin.position.set(132 + gold.width + 6, 102);
+      coin.position.set(134 + gold.width + 6, 105);
       coin.eventMode = 'none';
       card.addChild(coin);
     }
   } else {
-    const gold = makeLabel('坏了，卖不掉', 22, MUTED, { fontWeight: '700' });
-    gold.position.set(132, 90);
+    const gold = makeLabel('坏了，卖不掉', 19, MUTED, { fontWeight: '700' });
+    gold.position.set(134, 96);
     card.addChild(gold);
   }
 
   const blurb = new PIXI.Text(view.blurb, {
     fontFamily: FONT,
-    fontSize: 22,
-    fill: MUTED,
+    fontSize: 19,
+    fill: INK,
     fontWeight: '500',
     wordWrap: true,
     breakWords: true,
-    wordWrapWidth: cardW - 56,
-    lineHeight: 34,
+    wordWrapWidth: cardW - 84,
+    lineHeight: 30,
   });
-  blurb.position.set(28, 136);
   blurb.eventMode = 'none';
-  card.addChild(blurb);
+  const wellH = Math.max(72, Math.min(104, Math.ceil(blurb.height) + 24));
+  const blurbWell = new PIXI.Graphics();
+  drawRecessedWell(blurbWell, 28, 134, cardW - 56, wellH, { radius: 14 });
+  blurb.position.set(42, 146);
+  card.addChild(blurbWell, blurb);
 
-  let y = 136 + Math.min(88, blurb.height) + 16;
+  let y = 134 + wellH + 12;
   if (showUsage) {
-    const eat = makeLabel(view.eatLabel ?? '吃', 24, INDIGO, {
-      fontFamily: 'Kaiti SC, STKaiti, Songti SC, STSong, serif',
-      fontWeight: '700',
-    });
-    eat.position.set(28, y);
-    card.addChild(eat);
-    y += 38;
+    const eatPill = new PIXI.Graphics();
+    eatPill.lineStyle(1.4, 0x99BDCD, 0.9);
+    eatPill.beginFill(0xEDF5F8, 1);
+    eatPill.drawRoundedRect(28, y, cardW - 56, 36, 18);
+    eatPill.endFill();
+    const eat = makeLabel(`✦ ${view.eatLabel ?? '食用增益'}`, 17, INDIGO, { fontWeight: '700' });
+    eat.anchor.set(0.5);
+    eat.position.set(cardW / 2, y + 18);
+    card.addChild(eatPill, eat);
+    y += 46;
   }
 
   if (showStepper) {
     card.addChild(makeQtyStepper(cardW / 2, y + 22, qty, view.maxQty, opts.onQty));
-    y += 64;
+    y += 58;
   }
 
   if (!opts.actions) return root;
 
   const btnW = cardW - 56;
-  const btnY = cardH - 68;
-  const half = (btnW - 12) / 2;
+  const btnY = cardH - 74;
+  const half = Math.floor((btnW - 14) / 2);
   if (canEat) {
-    const eatBtn = makeChip('吃掉', half, 48, 'primary');
+    const eatBtn = makeSlicedButton({
+      label: '吃掉',
+      width: half,
+      height: 50,
+      skin: 'olive',
+      textColor: PAPER,
+      onReady: opts.onReady,
+    });
     eatBtn.position.set(28, btnY);
     eatBtn.on('pointertap', () => opts.onEat?.());
     card.addChild(eatBtn);
-    const sell = makeSellChip(half, 48, unit > 0 ? goldN : 0, opts.onReady);
-    sell.position.set(28 + half + 12, btnY);
+
+    const sell = makeSellChip(half, 50, unit > 0 ? goldN : 0, opts.onReady);
+    sell.position.set(28 + half + 14, btnY);
     sell.on('pointertap', () => {
       if (unit <= 0) return;
       opts.onSell?.();
@@ -315,7 +333,7 @@ export function makeItemInspectCard(opts: {
     opts.onSellBtn?.(sell);
     card.addChild(sell);
   } else {
-    const sell = makeSellChip(btnW, 48, unit > 0 ? goldN : 0, opts.onReady);
+    const sell = makeSellChip(btnW, 50, unit > 0 ? goldN : 0, opts.onReady);
     sell.position.set(28, btnY);
     sell.on('pointertap', () => {
       if (unit <= 0) return;
@@ -335,6 +353,10 @@ export function makeQtyStepper(
   onQty: (n: number) => void,
 ): PIXI.Container {
   const root = new PIXI.Container();
+  const track = new PIXI.Graphics();
+  drawRecessedWell(track, cx - 118, cy - 22, 236, 44, { radius: 22 });
+  root.addChild(track);
+
   const minus = makeRoundBtn('－', qty > 1);
   minus.position.set(cx - 88, cy);
   minus.on('pointertap', () => {
@@ -347,7 +369,7 @@ export function makeQtyStepper(
     if (qty >= max) return;
     onQty(qty + 1);
   });
-  const n = makeLabel(String(qty), 30, INK, { fontWeight: '700' });
+  const n = makeLabel(`${qty} / ${max}`, 22, INK, { fontWeight: '700' });
   n.anchor.set(0.5);
   n.position.set(cx, cy);
   root.addChild(minus, plus, n);
@@ -357,12 +379,13 @@ export function makeQtyStepper(
 function makeRoundBtn(label: string, on: boolean): PIXI.Container {
   const root = new PIXI.Container();
   const g = new PIXI.Graphics();
-  g.lineStyle(3, INK, 1);
-  g.beginFill(on ? TERRACOTTA : 0xE4D4BE);
-  g.drawCircle(0, 0, 22);
+  g.lineStyle(2.5, INK, 1);
+  g.beginFill(on ? TERRACOTTA : 0xDFD0BC, 1);
+  g.drawCircle(0, 0, 20);
   g.endFill();
-  const text = makeLabel(label, 26, on ? PAPER : MUTED, { fontWeight: '700' });
+  const text = makeLabel(label, 24, on ? PAPER : MUTED, { fontWeight: '700' });
   text.anchor.set(0.5);
+  text.position.set(0, -1);
   root.addChild(g, text);
   root.eventMode = 'static';
   root.cursor = on ? 'pointer' : 'default';
@@ -378,9 +401,20 @@ function makeSellChip(
   gold: number,
   onReady?: () => void,
 ): PIXI.Container {
-  const root = makeChipSkin(width, height, gold > 0 ? 'primary' : 'idle');
+  const btn = makeSlicedButton({
+    label: '',
+    width,
+    height,
+    skin: gold > 0 ? 'terracotta' : 'cream',
+    onReady,
+  });
+  const face = ((btn as any)._face as PIXI.Container | undefined) ?? btn;
   const row = new PIXI.Container();
-  const label = makeLabel('卖出', Math.min(24, height * 0.44), gold > 0 ? PAPER : MUTED, { fontWeight: '700' });
+  row.eventMode = 'none';
+  const label = makeLabel('卖出', Math.min(23, height * 0.42), gold > 0 ? PAPER : MUTED, {
+    fontWeight: '700',
+    ...(gold > 0 ? { stroke: INK, strokeThickness: 3 } : {}),
+  });
   label.anchor.set(0, 0.5);
   row.addChild(label);
   let x = label.width + 8;
@@ -390,70 +424,21 @@ function makeSellChip(
     if (isTextureReady(coin.texture)) {
       fitSpriteInBox(coin, 26, 26);
       coin.anchor.set(0, 0.5);
-      coin.eventMode = 'none';
       coin.position.set(x, 0);
       row.addChild(coin);
       x += 30;
     }
-    const n = makeLabel(String(gold), Math.min(22, height * 0.4), PAPER, { fontWeight: '700' });
+    const n = makeLabel(String(gold), Math.min(22, height * 0.4), PAPER, {
+      fontWeight: '700',
+      stroke: INK,
+      strokeThickness: 3,
+    });
     n.anchor.set(0, 0.5);
     n.position.set(x, 0);
     row.addChild(n);
     x += n.width;
   }
-  row.position.set((width - x) / 2, height / 2 + 1);
-  root.addChild(row);
-  root.eventMode = 'static';
-  root.cursor = 'pointer';
-  root.hitArea = new PIXI.Rectangle(0, 0, width, height);
-  bindUiClick(root);
-  return root;
-}
-
-function makeChipSkin(width: number, height: number, kind: 'primary' | 'idle'): PIXI.Container {
-  const path = kind === 'primary' ? BTN.terracotta : BTN.cream;
-  const root = new PIXI.Container();
-  whenTextureReady(path, () => {});
-  const tex = gameTexture(path);
-  if (isTextureReady(tex)) {
-    const tw = tex.width;
-    const th = tex.height;
-    const cap = Math.min(Math.floor(th * 0.5), Math.floor(tw * 0.34));
-    const midW = Math.max(1, tw - cap * 2);
-    const left = new PIXI.Sprite(new PIXI.Texture(tex.baseTexture, new PIXI.Rectangle(0, 0, cap, th)));
-    const mid = new PIXI.Sprite(new PIXI.Texture(tex.baseTexture, new PIXI.Rectangle(cap, 0, midW, th)));
-    const right = new PIXI.Sprite(new PIXI.Texture(tex.baseTexture, new PIXI.Rectangle(tw - cap, 0, cap, th)));
-    const capW = cap * (height / th);
-    left.height = height;
-    left.width = capW;
-    right.height = height;
-    right.width = capW;
-    right.x = width - capW;
-    mid.height = height;
-    mid.x = capW;
-    mid.width = Math.max(1, width - capW * 2);
-    left.eventMode = mid.eventMode = right.eventMode = 'none';
-    root.addChild(left, mid, right);
-  } else {
-    const bg = new PIXI.Graphics();
-    bg.lineStyle(3, INK, 1);
-    bg.beginFill(kind === 'primary' ? TERRACOTTA : 0xE4D4BE);
-    bg.drawRoundedRect(0, 0, width, height, height / 2);
-    bg.endFill();
-    root.addChild(bg);
-  }
-  return root;
-}
-
-function makeChip(label: string, width: number, height: number, kind: 'primary' | 'idle'): PIXI.Container {
-  const root = makeChipSkin(width, height, kind);
-  const text = makeLabel(label, Math.min(24, height * 0.44), kind === 'primary' ? PAPER : MUTED, { fontWeight: '700' });
-  text.anchor.set(0.5);
-  text.position.set(width / 2, height / 2 + 1);
-  root.addChild(text);
-  root.eventMode = 'static';
-  root.cursor = 'pointer';
-  root.hitArea = new PIXI.Rectangle(0, 0, width, height);
-  bindUiClick(root);
-  return root;
+  row.position.set(Math.round((width - x) / 2), height / 2 - 1);
+  face.addChild(row);
+  return btn;
 }

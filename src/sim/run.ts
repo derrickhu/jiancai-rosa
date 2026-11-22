@@ -79,6 +79,17 @@ export type PlayState = GatherPlay;
 
 export const DUSK_EXTEND_STEPS = 3;
 
+export type MysterySackPrize =
+  | { kind: 'food'; defId: string; quality: Quality }
+  | { kind: 'ticket'; qty: number };
+
+export interface MysterySackState {
+  nodeId: string;
+  sacks: [MysterySackPrize, MysterySackPrize, MysterySackPrize];
+  pickedIdx: number | null;
+  sweptByAd: boolean;
+}
+
 export interface RunState {
   seed: number;
   marketId: MarketId;
@@ -86,6 +97,18 @@ export interface RunState {
   map: MarketMap;
   stepsMax: number;
   stepsLeft: number;
+  /** 今日集市天时签 ID。 */
+  weatherId?: string;
+  /** 「早集刚散」：首座原本收费的摊位免单。 */
+  weatherFreePaidLeft?: boolean;
+  /** 本局是否已使用过「帮摊主收筐」免单激励视频（1次/局）。 */
+  stallFavorUsed?: boolean;
+  /** 本局是否已使用过「压箱尾货篓全收」激励视频（1次/局）。 */
+  sackSweepUsed?: boolean;
+  /** 已走过老杆秤稳准星的节点 ID。 */
+  steelyardDone?: string[];
+  /** 当前正在拆的压箱尾货篓三选一弹窗状态。 */
+  pendingMysterySack?: MysterySackState | null;
   /** 本局是否已借过手电筒续步（每局限 1 次）。 */
   duskExtended?: boolean;
   /** 天黑续步询问弹窗挂起中。 */
@@ -169,6 +192,10 @@ export function createRun(opts: {
   luck?: RollLuck;
   feeMul?: number;
   stallBias?: StallId;
+  weatherId?: string;
+  freeFirstPaidStall?: boolean;
+  paystallExtraItems?: number;
+  mysterySackCount?: number;
 }): RunState {
   const marketId = opts.marketId ?? 'xiangko';
   const seed = opts.seed ?? newSeed();
@@ -178,6 +205,7 @@ export function createRun(opts: {
     allowRecipe: opts.allowRecipe !== false,
     forceRecipe: !!opts.forceRecipe,
     stallBias: opts.stallBias,
+    mysterySackCount: opts.mysterySackCount ?? 0,
   });
   const plan = MARKET_PLAN[marketId];
   // 单独一条 rng：改品质规则不该把地图布局也换掉
@@ -185,13 +213,14 @@ export function createRun(opts: {
 
   const piles: Record<string, PileItem[]> = {};
   const packing: Record<string, number> = {};
+  const extraPayBonus = Math.max(0, Math.floor(opts.paystallExtraItems ?? 0));
   for (const node of mapRummageNodes(map)) {
     const enc = nodeEncounter(node);
     if (enc.type !== 'rummage') continue;
     const paid = node.kind === 'paystall';
     const spec = enc.specialty ? getSpecialty(enc.specialty) : undefined;
     const range = spec ? spec.count : stallPileRange(marketId, node.stall ?? 'egg');
-    const bonus = paid ? paystallPileBonus(marketId) : 0;
+    const bonus = paid ? paystallPileBonus(marketId) + extraPayBonus : 0;
     const n = rngInt(rng, range[0] + bonus, range[1] + bonus);
     const list: PileItem[] = [];
     for (let i = 0; i < n; i++) {
@@ -232,6 +261,12 @@ export function createRun(opts: {
     map,
     stepsMax: plan.steps + Math.max(0, opts.extraSteps ?? 0),
     stepsLeft: plan.steps + Math.max(0, opts.extraSteps ?? 0),
+    weatherId: opts.weatherId,
+    weatherFreePaidLeft: !!opts.freeFirstPaidStall,
+    stallFavorUsed: false,
+    sackSweepUsed: false,
+    steelyardDone: [],
+    pendingMysterySack: null,
     atNodeId: null,
     options: map.layers[0].slice(),
     visited: [],
@@ -330,8 +365,9 @@ export function nodeFee(
     specialty: enc.type === 'rummage' ? enc.specialty : undefined,
   });
   if (state.feeMul === 0) return 0;
-  if (state.feeMul < 1) return Math.max(1, Math.ceil(fee * state.feeMul));
-  return fee;
+  const finalFee = state.feeMul < 1 ? Math.max(1, Math.ceil(fee * state.feeMul)) : fee;
+  if (finalFee > 0 && !opts?.ignoreFreePass && state.weatherFreePaidLeft) return 0;
+  return finalFee;
 }
 
 /** 天色不够、钱不够、厨艺不够都拦在这。看得见进不去，别把卡藏起来。 */

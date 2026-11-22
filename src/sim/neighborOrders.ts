@@ -69,9 +69,9 @@ export const NEIGHBOR_NPCS: NeighborNpc[] = [
   { id: 'zhu', name: '阿珠', portrait: 'subpkg_images/npc_jiangbian_aunt.png' },
   { id: 'granny', name: '山坞婆婆', portrait: 'subpkg_images/npc_shanwu_granny.png' },
   { id: 'boss', name: '菜行老板', portrait: 'subpkg_images/npc_laocheng_boss.png' },
-  { id: 'tao', name: '阿桃', portrait: 'subpkg_images/npc_guoyuan_tao.png' },
-  { id: 'zhou', name: '老周', portrait: 'subpkg_images/npc_tiantou_zhou.png' },
-  { id: 'hai', name: '阿海', portrait: 'subpkg_images/npc_futou_hai.png' },
+  { id: 'tao', name: '阿桃', portrait: 'subpkg_kitchen/npc_guoyuan_tao.png' },
+  { id: 'zhou', name: '老周', portrait: 'subpkg_kitchen/npc_tiantou_zhou.png' },
+  { id: 'hai', name: '阿海', portrait: 'subpkg_kitchen/npc_futou_hai.png' },
 ];
 
 const SKIP_RECIPES = new Set<RecipeId>(['wild_fish_soup']);

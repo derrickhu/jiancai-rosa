@@ -10,6 +10,8 @@ import { Platform } from '@/core/PlatformService';
 import { tryShowInterstitial } from '@/services/InterstitialAdService';
 import {
   RARITY_STYLE,
+  canUseDailyAd,
+  dailyAdLeft,
   fridgeCap,
   fridgeItemPrice,
   fridgeItemQty,
@@ -23,7 +25,19 @@ import {
   type Rarity,
   type RecipeId,
 } from '@/sim';
-import { HUD_ICON, bindUiClick, drawRarityFrame, fillRect, makeCornerMark, makeLabel, makeQtyMark, makeSlicedButton } from '@/utils/ui';
+import {
+  HUD_ICON,
+  P0_ART,
+  bindUiClick,
+  drawItemSlotBox,
+  drawSectionTray,
+  fillRect,
+  makeAdButton,
+  makeCornerMark,
+  makeLabel,
+  makeSlicedButton,
+  makeSlotBadge,
+} from '@/utils/ui';
 import { VerticalScroller } from '@/utils/scroll';
 import { dishTexture, fitSpriteInBox, gameTexture, isTextureReady, itemLookTexture, watchTextures, whenTextureReady } from '@/utils/assets';
 import { PANEL_SHELL, fridgeItemPath } from '@/utils/panelAssets';
@@ -452,7 +466,7 @@ export class ResultPanel extends PIXI.Container {
     for (const uid of [...this._sell]) {
       if (!valid.has(uid)) this._sell.delete(uid);
     }
-    watchTextures([...PANEL_SHELL.fridge, ...preview.map(fridgeItemPath), HUD_ICON.coin], this._schedulePickRelayout);
+    watchTextures([...PANEL_SHELL.fridge, P0_ART.adClapper, ...preview.map(fridgeItemPath), HUD_ICON.coin], this._schedulePickRelayout);
 
     const cap = fridgeCap(save);
     const owned = new Set(save.fridge.map((it) => it.uid));
@@ -527,7 +541,11 @@ export class ResultPanel extends PIXI.Container {
     shell.addChild(title, count, hint);
 
     const cols = 6;
-    const pad = 8;
+    const pad = 10;
+    const trayBg = new PIXI.Graphics();
+    drawSectionTray(trayBg, cx - 2, cy, cw + 4, ch, { radius: 16, tone: 'taupe' });
+    shell.addChild(trayBg);
+
     const cell = Math.max(48, Math.floor((cw - pad * 2) / cols));
     const gridW = cols * cell;
     const gridX = cx + (cw - gridW) / 2;
@@ -535,7 +553,7 @@ export class ResultPanel extends PIXI.Container {
     const viewport = new PIXI.Container();
     const mask = new PIXI.Graphics();
     mask.beginFill(0xffffff);
-    mask.drawRoundedRect(cx, cy, cw, ch, 18);
+    mask.drawRoundedRect(cx, cy + 3, cw, ch - 6, 14);
     mask.endFill();
     mask.eventMode = 'none';
     viewport.mask = mask;
@@ -544,9 +562,9 @@ export class ResultPanel extends PIXI.Container {
     const grid = new PIXI.Container();
     viewport.addChild(grid);
     preview.forEach((it, i) => {
-      const x = gridX + (i % cols) * cell;
+      const x = gridX + (i % cols) * cell + 3;
       const y = cy + pad + Math.floor(i / cols) * cell;
-      grid.addChild(this._pickSlot(x, y, cell - 8, it, i >= cap, !owned.has(it.uid)));
+      grid.addChild(this._pickSlot(x, y, cell - 6, it, i >= cap, !owned.has(it.uid)));
     });
     this._scroller.attach({
       content: grid,
@@ -565,27 +583,86 @@ export class ResultPanel extends PIXI.Container {
       status.position.set(midX, btnY - 26);
       shell.addChild(status);
     } else if (!ready) {
-      const status = makeLabel(`再卖 ${need - picked} 格`, 18, TERRACOTTA, { fontWeight: '700' });
+      const status = makeLabel(`再卖 ${need - picked} 格（或让街坊 1.5 倍顺路包圆溢出菜）`, 15, TERRACOTTA, { fontWeight: '700' });
       status.anchor.set(0.5, 0);
       status.position.set(midX, btnY - 26);
       shell.addChild(status);
     }
-    const btnW = Math.min(240, cw * 0.62);
-    const ok = makeSlicedButton({
-      label: ready ? '卖掉选中的' : `再卖 ${need - picked} 格`,
-      width: btnW,
-      height: btnH,
-      path: BTN,
-      silent: true,
-      onReady: () => {
-        if (this._isOpen) this.relayout();
-      },
-    });
-    ok.alpha = ready ? 1 : 0.55;
-    ok.position.set(midX - btnW / 2, btnY);
-    ok.on('pointertap', () => this._confirm());
-    bindUiClick(ok);
-    shell.addChild(ok);
+
+    const showVip = !TutorialManager.isActive && need > 0;
+    if (showVip) {
+      const adLeft = dailyAdLeft(save, 'unpack_vip');
+      const canVip = canUseDailyAd(save, 'unpack_vip');
+      const gap = 10;
+      const vipW = Math.min(248, Math.round((cw - gap) * 0.54));
+      const okW = Math.min(208, Math.round((cw - gap) * 0.44));
+      const totalW = vipW + gap + okW;
+      const startX = midX - totalW / 2;
+
+      const vipBtn = makeAdButton({
+        label: '街坊1.5倍包圆',
+        width: vipW,
+        height: btnH,
+        skin: 'gold',
+        textColor: INK,
+        badge: canVip ? `×1.5·剩${adLeft}` : '今日已满',
+        disabled: !canVip,
+        onReady: this._schedulePickRelayout,
+      });
+      vipBtn.position.set(startX, btnY);
+      if (canVip) {
+        vipBtn.on('pointertap', () => {
+          Platform.showRewardedVideo('unpack_vip', () => {
+            const res = KitchenManager.vipUnpackOverflow();
+            if (res.error) return;
+            if (res.gained > 0) AudioManager.play('coin_gain');
+            this._data = this._data ? { ...this._data, needsPick: false } : null;
+            Platform.showToast(
+              `街坊 1.5 倍包圆 ${res.soldCount} 格余菜，入账 ${res.gained} 金！`,
+              'success',
+            );
+            this._isOpen = false;
+            this.visible = false;
+            this._sell.clear();
+            this._stopPops();
+            this._scroller.disable();
+            RunManager.clear();
+            SceneManager.switchTo('kitchen');
+          });
+        });
+      }
+      shell.addChild(vipBtn);
+
+      const ok = makeSlicedButton({
+        label: ready ? '确认卖选中' : `再卖 ${need - picked} 格`,
+        width: okW,
+        height: btnH,
+        path: BTN,
+        fontSize: 18,
+        silent: true,
+        onReady: this._schedulePickRelayout,
+      });
+      ok.alpha = ready ? 1 : 0.55;
+      ok.position.set(startX + vipW + gap, btnY);
+      ok.on('pointertap', () => this._confirm());
+      bindUiClick(ok);
+      shell.addChild(ok);
+    } else {
+      const btnW = Math.min(240, cw * 0.62);
+      const ok = makeSlicedButton({
+        label: ready ? '卖掉选中的' : `再卖 ${need - picked} 格`,
+        width: btnW,
+        height: btnH,
+        path: BTN,
+        silent: true,
+        onReady: this._schedulePickRelayout,
+      });
+      ok.alpha = ready ? 1 : 0.55;
+      ok.position.set(midX - btnW / 2, btnY);
+      ok.on('pointertap', () => this._confirm());
+      bindUiClick(ok);
+      shell.addChild(ok);
+    }
   }
 
   private _fridgeBox(screenW: number, screenH: number): { x: number; y: number; w: number; h: number } {
@@ -625,23 +702,21 @@ export class ResultPanel extends PIXI.Container {
     const on = this._sell.has(it.uid);
     const root = new PIXI.Container();
     const bg = new PIXI.Graphics();
-    bg.beginFill(on ? 0xF3D2B4 : PAPER, 0.96);
-    bg.drawRoundedRect(x, y, size, size, 12);
-    bg.endFill();
-    drawRarityFrame(bg, x + 2, y + 2, size - 4, size - 4, fridgeSlotRarity(it), { radius: 12 });
-    if (overflow && !on) {
-      bg.lineStyle(3, TERRACOTTA, 0.92);
-      bg.drawRoundedRect(x + 1, y + 1, size - 2, size - 2, 12);
-    }
+    drawItemSlotBox(bg, x, y, size, size, {
+      radius: 10,
+      rarity: fridgeSlotRarity(it),
+      dimmed: on,
+      selected: overflow && !on,
+    });
     root.addChild(bg);
 
     if (fridgeKind(it) === 'dish') {
       const tex = dishTexture(it.defId);
       if (isTextureReady(tex)) {
         const icon = new PIXI.Sprite(tex);
-        fitSpriteInBox(icon, size - 12, size - 12);
+        fitSpriteInBox(icon, size - 14, size - 14);
         icon.anchor.set(0.5);
-        icon.position.set(x + size / 2, y + size / 2);
+        icon.position.set(x + size / 2, y + size / 2 - 1);
         icon.eventMode = 'none';
         if (on) icon.alpha = 0.42;
         root.addChild(icon);
@@ -651,9 +726,9 @@ export class ResultPanel extends PIXI.Container {
       const tex = itemLookTexture(it.defId, look);
       if (isTextureReady(tex)) {
         const icon = new PIXI.Sprite(tex);
-        fitSpriteInBox(icon, size - 12, size - 12);
+        fitSpriteInBox(icon, size - 14, size - 14);
         icon.anchor.set(0.5);
-        icon.position.set(x + size / 2, y + size / 2);
+        icon.position.set(x + size / 2, y + size / 2 - 1);
         icon.eventMode = 'none';
         if (on) icon.alpha = 0.42;
         root.addChild(icon);
@@ -662,10 +737,9 @@ export class ResultPanel extends PIXI.Container {
 
     const qty = fridgeItemQty(it);
     if (qty > 1 && !on) {
-      const n = makeQtyMark(qty, 17);
-      n.anchor.set(1, 1);
-      n.position.set(x + size - 4, y + size - 2);
-      root.addChild(n);
+      const badge = makeSlotBadge(`${qty}`, 'olive', 11);
+      badge.node.position.set(x + size - badge.w - 2, y + size - badge.h - 2);
+      root.addChild(badge.node);
     }
     if (overflow && !on) {
       const mark = makeCornerMark('超', 15, TERRACOTTA);

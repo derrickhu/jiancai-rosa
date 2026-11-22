@@ -1,3 +1,4 @@
+import { dexActiveBonuses } from './dex';
 import { MARKETS } from './destinations';
 import { GOD_PICK, ITEMS, PICKLE_ITEM_IDS, getItem, itemArea, marketFoodIds } from './items';
 import {
@@ -245,6 +246,90 @@ export function formatDurationLabel(ms: number): string {
   return `${mins}分钟`;
 }
 
+export type PickleTier = 0 | 1 | 2;
+
+export interface PickleTierDef {
+  tier: PickleTier;
+  name: string;
+  cost: number;
+  cookNeed: number;
+  durationMul: number;
+  extraYieldChance: number;
+  desc: string;
+}
+
+export const PICKLE_TIER_DEFS: readonly PickleTierDef[] = [
+  { tier: 0, name: '粗陶老坛', cost: 0, cookNeed: 2, durationMul: 1, extraYieldChance: 0, desc: '朴拙透气的粗陶老坛' },
+  { tier: 1, name: '青釉双耳坛', cost: 680, cookNeed: 8, durationMul: 0.92, extraYieldChance: 0, desc: '发酵耗时 -8% · 青瓷锁鲜更醇厚' },
+  { tier: 2, name: '青花御瓷坛', cost: 2600, cookNeed: 14, durationMul: 0.84, extraYieldChance: 0.30, desc: '发酵耗时 -16% · 30% 多出 1 份' },
+];
+
+export function pickleTier(save: Pick<KitchenSave, 'pickleTier'>): PickleTier {
+  return save.pickleTier === 2 ? 2 : save.pickleTier === 1 ? 1 : 0;
+}
+
+export function pickleEffectiveDurationMs(
+  save: Pick<KitchenSave, 'pickleTier' | 'dexStampsClaimed'>,
+  baseDurationMs: number,
+): number {
+  const tierDef = PICKLE_TIER_DEFS[pickleTier(save)];
+  const stampMul = dexActiveBonuses(save).pickleDurationMul;
+  return Math.max(60 * 1000, Math.round(baseDurationMs * tierDef.durationMul * stampMul));
+}
+
+export type PropUpgradeState =
+  | { status: 'max'; curName: string }
+  | { status: 'ready'; cost: number; nextName: string; nextDesc: string; cookNeed: number }
+  | { status: 'blocked'; cost: number; nextName: string; nextDesc: string; cookNeed: number; error: string };
+
+export function pickleUpgradeState(save: KitchenSave): PropUpgradeState {
+  const cur = pickleTier(save);
+  if (cur >= 2) return { status: 'max', curName: PICKLE_TIER_DEFS[2].name };
+  const next = PICKLE_TIER_DEFS[(cur + 1) as PickleTier];
+  if (cookLevel(save) < next.cookNeed) {
+    return {
+      status: 'blocked',
+      cost: next.cost,
+      nextName: next.name,
+      nextDesc: next.desc,
+      cookNeed: next.cookNeed,
+      error: `厨艺 ${next.cookNeed} 级解锁「${next.name}」`,
+    };
+  }
+  if (save.money < next.cost) {
+    return {
+      status: 'blocked',
+      cost: next.cost,
+      nextName: next.name,
+      nextDesc: next.desc,
+      cookNeed: next.cookNeed,
+      error: `差 ${next.cost - save.money} 金币`,
+    };
+  }
+  return {
+    status: 'ready',
+    cost: next.cost,
+    nextName: next.name,
+    nextDesc: next.desc,
+    cookNeed: next.cookNeed,
+  };
+}
+
+export function buyPickleTierUpgrade(save: KitchenSave): { save: KitchenSave; nextName?: string; error?: string } {
+  const st = pickleUpgradeState(save);
+  if (st.status === 'max') return { save, error: '老坛已经是最高品阶啦' };
+  if (st.status === 'blocked') return { save, error: st.error };
+  const nextTier = (pickleTier(save) + 1) as PickleTier;
+  return {
+    save: {
+      ...save,
+      money: save.money - st.cost,
+      pickleTier: nextTier,
+    },
+    nextName: st.nextName,
+  };
+}
+
 export function buySecondPickleJar(save: KitchenSave): { save: KitchenSave; error?: string } {
   if (!pickleUnlocked(save)) {
     return { save, error: `厨艺 ${PICKLE_UNLOCK_LEVEL} 级开启老坛腌制坊` };
@@ -303,13 +388,17 @@ export function startPickle(
       .join('、');
     return { save, error: `冰箱里还差：${lack || '鲜菜原料'}` };
   }
+  const effDuration = pickleEffectiveDurationMs(save, formula.durationMs);
+  const extraChance = PICKLE_TIER_DEFS[pickleTier(save)].extraYieldChance;
+  const roll = mulberry32((now ^ 0x51C1E5) >>> 0)();
+  const bonusQty = extraChance > 0 && roll < extraChance ? 1 : 0;
   const nextJars = migratePickleJars(save.pickleJars);
   nextJars[target.index] = {
     formulaId: formula.id,
     startedAt: now,
-    readyAt: now + formula.durationMs,
+    readyAt: now + effDuration,
     boosted: false,
-    bonusQty: 0,
+    bonusQty,
   };
   return {
     save: {
@@ -679,6 +768,86 @@ export function catFeedOptions(save: KitchenSave): CatFeedOption[] {
   });
 }
 
+export type CatBedTier = 0 | 1 | 2;
+
+export interface CatBedTierDef {
+  tier: CatBedTier;
+  name: string;
+  cost: number;
+  cookNeed: number;
+  durationMul: number;
+  epicWeightMul: number;
+  ticketBonus: number;
+  desc: string;
+}
+
+export const CAT_BED_TIER_DEFS: readonly CatBedTierDef[] = [
+  { tier: 0, name: '蒲草软垫', cost: 0, cookNeed: 2, durationMul: 1, epicWeightMul: 1, ticketBonus: 0, desc: '暖烘烘的蒲草圆垫' },
+  { tier: 1, name: '柿红碎花棉窝', cost: 520, cookNeed: 7, durationMul: 0.92, epicWeightMul: 1.3, ticketBonus: 0.04, desc: '巡街耗时 -8% · 上品好货率提升' },
+  { tier: 2, name: '花梨雕花猫榻', cost: 2200, cookNeed: 13, durationMul: 0.84, epicWeightMul: 1.65, ticketBonus: 0.08, desc: '巡街耗时 -16% · 上品与菜谱券率大幅提升' },
+];
+
+export function catBedTier(save: Pick<KitchenSave, 'catBedTier'>): CatBedTier {
+  return save.catBedTier === 2 ? 2 : save.catBedTier === 1 ? 1 : 0;
+}
+
+export function catEffectiveOutingMinutes(
+  save: Pick<KitchenSave, 'catBedTier' | 'dexStampsClaimed'>,
+  baseMinutes: number,
+): number {
+  const bedDef = CAT_BED_TIER_DEFS[catBedTier(save)];
+  const stampMul = dexActiveBonuses(save).catDurationMul;
+  return Math.max(5, Math.round(baseMinutes * bedDef.durationMul * stampMul));
+}
+
+export function catBedUpgradeState(save: KitchenSave): PropUpgradeState {
+  const cur = catBedTier(save);
+  if (cur >= 2) return { status: 'max', curName: CAT_BED_TIER_DEFS[2].name };
+  const next = CAT_BED_TIER_DEFS[(cur + 1) as CatBedTier];
+  if (cookLevel(save) < next.cookNeed) {
+    return {
+      status: 'blocked',
+      cost: next.cost,
+      nextName: next.name,
+      nextDesc: next.desc,
+      cookNeed: next.cookNeed,
+      error: `厨艺 ${next.cookNeed} 级解锁「${next.name}」`,
+    };
+  }
+  if (save.money < next.cost) {
+    return {
+      status: 'blocked',
+      cost: next.cost,
+      nextName: next.name,
+      nextDesc: next.desc,
+      cookNeed: next.cookNeed,
+      error: `差 ${next.cost - save.money} 金币`,
+    };
+  }
+  return {
+    status: 'ready',
+    cost: next.cost,
+    nextName: next.name,
+    nextDesc: next.desc,
+    cookNeed: next.cookNeed,
+  };
+}
+
+export function buyCatBedTierUpgrade(save: KitchenSave): { save: KitchenSave; nextName?: string; error?: string } {
+  const st = catBedUpgradeState(save);
+  if (st.status === 'max') return { save, error: '阿橘的小窝已经是最高品阶啦' };
+  if (st.status === 'blocked') return { save, error: st.error };
+  const nextTier = (catBedTier(save) + 1) as CatBedTier;
+  return {
+    save: {
+      ...save,
+      money: save.money - st.cost,
+      catBedTier: nextTier,
+    },
+    nextName: st.nextName,
+  };
+}
+
 export function adoptStrayCat(save: KitchenSave): { save: KitchenSave; error?: string } {
   if (!catUnlocked(save)) {
     return { save, error: `厨艺 ${CAT_UNLOCK_LEVEL} 级才能收留小橘猫` };
@@ -695,6 +864,7 @@ export function adoptStrayCat(save: KitchenSave): { save: KitchenSave; error?: s
 
 function catGiftPool(save: KitchenSave, deluxe: boolean): Array<[string, number]> {
   const lv = cookLevel(save);
+  const bedDef = CAT_BED_TIER_DEFS[catBedTier(save)];
   const seen = new Set([...save.dexSeen, ...save.dexInspected]);
   // Collect foods from unlocked markets + the very next locked market for delightful surprise!
   const sortedMarkets = [...MARKETS].sort((a, b) => a.unlockLevel - b.unlockLevel);
@@ -715,7 +885,7 @@ function catGiftPool(save: KitchenSave, deluxe: boolean): Array<[string, number]
     const def = getItem(id);
     const r = rarityRank(def.rarity);
     if (deluxe && r === 0) continue; // Deluxe fish can guarantees rare/epic/legendary foods!
-    let w = r === 0 ? 1.5 : r === 1 ? 6 : r === 2 ? 4 : 1.5;
+    let w = r === 0 ? 1.5 : r === 1 ? 6 : r === 2 ? 4 * bedDef.epicWeightMul : 1.5 * bedDef.epicWeightMul;
     if (!seen.has(id)) w *= 1.8;
     weighted.push([id, w]);
   }
@@ -735,6 +905,7 @@ function rollCatGiftBundle(
   rng: Rng,
   opts: { favFood?: boolean; deluxe?: boolean },
 ): CatGiftBundle {
+  const bedDef = CAT_BED_TIER_DEFS[catBedTier(save)];
   const pool = catGiftPool(save, !!opts.deluxe);
   const picksCount = opts.deluxe ? 3 : 2;
   const foodMap = new Map<string, number>();
@@ -746,7 +917,7 @@ function rollCatGiftBundle(
   const goldLo = opts.deluxe ? 14 : bond.goldMin + (opts.favFood ? 2 : 0);
   const goldHi = opts.deluxe ? 22 : bond.goldMax + (opts.favFood ? 3 : 0);
   const gold = goldLo + Math.floor(rng() * Math.max(1, goldHi - goldLo + 1));
-  const ticketRate = opts.deluxe ? Math.max(0.35, bond.ticketChance + 0.12) : bond.ticketChance + (opts.favFood ? 0.04 : 0);
+  const ticketRate = (opts.deluxe ? Math.max(0.35, bond.ticketChance + 0.12) : bond.ticketChance + (opts.favFood ? 0.04 : 0)) + bedDef.ticketBonus;
   const tickets = rng() < ticketRate ? 1 : 0;
   const notes = opts.deluxe
     ? [
@@ -795,7 +966,8 @@ export function feedCatFromFridge(
   const curCat = migrateStrayCat(save.strayCat);
   const nextBondXp = curCat.bondXp + bondGain;
   const nextBond = catBondView(nextBondXp);
-  const durationMs = nextBond.outingMinutes * 60 * 1000;
+  const effMinutes = catEffectiveOutingMinutes(save, nextBond.outingMinutes);
+  const durationMs = effMinutes * 60 * 1000;
   const rng = mulberry32((now ^ (nextBondXp * 0x9E3779B1)) >>> 0);
   const gift = rollCatGiftBundle(save, nextBond, rng, { favFood: fav, deluxe: false });
 
@@ -813,7 +985,7 @@ export function feedCatFromFridge(
       },
     },
     bondGain,
-    outingMinutes: nextBond.outingMinutes,
+    outingMinutes: effMinutes,
   };
 }
 

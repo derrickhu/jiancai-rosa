@@ -7,7 +7,7 @@ import { EV } from '@/config/events';
 import { KitchenManager } from '@/managers/KitchenManager';
 import { recipeById, recipeEatLabel } from '@/sim';
 import { FONT, fillRect, makeLabel, makeSlicedButton } from '@/utils/ui';
-import { dishTexture, fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from '@/utils/assets';
+import { dishTexture, fitSpriteInBox, gameTexture, isTextureReady, resolveDishAssetPath, whenTextureReady } from '@/utils/assets';
 
 const PAPER = 'subpkg_kitchen/ui_recipe_paper.png';
 const TITLE_FONT = 'Songti SC, STSong, PingFang SC, serif';
@@ -64,7 +64,7 @@ export class RecipeUnlockPanel extends PIXI.Container {
     whenTextureReady(PAPER, () => {
       if (this._isOpen && KitchenManager.peekRecipeUnlock() === id) this.relayout();
     });
-    const dishPath = `subpkg_images/dish_${recipe.id}.png`;
+    const dishPath = resolveDishAssetPath(recipe.id);
     whenTextureReady(dishPath, () => {
       if (this._isOpen && KitchenManager.peekRecipeUnlock() === id) this.relayout();
     });
@@ -146,14 +146,14 @@ export class RecipeUnlockPanel extends PIXI.Container {
     const more = KitchenManager.recipeUnlockLeft() > 1;
     const btn = makeSlicedButton({
       label: more ? '下一张' : '收下',
-      width: 200,
-      height: 52,
-      skin: 'terracotta',
+      width: 212,
+      height: 54,
+      skin: 'olive',
       onReady: () => {
         if (this._isOpen && KitchenManager.peekRecipeUnlock() === id) this.relayout();
       },
     });
-    btn.position.set((w - 200) / 2, paper.y + ph + 16);
+    btn.position.set((w - 212) / 2, paper.y + ph + 16);
     btn.on('pointertap', (e) => {
       e.stopPropagation();
       this._advance();

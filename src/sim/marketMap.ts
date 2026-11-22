@@ -110,9 +110,10 @@ export function cardName(node: MapNode, revealed: boolean, marketId?: MarketId):
 }
 
 export function cardHint(node: MapNode, revealed: boolean): string {
+  const enc = nodeEncounter(node);
+  if (enc.type === 'mystery_sack') return '免挑1袋 · 藏稀有鲜货';
   if (!revealed && isMysteryCard(node.kind)) return '走过才知道';
   if (node.kind === 'empty' && !node.next.length) return '没货，这条到头了';
-  const enc = nodeEncounter(node);
   if (enc.type === 'gate') return `要有${bagItemName(enc.need)}`;
   if (node.kind === 'stall' || node.kind === 'paystall') return CARD_HINT[node.kind];
   return CARD_HINT[node.kind];
@@ -136,6 +137,7 @@ export function buildMarketMap(marketId: MarketId, seed: number, opts?: {
   allowRecipe?: boolean;
   forceRecipe?: boolean;
   stallBias?: StallId;
+  mysterySackCount?: number;
 }): MarketMap {
   const plan = MARKET_PLAN[marketId];
   const rng = mulberry32(seed);
@@ -225,6 +227,7 @@ export function buildMarketMap(marketId: MarketId, seed: number, opts?: {
   };
   applyMarketBeats(marketId, nodes, layers, scenes, rng);
   placeVisitRecipe(marketId, nodes, layers, rng, opts?.allowRecipe !== false, !!opts?.forceRecipe);
+  placeMysterySacks(nodes, layers, rng, Math.max(0, Math.floor(opts?.mysterySackCount ?? 0)));
 
   return { marketId, seed, nodes, layers, scenes };
 }
@@ -363,5 +366,34 @@ function placeVisitRecipe(
     templateId: undefined,
     encounter: { type: 'recipe' },
   };
+}
+
+/** 在中后段路线放置 1~2 个明牌「压箱尾货篓」奇遇点，替换普通白捡或空摊卡。 */
+function placeMysterySacks(
+  nodes: Record<string, MapNode>,
+  layers: string[][],
+  rng: Rng,
+  wantCount: number,
+): void {
+  if (wantCount <= 0) return;
+  const candidates = layers.flatMap((ids, layer) => (
+    layer < 1 ? [] : ids.filter((id) => {
+      const n = nodes[id];
+      return (!n.sceneId || n.sceneId === 'main')
+        && (n.kind === 'freebie' || n.kind === 'empty')
+        && n.encounter?.type !== 'recipe';
+    })
+  ));
+  if (!candidates.length) return;
+  const picked = rngShuffle(rng, candidates).slice(0, wantCount);
+  for (const id of picked) {
+    const old = nodes[id];
+    nodes[id] = {
+      ...old,
+      title: '压箱尾货篓',
+      cardArt: 'subpkg_kitchen/market_mystery_sack.png',
+      encounter: { type: 'mystery_sack' },
+    };
+  }
 }
 

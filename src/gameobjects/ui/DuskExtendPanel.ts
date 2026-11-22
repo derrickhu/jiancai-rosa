@@ -224,8 +224,7 @@ export class DuskExtendPanel extends PIXI.Container {
       label: `借手电 +${DUSK_EXTEND_STEPS}步`,
       width: adW,
       height: btnH,
-      skin: 'terracotta',
-      textColor: PAPER,
+      skin: 'gold',
       badge: '限1次',
       onReady: this._scheduleRelayout,
     });

@@ -1,3 +1,4 @@
+import { dexActiveBonuses } from './dex';
 import { recipeById, RECIPES, type RecipeId } from './recipes';
 import type { StallId } from './items';
 
@@ -665,14 +666,20 @@ export function clearOutingBuff<T extends { outingBuffs?: OutingBuff[]; outingBu
   return consumeOutingBuffs(save);
 }
 
-export function outingRunMods<T extends { outingBuffs?: OutingBuff[]; outingBuff?: OutingBuff }>(
+export function outingRunMods<T extends {
+  outingBuffs?: OutingBuff[];
+  outingBuff?: OutingBuff;
+  dexStampsClaimed?: readonly string[];
+}>(
   save: T,
+  roll01 = Math.random(),
 ): OutingRunMods {
   const kinds = liveOutingBuffs(save).map((buff) => buff.kind);
+  const stampBonus = dexActiveBonuses(save);
   let extraSteps = 0;
-  let luckRare = 0;
-  let luckEpic = 0;
-  let feeMul = 1;
+  let luckRare = stampBonus.luckRare;
+  let luckEpic = stampBonus.luckEpic;
+  let feeMul = stampBonus.feeMul;
   let stallBias: OutingRunMods['stallBias'];
   let extraDryCells = 0;
   let extraWetCells = 0;
@@ -687,8 +694,8 @@ export function outingRunMods<T extends { outingBuffs?: OutingBuff[]; outingBuff
       luckEpic += 0.05;
     }
     if (kind === 'fee_free') feeMul = 0;
-    else if (kind === 'fee_half') feeMul = Math.min(feeMul, 0.5);
-    else if (kind === 'fee_80') feeMul = Math.min(feeMul, FEE_80_MUL);
+    else if (kind === 'fee_half') feeMul = Math.min(feeMul, 0.5 * stampBonus.feeMul);
+    else if (kind === 'fee_80') feeMul = Math.min(feeMul, FEE_80_MUL * stampBonus.feeMul);
     if (kind === 'stall_leaf') stallBias = 'leaf';
     if (kind === 'stall_fish') stallBias = 'fish';
     if (kind === 'stall_meat') stallBias = 'meat';
@@ -696,6 +703,9 @@ export function outingRunMods<T extends { outingBuffs?: OutingBuff[]; outingBuff
     if (kind === 'bag_wet_1') extraWetCells += 1;
     if (kind === 'bag_dry_row') extraDryRows += 1;
     if (kind === 'bag_wet_row') extraWetRows += 1;
+  }
+  if (stampBonus.extraStepChance > 0 && roll01 < stampBonus.extraStepChance) {
+    extraSteps += 1;
   }
   return {
     extraSteps,

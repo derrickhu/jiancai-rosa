@@ -1,9 +1,9 @@
-import { FURN_IDS, furnLevel, houseLevel, houseRoomCandidates, hudBuffPaths, type KitchenSave } from '@/sim';
-import { HUD_ICON, P2_ART } from '@/utils/ui';
+import { FURN_IDS, catBedTier, furnLevel, houseLevel, houseRoomCandidates, hudBuffPaths, pickleTier, type KitchenSave } from '@/sim';
+import { HUD_ICON, P2_ART, UI_BTN, UI_KIT } from '@/utils/ui';
 import { OUTING_CURTAIN } from '@/utils/outingAssets';
 import { BOOT_BG, BOOT_TITLE, BOOT_FISH } from '@/scenes/LoadingScene';
 
-/** 厨房首屏立刻看见的图：房间、家具、顶栏、教程角色。 */
+/** 厨房首屏立刻看见的图：房间、家具、顶栏、教程角色、通用手工 UI 底件。 */
 export function kitchenBootPaths(save: KitchenSave): string[] {
   const house = houseLevel(save);
   const paths = [
@@ -24,6 +24,13 @@ export function kitchenBootPaths(save: KitchenSave): string[] {
     HUD_ICON.fridge,
     HUD_ICON.basket,
     ...hudBuffPaths(),
+    UI_KIT.headerRibbon,
+    UI_KIT.closeRound,
+    UI_BTN.terracotta,
+    UI_BTN.cream,
+    UI_BTN.wood,
+    UI_BTN.olive,
+    UI_BTN.gold,
     'subpkg_kitchen/ui_kitchen_slip.png',
     'subpkg_kitchen/ui_recipe_paper.png',
     'subpkg_kitchen/ui_cook_level_title.png',
@@ -34,11 +41,11 @@ export function kitchenBootPaths(save: KitchenSave): string[] {
     'subpkg_images/ui_menu_ticket.png',
     'subpkg_kitchen/tutorial_hand.png',
     'subpkg_kitchen/tutorial_cabbage.png',
-    P2_ART.pickleIdle,
-    P2_ART.pickleReady,
-    P2_ART.catIdle,
-    P2_ART.catAway,
-    P2_ART.catGift,
+    P2_ART.pickleTiers[pickleTier(save)].idle,
+    P2_ART.pickleTiers[pickleTier(save)].ready,
+    P2_ART.catTiers[catBedTier(save)].idle,
+    P2_ART.catTiers[catBedTier(save)].away,
+    P2_ART.catTiers[catBedTier(save)].gift,
     P2_ART.catCan,
     OUTING_CURTAIN,
   ];

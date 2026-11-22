@@ -3,23 +3,23 @@ import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { Ease, TweenManager } from '@/core/TweenManager';
-import { fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from '@/utils/assets';
-import { fillRect, makeLabel, makeSlicedButton } from '@/utils/ui';
+import { fitSpriteInBox, gameTexture, isTextureReady, watchTextures, whenTextureReady } from '@/utils/assets';
+import {
+  UI_KIT,
+  UI_PALETTE,
+  drawRecessedWell,
+  fillRect,
+  makeArtisanShell,
+  makeLabel,
+  makeSlicedButton,
+} from '@/utils/ui';
 
 /**
- * 通用确认 / 提示框。
- * 木框奶油纸，和街坊点菜、冰箱同一套。系统 showModal 不要再进游戏流程。
- *
- * 标题宋体居中，正文灰棕换行，主按钮陶土、次按钮木纹并排。
- * 点暗幕等于取消。
+ * 通用确认 / 提示框：统一手作胡桃木横匾 + 暖宣纸内芯 + 立体切片按钮。
  */
-const TITLE_FONT = 'Songti SC, STSong, PingFang SC, serif';
-const INK = 0x2A2018;
-const MUTED = 0x8A6A40;
-const CREAM = 0xF6EDE0;
-const WALNUT = 0x8B5A2B;
-const LINE = 0xC4A574;
-const TAP_LOCK_MS = 280;
+const INK = UI_PALETTE.ink;
+const MUTED = UI_PALETTE.muted;
+const TAP_LOCK_MS = 260;
 const Z = 90;
 
 export interface PromptOpts {
@@ -78,20 +78,24 @@ class PromptPanelClass extends PIXI.Container {
     const opts = this._opts;
     if (!this._isOpen || !opts) return;
 
+    watchTextures([UI_KIT.headerRibbon, UI_KIT.closeRound, UI_KIT.btnOlive], () => {
+      if (this._isOpen) this.relayout();
+    });
+
     const w = Game.designWidth;
     const h = Game.logicHeight;
     this.hitArea = new PIXI.Rectangle(0, 0, w, h);
 
     const dim = new PIXI.Graphics();
-    fillRect(dim, 0, 0, w, h, 0x1A120C);
-    dim.alpha = 0.42;
+    fillRect(dim, 0, 0, w, h, 0x160E08);
+    dim.alpha = 0.54;
     dim.eventMode = 'static';
     dim.on('pointertap', () => this._pick(false));
     this._root.addChild(dim);
 
-    const cardW = Math.min(520, w - 64);
-    const pad = 40;
-    const wrap = cardW - pad * 2;
+    const cardW = Math.min(540, w - 56);
+    const pad = 34;
+    const wrap = cardW - pad * 2 - 24;
     const iconPath = opts.icon ?? '';
     if (iconPath) {
       whenTextureReady(iconPath, () => {
@@ -99,89 +103,70 @@ class PromptPanelClass extends PIXI.Container {
       });
     }
 
-    const title = new PIXI.Text(opts.title, {
-      fontFamily: TITLE_FONT,
-      fontSize: 32,
-      fill: INK,
-      fontWeight: '700',
-      letterSpacing: 1,
-      stroke: '#FFF6E8',
-      strokeThickness: 5,
+    const body = makeLabel(opts.content, 21, INK, {
+      fontWeight: '600',
       align: 'center',
       wordWrap: true,
       breakWords: true,
       wordWrapWidth: wrap,
-    });
-    title.anchor.set(0.5, 0);
-    title.eventMode = 'none';
-
-    const body = makeLabel(opts.content, 22, MUTED, {
-      fontWeight: '500',
-      align: 'center',
-      wordWrap: true,
-      breakWords: true,
-      wordWrapWidth: wrap,
-      lineHeight: 34,
+      lineHeight: 33,
     });
     body.anchor.set(0.5, 0);
 
-    const iconH = iconPath ? 72 : 0;
-    const gap = 16;
-    const btnH = 56;
-    const top = 32;
-    const mid = (iconH ? iconH + 18 : 0) + title.height + gap + body.height;
-    const cardH = top + mid + 28 + btnH + 32;
+    const iconH = iconPath ? 74 : 0;
+    const btnH = 54;
+    const contentTop = 64;
+    const wellPadY = 18;
+    const wellH = (iconH ? iconH + 12 : 0) + body.height + wellPadY * 2;
+    const cardH = contentTop + wellH + 22 + btnH + 30;
 
-    const card = new PIXI.Container();
-    card.eventMode = 'static';
-    card.hitArea = new PIXI.Rectangle(0, 0, cardW, cardH);
-    card.on('pointertap', (e) => e.stopPropagation());
-    card.position.set(Math.round((w - cardW) / 2), Math.round(Math.max(Game.safeTop + 24, (h - cardH) / 2)));
-    this._root.addChild(card);
-    this._card = card;
+    const { shell } = makeArtisanShell({
+      width: cardW,
+      height: cardH,
+      title: opts.title,
+      closeSilent: true,
+      onReady: () => {
+        if (this._isOpen) this.relayout();
+      },
+      onClose: () => this._pick(false),
+    });
 
-    const shadow = new PIXI.Graphics();
-    shadow.beginFill(0x2A2018, 0.16);
-    shadow.drawRoundedRect(6, 10, cardW, cardH, 28);
-    shadow.endFill();
-    card.addChild(shadow);
+    const cx = Math.round(w / 2);
+    const cy = Math.round(Math.max(Game.safeTop + 36 + cardH / 2, h / 2));
+    shell.pivot.set(cardW / 2, cardH / 2);
+    shell.position.set(cx, cy);
+    this._root.addChild(shell);
+    this._card = shell;
 
-    const panel = new PIXI.Graphics();
-    panel.lineStyle(5, WALNUT, 1);
-    panel.beginFill(CREAM);
-    panel.drawRoundedRect(0, 0, cardW, cardH, 28);
-    panel.endFill();
-    card.addChild(panel);
+    const well = new PIXI.Graphics();
+    drawRecessedWell(well, pad, contentTop, cardW - pad * 2, wellH, { radius: 16 });
+    shell.addChild(well);
 
-    const inner = new PIXI.Graphics();
-    inner.lineStyle(2, LINE, 0.7);
-    inner.beginFill(0xF3E6D0);
-    inner.drawRoundedRect(14, 14, cardW - 28, cardH - 28, 20);
-    inner.endFill();
-    card.addChild(inner);
-
-    let y = top;
+    let y = contentTop + wellPadY;
     if (iconPath) {
+      const halo = new PIXI.Graphics();
+      halo.beginFill(0xFFFBF2, 0.8);
+      halo.drawCircle(cardW / 2, y + 32, 34);
+      halo.endFill();
+      shell.addChild(halo);
+
       const icon = new PIXI.Sprite(gameTexture(iconPath));
-      if (isTextureReady(icon.texture)) fitSpriteInBox(icon, 64, 64);
+      if (isTextureReady(icon.texture)) fitSpriteInBox(icon, 60, 60);
       else {
-        icon.width = 64;
-        icon.height = 64;
+        icon.width = 60;
+        icon.height = 60;
       }
       icon.anchor.set(0.5);
       icon.position.set(cardW / 2, y + 32);
       icon.eventMode = 'none';
-      card.addChild(icon);
-      y += iconH + 18;
+      shell.addChild(icon);
+      y += iconH + 12;
     }
 
-    title.position.set(cardW / 2, y);
-    card.addChild(title);
-    y += title.height + gap;
     body.position.set(cardW / 2, y);
-    card.addChild(body);
+    shell.addChild(body);
 
-    const btnY = cardH - btnH - 32;
+    const btnY = cardH - btnH - 28;
     const showCancel = opts.showCancel !== false;
     if (showCancel) {
       const gapBtn = 16;
@@ -190,7 +175,8 @@ class PromptPanelClass extends PIXI.Container {
         label: opts.cancelText ?? '取消',
         width: btnW,
         height: btnH,
-        skin: 'wood',
+        skin: 'cream',
+        textColor: MUTED,
         silent: true,
         onReady: () => {
           if (this._isOpen) this.relayout();
@@ -201,7 +187,7 @@ class PromptPanelClass extends PIXI.Container {
         e.stopPropagation();
         this._pick(false);
       });
-      card.addChild(cancel);
+      shell.addChild(cancel);
 
       const ok = makeSlicedButton({
         label: opts.confirmText ?? '确定',
@@ -218,16 +204,16 @@ class PromptPanelClass extends PIXI.Container {
         e.stopPropagation();
         this._pick(true);
       });
-      card.addChild(ok);
+      shell.addChild(ok);
       return;
     }
 
-    const okW = 220;
+    const okW = 228;
     const ok = makeSlicedButton({
       label: opts.confirmText ?? '知道了',
       width: okW,
       height: btnH,
-      skin: 'terracotta',
+      skin: 'olive',
       silent: true,
       onReady: () => {
         if (this._isOpen) this.relayout();
@@ -238,7 +224,7 @@ class PromptPanelClass extends PIXI.Container {
       e.stopPropagation();
       this._pick(true);
     });
-    card.addChild(ok);
+    shell.addChild(ok);
   }
 
   private _popIn(): void {

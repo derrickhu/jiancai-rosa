@@ -39,6 +39,7 @@ import {
   fridgeUnpackNeed,
   isRecipeId,
   settleFridgeUnpack,
+  vipSettleFridgeUnpack,
   type FridgeDraft,
   furnLevel,
   grantCookXp,
@@ -61,6 +62,7 @@ import {
   unlockExtraDailyMenuByAd,
   activateChefFireByAd,
   claimDexEntryReward,
+  claimDexStampSet,
   claimAllDexRewards,
   drawRecipeGacha,
   type GachaDrawMode,
@@ -71,7 +73,7 @@ import {
   type KitchenSave,
   type RecipeId,
 } from '@/sim/kitchen';
-import { type DexTab } from '@/sim/dex';
+import { type DexEntryKind, type DexStampSetId } from '@/sim/dex';
 import { consumeOutingBuffs, recipeEatStaminaGain } from '@/sim/dishEffects';
 import type { Rarity } from '@/sim/rarity';
 import {
@@ -99,6 +101,8 @@ import type { Quality } from '@/sim/items';
 import {
   adoptStrayCat,
   boostPickleByAd,
+  buyCatBedTierUpgrade,
+  buyPickleTierUpgrade,
   buySecondPickleJar,
   claimCatGift,
   feedCatFromFridge,
@@ -271,9 +275,14 @@ class KitchenManagerClass {
 
   receiveExtract(items: ExtractedItem[]): { needsPick: boolean } {
     if (fridgeCanFit(this.save, items)) {
+      const hadWild = this.save.recipesFound.includes('wild_fish_soup');
       this.pendingHaul = null;
-      SaveManager.replace(ingestExtract(this.save, items));
+      const next = ingestExtract(this.save, items);
+      SaveManager.replace(next);
       this.emit();
+      if (!hadWild && next.recipesFound.includes('wild_fish_soup')) {
+        this.enqueueRecipeUnlocks(['wild_fish_soup'], 350);
+      }
       return { needsPick: false };
     }
     this.pendingHaul = items;
@@ -294,12 +303,34 @@ class KitchenManagerClass {
 
   commitUnpack(sellUids: string[]): { error?: string; gained: number; kept: number } {
     const haul = this.pendingHaul ?? [];
+    const hadWild = this.save.recipesFound.includes('wild_fish_soup');
     const result = settleFridgeUnpack(this.save, haul, sellUids);
     if (result.error) return { error: result.error, gained: 0, kept: 0 };
     this.pendingHaul = null;
     SaveManager.replace(result.save);
     this.emit();
+    if (!hadWild && result.save.recipesFound.includes('wild_fish_soup')) {
+      this.enqueueRecipeUnlocks(['wild_fish_soup'], 350);
+    }
     return { gained: result.gained, kept: result.kept };
+  }
+
+  vipUnpackOverflow(): { error?: string; gained: number; soldCount: number; kept: number } {
+    const haul = this.pendingHaul ?? [];
+    const hadWild = this.save.recipesFound.includes('wild_fish_soup');
+    const result = vipSettleFridgeUnpack(this.save, haul);
+    if (result.error) {
+      AudioManager.play('ui_deny');
+      Platform.showToast(result.error);
+      return { error: result.error, gained: 0, soldCount: 0, kept: 0 };
+    }
+    this.pendingHaul = null;
+    SaveManager.replace(result.save);
+    this.emit();
+    if (!hadWild && result.save.recipesFound.includes('wild_fish_soup')) {
+      this.enqueueRecipeUnlocks(['wild_fish_soup'], 350);
+    }
+    return { gained: result.gained, soldCount: result.soldCount, kept: result.kept };
   }
 
   fridgeRoom(): number {
@@ -343,18 +374,25 @@ class KitchenManagerClass {
     return canClaimGameClubReward(this.save, postCount);
   }
 
-  claimGameClubDaily(postCount: number): boolean {
-    const { save, coins, error } = claimGameClubReward(this.save, postCount);
-    if (error) {
+  claimGameClubDaily(postCount: number): {
+    ok: boolean;
+    foods: Array<{ defId: string; name: string; qty: number; folded: boolean }>;
+    tickets: number;
+    foldGold: number;
+  } {
+    const res = claimGameClubReward(this.save, postCount);
+    if (res.error) {
       AudioManager.play('ui_deny');
-      Platform.showToast(error);
-      return false;
+      Platform.showToast(res.error);
+      return { ok: false, foods: [], tickets: 0, foldGold: 0 };
     }
-    SaveManager.replace(save);
+    SaveManager.replace(res.save);
     this.emit();
-    AudioManager.play('coin_gain');
-    Platform.showToast(`领取成功 +${coins} 金币`, 'success');
-    return coins === GAME_CLUB_DAILY_COINS;
+    AudioManager.play('recipe_paper');
+    const parts = res.foods.map((f) => (f.folded ? `${f.name}折${res.foldGold}金` : `${f.name}×${f.qty}`));
+    if (res.tickets > 0) parts.push(`菜谱券×${res.tickets}`);
+    Platform.showToast(`领取成功：${parts.join(' · ')}`, 'success');
+    return { ok: true, foods: res.foods, tickets: res.tickets, foldGold: res.foldGold };
   }
 
   trySpend(amount: number, opts?: { silent?: boolean }): boolean {
@@ -474,7 +512,7 @@ class KitchenManagerClass {
     return true;
   }
 
-  claimDexEntry(kind: DexTab, id: string): number {
+  claimDexEntry(kind: DexEntryKind, id: string): number {
     const { save, gold, claimed } = claimDexEntryReward(this.save, kind, id);
     if (!claimed) return 0;
     AudioManager.play('coin_gain');
@@ -483,7 +521,22 @@ class KitchenManagerClass {
     return gold;
   }
 
-  claimAllDex(): { gold: number; tickets: number; entriesCount: number; milestonesCount: number } {
+  claimStampSet(setId: DexStampSetId): { gold: number; tickets: number; claimed: boolean; buffLabel: string } {
+    const res = claimDexStampSet(this.save, setId);
+    if (!res.claimed) return res;
+    AudioManager.play(res.tickets > 0 ? 'recipe_paper' : 'coin_gain');
+    SaveManager.replace(res.save);
+    this.emit();
+    return { gold: res.gold, tickets: res.tickets, claimed: true, buffLabel: res.buffLabel };
+  }
+
+  claimAllDex(): {
+    gold: number;
+    tickets: number;
+    entriesCount: number;
+    milestonesCount: number;
+    stampSetsCount: number;
+  } {
     const res = claimAllDexRewards(this.save);
     if (res.gold <= 0 && res.tickets <= 0) return res;
     AudioManager.play(res.tickets > 0 ? 'recipe_paper' : 'coin_gain');
@@ -494,6 +547,7 @@ class KitchenManagerClass {
       tickets: res.tickets,
       entriesCount: res.entriesCount,
       milestonesCount: res.milestonesCount,
+      stampSetsCount: res.stampSetsCount,
     };
   }
 
@@ -972,6 +1026,34 @@ class KitchenManagerClass {
     SaveManager.replace(save);
     this.emit();
     Platform.showToast('二号老坛搬进屋啦！', 'success');
+    return true;
+  }
+
+  upgradePickleJar(): boolean {
+    const { save, nextName, error } = buyPickleTierUpgrade(this.save);
+    if (error) {
+      AudioManager.play('ui_deny');
+      Platform.showToast(error);
+      return false;
+    }
+    AudioManager.play('upgrade');
+    SaveManager.replace(save);
+    this.emit();
+    Platform.showToast(`老坛焕新为「${nextName ?? '新瓷坛'}」！`, 'success');
+    return true;
+  }
+
+  upgradeCatBed(): boolean {
+    const { save, nextName, error } = buyCatBedTierUpgrade(this.save);
+    if (error) {
+      AudioManager.play('ui_deny');
+      Platform.showToast(error);
+      return false;
+    }
+    AudioManager.play('upgrade');
+    SaveManager.replace(save);
+    this.emit();
+    Platform.showToast(`阿橘搬进了「${nextName ?? '新猫窝'}」！`, 'success');
     return true;
   }
 

@@ -25,3 +25,4 @@ export * from './vehicles';
 export * from './specialMarkets';
 export * from './marketExploration';
 export * from './p2Systems';
+export * from './marketWeather';

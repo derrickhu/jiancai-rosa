@@ -3,6 +3,7 @@
  */
 import {
   DEX_FOOD_CATS,
+  DEX_STAMP_SETS,
   dishGroupCatIcon,
   dishGroups,
   dishesInGroup,
@@ -13,6 +14,7 @@ import {
   recipeUnlockView,
   unlockedRecipes,
   type DexFoodCat,
+  type DexTab,
   type FridgeItem,
   type KitchenSave,
   type NeighborOrder,
@@ -39,7 +41,7 @@ export const PANEL_SHELL = {
     ...P0_ART.spoons,
   ],
   basket: ['subpkg_kitchen/ui_basket_panel.png'],
-  gameClub: ['subpkg_kitchen/ui_gameclub_panel.png', HUD_ICON.coin],
+  gameClub: ['subpkg_kitchen/ui_gameclub_panel.png', HUD_ICON.coin, HUD_ICON.ticket],
 } as const;
 
 export function itemIconPath(id: string, rotten = false): string {
@@ -51,15 +53,25 @@ export function dishIconPath(id: string): string {
   return resolveDishAssetPath(id);
 }
 
-export function dexViewPaths(save: KitchenSave, view: { kind: 'home'; tab: 'food' | 'dish' } | { kind: 'food'; cat: string } | { kind: 'dish'; group: string }): string[] {
+export function dexViewPaths(
+  save: KitchenSave,
+  view: { kind: 'home'; tab: DexTab } | { kind: 'food'; cat: string } | { kind: 'dish'; group: string },
+): string[] {
   const paths: string[] = [...PANEL_SHELL.dex];
   if (view.kind === 'home') {
     if (view.tab === 'food') {
       for (const cat of DEX_FOOD_CATS) paths.push(itemIconPath(cat.icon));
-    } else {
+    } else if (view.tab === 'dish') {
       for (const group of dishGroups()) paths.push(itemIconPath(dishGroupCatIcon(group)));
+    } else {
+      paths.push(HUD_ICON.coin, HUD_ICON.ticket);
+      for (const setDef of DEX_STAMP_SETS) {
+        for (const m of setDef.members) {
+          paths.push(m.kind === 'food' ? itemIconPath(m.id) : dishIconPath(m.id));
+        }
+      }
     }
-    return paths;
+    return [...new Set(paths)];
   }
   if (view.kind === 'food') {
     for (const it of foodsInCat(view.cat as DexFoodCat)) {

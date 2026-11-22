@@ -15,7 +15,7 @@ import {
   type RecipeDef,
 } from '@/sim';
 import { fillRect, makeLabel } from '@/utils/ui';
-import { dishTexture, fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from '@/utils/assets';
+import { dishTexture, fitSpriteInBox, gameTexture, isTextureReady, resolveDishAssetPath, whenTextureReady } from '@/utils/assets';
 import { ensureRecipeUnlockPanel } from './RecipeUnlockPanel';
 
 const BURST = 'subpkg_kitchen/ui_result_burst.png';
@@ -281,7 +281,7 @@ export class CookLevelUpPanel extends PIXI.Container {
   private _recipeCard(recipe: RecipeDef, size: number): PIXI.Container {
     const root = new PIXI.Container();
     const dish = new PIXI.Sprite(dishTexture(recipe.id));
-    const dishPath = `subpkg_images/dish_${recipe.id}.png`;
+    const dishPath = resolveDishAssetPath(recipe.id);
     const bindDish = (): void => {
       if (dish.destroyed) return;
       dish.texture = dishTexture(recipe.id);

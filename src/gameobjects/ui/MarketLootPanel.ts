@@ -13,17 +13,26 @@ import {
   type SpecialMarketId,
 } from '@/sim';
 import { VerticalScroller } from '@/utils/scroll';
-import { fitSpriteInBox, imgPath, isTextureReady, itemTexture, whenTextureReady } from '@/utils/assets';
-import { drawRarityFrame, fillRect, makeLabel } from '@/utils/ui';
+import {
+  fitSpriteInBox,
+  isTextureReady,
+  itemTexture,
+  resolveItemAssetPath,
+  watchTextures,
+  whenTextureReady,
+} from '@/utils/assets';
+import {
+  UI_KIT,
+  drawItemSlotBox,
+  drawSectionTray,
+  fillRect,
+  makeArtisanShell,
+} from '@/utils/ui';
 import { inspectFromItem, makeItemInspectCard, type ItemInspectView } from './ItemInspectCard';
 
-const INK = 0x2A2018;
-const CREAM = 0xF6EDE0;
-const PAPER = 0xFFF8F0;
-const MUTED = 0x8A6A40;
 const COLS = 5;
 const CELL = 88;
-const GAP = 8;
+const GAP = 10;
 
 export class MarketLootPanel extends PIXI.Container {
   _isOpen = false;
@@ -83,74 +92,78 @@ export class MarketLootPanel extends PIXI.Container {
     const specialId = this._specialId;
     if (!this._isOpen || (!marketId && !specialId)) return;
 
+    watchTextures([UI_KIT.headerRibbon, UI_KIT.closeRound], () => {
+      if (this._isOpen) this.relayout();
+    });
+
     const w = Game.designWidth;
     const h = Game.logicHeight;
     this.hitArea = new PIXI.Rectangle(0, 0, w, h);
     const dim = new PIXI.Graphics();
-    fillRect(dim, 0, 0, w, h, 0x000000);
-    dim.alpha = 0.35;
+    fillRect(dim, 0, 0, w, h, 0x160E08);
+    dim.alpha = 0.52;
     dim.eventMode = 'static';
-    dim.on('pointertap', () => this.close());
+    dim.on('pointertap', () => {
+      if (this._inspect) {
+        this._inspect = null;
+        this.relayout();
+        return;
+      }
+      this.close();
+    });
     this._root.addChild(dim);
 
     const rows = specialId
       ? specialLootIds(getSpecialMarket(specialId)).map((id) => ({ id }))
       : marketLootRows(marketId!, KitchenManager.save.level);
     const gridW = COLS * CELL + (COLS - 1) * GAP;
-    const cardW = Math.min(560, w - 56);
-    const innerW = cardW - 48;
+    const cardW = Math.min(584, w - 44);
+    const innerW = cardW - 60;
     const cols = innerW >= gridW ? COLS : Math.max(3, Math.floor((innerW + GAP) / (CELL + GAP)));
     const usedGridW = cols * CELL + (cols - 1) * GAP;
     const lineCount = Math.max(1, Math.ceil(rows.length / cols));
     const gridH = lineCount * CELL + Math.max(0, lineCount - 1) * GAP;
-    const listH = Math.min(gridH, Math.max(CELL * 2 + GAP, h * 0.42));
-    const cardH = 108 + listH + 20;
-    const x = (w - cardW) / 2;
-    const y = Math.round((h - cardH) / 2);
+    const listH = Math.min(gridH + 20, Math.max(CELL * 2 + GAP + 20, Math.round(h * 0.44)));
+    const listTop = 94;
+    const cardH = listTop + listH + 28;
+    const x = Math.round((w - cardW) / 2);
+    const y = Math.round(Math.max(Game.safeTop + 26, (h - cardH) / 2));
 
-    const card = new PIXI.Container();
+    const titleText = specialId ? getSpecialMarket(specialId).name : getMarket(marketId!).name;
+    const subText = specialId ? '专场摊头产出 · 点图标查详情' : '本集市可捡好货 · 点图标查详情';
+
+    const { shell: card } = makeArtisanShell({
+      width: cardW,
+      height: cardH,
+      title: titleText,
+      subtitle: subText,
+      closeSilent: true,
+      onReady: () => {
+        if (this._isOpen) this.relayout();
+      },
+      onClose: () => this.close(),
+    });
     card.position.set(x, y);
-    card.eventMode = 'static';
-    card.hitArea = new PIXI.Rectangle(0, 0, cardW, cardH);
-    card.on('pointertap', (e) => e.stopPropagation());
     this._root.addChild(card);
 
-    const plate = new PIXI.Graphics();
-    plate.lineStyle(4, INK, 1);
-    plate.beginFill(CREAM);
-    plate.drawRoundedRect(0, 0, cardW, cardH, 22);
-    plate.endFill();
-    plate.beginFill(PAPER);
-    plate.drawRoundedRect(12, 12, cardW - 24, cardH - 24, 16);
-    plate.endFill();
-    card.addChild(plate);
+    const well = new PIXI.Graphics();
+    drawSectionTray(well, 22, listTop, cardW - 44, listH, { radius: 14, tone: 'sand' });
+    card.addChild(well);
 
-    const title = makeLabel(
-      specialId ? getSpecialMarket(specialId).name : getMarket(marketId!).name,
-      28,
-      INK,
-      { fontWeight: '700' },
-    );
-    title.position.set(28, 26);
-    card.addChild(title);
-    const hint = makeLabel(specialId ? '这里能收到这些。' : '这摊能翻到这些。', 18, MUTED, { fontWeight: '600' });
-    hint.position.set(28, 62);
-    card.addChild(hint);
-
-    const listTop = 96;
     const list = new PIXI.Container();
-    const gridX = (cardW - usedGridW) / 2;
+    const gridX = Math.round((cardW - usedGridW) / 2);
     rows.forEach((row, i) => {
       const cx = gridX + (i % cols) * (CELL + GAP);
-      const cy = Math.floor(i / cols) * (CELL + GAP);
+      const cy = 10 + Math.floor(i / cols) * (CELL + GAP);
       list.addChild(this._cell(cx, cy, CELL, row.id));
     });
     list.position.set(0, listTop);
     card.addChild(list);
-    const maxScroll = Math.max(0, gridH - listH);
+
+    const maxScroll = Math.max(0, gridH + 20 - listH);
     if (maxScroll > 0) {
       const mask = new PIXI.Graphics();
-      fillRect(mask, 20, listTop, cardW - 40, listH, 0xffffff);
+      fillRect(mask, 24, listTop + 2, cardW - 48, listH - 4, 0xffffff, 12);
       mask.eventMode = 'none';
       card.addChild(mask);
       list.mask = mask;
@@ -159,7 +172,7 @@ export class MarketLootPanel extends PIXI.Container {
       content: list,
       maxScroll,
       baseY: listTop,
-      hit: { x: x + 20, y: y + listTop, w: cardW - 40, h: listH },
+      hit: { x: x + 22, y: y + listTop, w: cardW - 44, h: listH },
     });
 
     if (this._inspect) {
@@ -169,6 +182,7 @@ export class MarketLootPanel extends PIXI.Container {
         actions: false,
         onQty: () => {},
         onClose: () => {
+          AudioManager.play('ui_close');
           this._inspect = null;
           this.relayout();
         },
@@ -183,13 +197,10 @@ export class MarketLootPanel extends PIXI.Container {
     const root = new PIXI.Container();
     const def = getItem(id);
     const bg = new PIXI.Graphics();
-    bg.beginFill(PAPER, 0.96);
-    bg.drawRoundedRect(x, y, size, size, 12);
-    bg.endFill();
-    drawRarityFrame(bg, x + 2, y + 2, size - 4, size - 4, def.rarity, { radius: 12 });
+    drawItemSlotBox(bg, x, y, size, size, { radius: 11, rarity: def.rarity });
     root.addChild(bg);
 
-    const path = imgPath(`${id}.png`);
+    const path = resolveItemAssetPath(id);
     whenTextureReady(path, () => {
       if (this._isOpen) this.relayout();
     });
@@ -209,6 +220,7 @@ export class MarketLootPanel extends PIXI.Container {
     root.on('pointertap', (e) => {
       e.stopPropagation();
       if (this._scroller.moved) return;
+      AudioManager.play('ui_click');
       this._inspect = inspectFromItem(id);
       this.relayout();
     });

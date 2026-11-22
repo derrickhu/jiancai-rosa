@@ -38,6 +38,16 @@ import {
   unlockedIngredients,
   cookLevel,
   GOD_PICK,
+  ITEMS,
+  PICKLE_ITEM_IDS,
+  dailyMarketWeather,
+  getItem,
+  marketFoodIds,
+  MARKETS,
+  rarityRank,
+  rngWeighted,
+  rollMarketItem,
+  stallsForMarket,
   stallPacked,
   talkScript,
   pickTalkFood,
@@ -50,6 +60,7 @@ import {
   type ExtractResult,
   type GatherSpot,
   type MapNode,
+  type MysterySackPrize,
   type PileItem,
   type Quality,
   type Rng,
@@ -60,6 +71,7 @@ import {
   orderIngredientIds,
   outingRunMods,
 } from '@/sim';
+import { SaveManager } from './SaveManager';
 import { KitchenManager } from './KitchenManager';
 import { TutorialManager } from './TutorialManager';
 import { getMarket, type MarketId } from '@/sim';
@@ -75,9 +87,11 @@ export interface RouteOption {
   fee: number;
   /** 不算人情时的标价。用来画「收费变免费」。 */
   listedFee: number;
-  /** 街坊情分把这摊的进场费免了 */
+  /** 街坊情分或天时签把这摊的进场费免了 */
   waived: boolean;
   left: number;
+  /** 本摊位是否已经试过老杆秤稳准星 */
+  steelyardDone?: boolean;
 }
 
 export type OutingLoot = Omit<BasketItem, 'x' | 'y' | 'rot' | 'pinned' | 'dampened' | 'broken'>;
@@ -104,7 +118,13 @@ class RunManagerClass {
     if (!KitchenManager.startRun(getMarket(marketId).staminaCost)) return false;
     const seed = newSeed();
     this._rng = mulberry32((seed ^ 0x5BF03635) >>> 0);
-    const outing = outingRunMods(KitchenManager.save);
+    const inTut = TutorialManager.isActive || TutorialManager.needsOutingSeed();
+    const outing = outingRunMods(KitchenManager.save, this._rng());
+    const weather = inTut ? null : dailyMarketWeather(marketId);
+    const validStallBias = outing.stallBias
+      ?? (weather?.stallBias && stallsForMarket(marketId).includes(weather.stallBias)
+        ? weather.stallBias
+        : undefined);
     this.run = createRun({
       allowGodPick: KitchenManager.allowGodPickToday(),
       marketId,
@@ -115,10 +135,17 @@ class RunManagerClass {
         === MARKET_RECIPE_POOL[marketId].length,
       wanted: this._wanted(),
       boosted: this._boosted(),
-      extraSteps: outing.extraSteps,
-      luck: { rare: outing.luckRare, epic: outing.luckEpic },
+      extraSteps: outing.extraSteps + (weather?.extraSteps ?? 0),
+      luck: {
+        rare: outing.luckRare + (weather?.luckRare ?? 0),
+        epic: outing.luckEpic + (weather?.luckEpic ?? 0),
+      },
       feeMul: outing.feeMul,
-      stallBias: outing.stallBias,
+      stallBias: validStallBias,
+      weatherId: weather?.id,
+      freeFirstPaidStall: !!weather?.freeFirstPaidStall,
+      paystallExtraItems: weather?.paystallExtraItems ?? 0,
+      mysterySackCount: inTut ? 0 : 1 + (weather?.extraMysterySacks ?? 0),
     });
     if (TutorialManager.needsOutingSeed() && this.run) {
       TutorialManager.setAllowedCardId(seedTutorialOuting(this.run));
@@ -193,17 +220,20 @@ class RunManagerClass {
     const node = run.map.nodes[id];
     const fee = nodeFee(run, node);
     const listedFee = nodeFee(run, node, { ignoreFreePass: true });
+    const isSack = nodeEncounter(node).type === 'mystery_sack';
     return {
       node,
       revealed:
-        !isMysteryCard(node.kind)
+        isSack
+        || !isMysteryCard(node.kind)
         || run.peeked.includes(id)
         || KitchenManager.cardSeen(run.marketId, node.kind),
       blocked: cardBlock(run, node, KitchenManager.save.money, KitchenManager.save.level, ahead),
       fee,
       listedFee,
-      waived: !!run.freePass && listedFee > 0 && fee === 0,
+      waived: (!!run.freePass || !!run.weatherFreePaidLeft) && listedFee > 0 && fee === 0,
       left: isRummageNode(node) ? (run.piles[id] ?? []).filter((it) => !it.washed).length : 0,
+      steelyardDone: (run.steelyardDone ?? []).includes(id) || TutorialManager.isActive,
     };
   }
 
@@ -212,30 +242,88 @@ class RunManagerClass {
     return `${this.run.stepsLeft}/${this.run.stepsMax}`;
   }
 
-  enterNode(id: string): void {
+  markSteelyardDone(nodeId: string): void {
     const run = this.run;
-    if (!run || run.ended || run.mode !== 'map' || run.duskPromptPending) return;
+    if (!run) return;
+    const done = run.steelyardDone ?? [];
+    if (done.includes(nodeId)) return;
+    this.run = { ...run, steelyardDone: [...done, nodeId] };
+    this.emit();
+  }
+
+  enterNode(
+    id: string,
+    opts?: { feeOverride?: number; bonusItems?: number; usedStallFavor?: boolean },
+  ): void {
+    const run = this.run;
+    if (!run || run.ended || run.mode !== 'map' || run.duskPromptPending || run.pendingMysterySack) return;
     if (!run.options.includes(id)) return;
     const node = run.map.nodes[id];
-    const block = cardBlock(run, node, KitchenManager.save.money, KitchenManager.save.level);
+    const effectiveMoney = opts?.feeOverride !== undefined ? 999999 : KitchenManager.save.money;
+    const block = cardBlock(run, node, effectiveMoney, KitchenManager.save.level);
     if (block) {
       Platform.showToast(block);
       return;
     }
 
-    const fee = nodeFee(run, node);
+    const listedFee = nodeFee(run, node, { ignoreFreePass: true });
+    const baseFee = nodeFee(run, node);
+    const fee = opts?.feeOverride !== undefined ? Math.max(0, Math.floor(opts.feeOverride)) : baseFee;
     if (fee > 0 && !KitchenManager.trySpend(fee)) return;
     KitchenManager.markCardSeen(run.marketId, node.kind);
 
     const rummage = isRummageNode(node);
-    const favored = rummage && run.freePass;
+    const favored = rummage && run.freePass && opts?.feeOverride === undefined;
+    const usedWeatherFree = rummage
+      && !favored
+      && !!run.weatherFreePaidLeft
+      && listedFee > 0
+      && baseFee === 0
+      && opts?.feeOverride === undefined;
+
+    let nextPiles = run.piles;
+    const bonusCount = Math.max(0, Math.floor(opts?.bonusItems ?? 0));
+    if (rummage && bonusCount > 0) {
+      const extraList: PileItem[] = [];
+      for (let i = 0; i < bonusCount; i++) {
+        const def = rollMarketItem(
+          run.marketId,
+          node.stall ?? 'egg',
+          cookLevel(KitchenManager.save),
+          this._rng,
+          this._wanted(),
+          this._boosted(),
+          { rare: run.luckRare + 0.35, epic: run.luckEpic + 0.25 },
+        );
+        extraList.push({
+          uid: nextUid('p'),
+          defId: def.id,
+          quality: 'fresh',
+          revealed: false,
+          inspected: false,
+          washed: false,
+          drawn: false,
+        });
+      }
+      nextPiles = {
+        ...run.piles,
+        [id]: [...extraList, ...(run.piles[id] ?? [])],
+      };
+    }
+
     let next: RunState = {
       ...run,
+      piles: nextPiles,
       stepsLeft: Math.max(0, run.stepsLeft - node.steps),
       atNodeId: id,
       options: node.next.slice(),
       visited: [...run.visited, id],
       freePass: favored ? false : run.freePass,
+      weatherFreePaidLeft: usedWeatherFree ? false : run.weatherFreePaidLeft,
+      stallFavorUsed: opts?.usedStallFavor ? true : run.stallFavorUsed,
+      steelyardDone: (run.steelyardDone ?? []).includes(id)
+        ? run.steelyardDone
+        : [...(run.steelyardDone ?? []), id],
     };
 
     const result = applyEncounter({
@@ -261,9 +349,21 @@ class RunManagerClass {
         slowNodes: favored ? [...next.slowNodes, id] : next.slowNodes,
         note: next.note || '摊上还剩一堆，翻开就能捡。',
       };
-      if (fee > 0) Platform.showToast(`买下这摊剩货 ${fee} 金币`);
-      else if (favored) Platform.showToast('街坊打过招呼，这摊白翻');
-      else Platform.showToast('街坊情分，这摊剩的给你翻');
+      if (opts?.usedStallFavor) {
+        Platform.showToast('帮摊主收好筐！免单进摊还多塞了 2 件好货', 'success');
+      } else if (bonusCount >= 2 && fee === 0) {
+        Platform.showToast('老杆秤一秤定音！免单进摊 + 摊主多塞 2 件好货', 'success');
+      } else if (bonusCount === 1) {
+        Platform.showToast(`秤杆稳平！半价 ${fee} 金进摊 + 多塞 1 件鲜货`, 'success');
+      } else if (usedWeatherFree) {
+        Platform.showToast('早集刚散，首座收费摊免单白翻！', 'success');
+      } else if (fee > 0) {
+        Platform.showToast(`买下这摊剩货 ${fee} 金币`);
+      } else if (favored) {
+        Platform.showToast('街坊打过招呼，这摊白翻');
+      } else {
+        Platform.showToast('街坊情分，这摊剩的给你翻');
+      }
       this.emit();
       return;
     }
@@ -292,7 +392,23 @@ class RunManagerClass {
       return;
     }
 
-    if (nodeEncounter(node).type === 'freebie') {
+    const encType = nodeEncounter(node).type;
+    if (encType === 'mystery_sack') {
+      const sacks = this._rollMysterySacks(next);
+      this.run = resumeScenes({
+        ...next,
+        pendingMysterySack: {
+          nodeId: id,
+          sacks,
+          pickedIdx: null,
+          sweptByAd: false,
+        },
+      });
+      this.emit();
+      return;
+    }
+
+    if (encType === 'freebie') {
       next = this._takeFreebie(next, node);
     }
 
@@ -301,11 +417,133 @@ class RunManagerClass {
     this.checkDayEnd();
   }
 
-  /** 整层的卡全进不去（常见是钱不够又碰上整层摊位）。得留条路，不然卡死。 */
+  private _rollMysterySacks(state: RunState): [MysterySackPrize, MysterySackPrize, MysterySackPrize] {
+    const lv = cookLevel(KitchenManager.save);
+    const seen = new Set([...KitchenManager.save.dexSeen, ...KitchenManager.save.dexInspected]);
+    const sorted = [...MARKETS].sort((a, b) => a.unlockLevel - b.unlockLevel);
+    const allowed = sorted.filter((m) => m.unlockLevel <= lv + 3);
+    const poolIds = new Set<string>();
+    for (const m of (allowed.length ? allowed : sorted.slice(0, 2))) {
+      for (const id of marketFoodIds(m.id)) {
+        if (id !== GOD_PICK.id) poolIds.add(id);
+      }
+    }
+    poolIds.add('chicken_wing');
+    for (const pid of PICKLE_ITEM_IDS) {
+      if (lv >= 2) poolIds.add(pid);
+    }
+    const weighted: Array<[string, number]> = [];
+    for (const id of poolIds) {
+      if (!ITEMS.some((it) => it.id === id)) continue;
+      const r = rarityRank(getItem(id).rarity);
+      if (r === 0) continue; // 尾货篓只出良品/上品/珍品稀罕货！
+      let w = r === 1 ? 5 : r === 2 ? 7 : 3.5;
+      if (!seen.has(id)) w *= 1.6;
+      weighted.push([id, w]);
+    }
+    const fallback: Array<[string, number]> = [
+      ['shrimp', 6],
+      ['mushroom', 6],
+      ['ribs', 5],
+      ['chicken_wing', 5],
+    ];
+    const pool = weighted.length >= 3 ? weighted : fallback;
+    const chosen: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const sub = pool.filter(([id]) => !chosen.includes(id));
+      const pick = rngWeighted(this._rng, sub.length ? sub : pool);
+      chosen.push(pick);
+    }
+    const sacks: MysterySackPrize[] = chosen.map((defId) => ({
+      kind: 'food' as const,
+      defId,
+      quality: 'fresh' as const,
+    }));
+    // 约 42% 概率让其中一只麻袋藏着 1 张菜谱券，揭开更有惊喜感！
+    if (this._rng() < 0.42) {
+      const slotIdx = Math.floor(this._rng() * 3);
+      sacks[slotIdx] = { kind: 'ticket', qty: 1 };
+    }
+    void state;
+    return [sacks[0], sacks[1], sacks[2]];
+  }
+
+  private _grantSackPrize(prize: MysterySackPrize, marketId: MarketId): { placed: boolean; label: string } {
+    if (prize.kind === 'ticket') {
+      const nextTickets = KitchenManager.save.recipeTickets + prize.qty;
+      SaveManager.replace({ ...KitchenManager.save, recipeTickets: nextTickets });
+      KitchenManager.emit();
+      return { placed: true, label: `菜谱券 ×${prize.qty}` };
+    }
+    KitchenManager.discoverFood(prize.defId, prize.quality, marketId);
+    const draft = freebieToBasketDraft(prize.defId, prize.quality);
+    const placed = tryAutoPlace(this.basket, draft);
+    if (placed) {
+      this.basket = { ...this.basket, items: [...this.basket.items, placed] };
+      return { placed: true, label: getItem(prize.defId).name };
+    }
+    this.pendingLoot = [...this.pendingLoot, draft];
+    return { placed: false, label: `${getItem(prize.defId).name}（暂存手边）` };
+  }
+
+  pickMysterySack(idx: 0 | 1 | 2): { ok: boolean; label: string; isTicket: boolean } {
+    const run = this.run;
+    const ms = run?.pendingMysterySack;
+    if (!run || !ms || ms.pickedIdx !== null) return { ok: false, label: '', isTicket: false };
+    const prize = ms.sacks[idx];
+    const granted = this._grantSackPrize(prize, run.marketId);
+    this.run = {
+      ...run,
+      pendingMysterySack: { ...ms, pickedIdx: idx },
+      note: `从尾货篓里摸出了${granted.label}！`,
+    };
+    this.emit();
+    return { ok: true, label: granted.label, isTicket: prize.kind === 'ticket' };
+  }
+
+  sweepMysterySacksByAd(): { ok: boolean; labels: string[]; tickets: number } {
+    const run = this.run;
+    const ms = run?.pendingMysterySack;
+    if (!run || !ms || ms.pickedIdx === null || ms.sweptByAd || run.sackSweepUsed) {
+      return { ok: false, labels: [], tickets: 0 };
+    }
+    const labels: string[] = [];
+    let tickets = 0;
+    ms.sacks.forEach((prize, i) => {
+      if (i === ms.pickedIdx) return;
+      const g = this._grantSackPrize(prize, run.marketId);
+      labels.push(g.label);
+      if (prize.kind === 'ticket') tickets += prize.qty;
+    });
+    this.run = {
+      ...run,
+      sackSweepUsed: true,
+      pendingMysterySack: { ...ms, sweptByAd: true },
+      note: `搭把手帮收摊，剩下两袋好货全归你啦！`,
+    };
+    this.emit();
+    return { ok: true, labels, tickets };
+  }
+
+  finishMysterySack(): void {
+    const run = this.run;
+    if (!run || !run.pendingMysterySack) return;
+    this.run = { ...run, pendingMysterySack: null };
+    this.emit();
+    this.checkDayEnd();
+  }
+
+  /** 整层的卡全进不去（若还能搏老杆秤减免则不算卡死）。 */
   allBlocked(): boolean {
     const run = this.run;
     if (!run || run.ended || run.mode !== 'map' || !run.options.length) return false;
-    return this.options().every((opt) => !!opt.blocked);
+    return this.options().every((opt) => {
+      if (!opt.blocked) return false;
+      if (!opt.steelyardDone && isRummageNode(opt.node) && opt.fee > 0 && opt.blocked.includes('金币')) {
+        return false;
+      }
+      return true;
+    });
   }
 
   bypass(): void {
@@ -576,6 +814,7 @@ class RunManagerClass {
         const enc = nodeEncounter(node);
         let tag = '';
         if (enc.type === 'recipe' || node.kind === 'recipe') tag = '油纸菜谱';
+        else if (enc.type === 'mystery_sack') tag = '压箱尾货篓';
         else if (enc.type === 'rummage' && enc.specialty) tag = node.title || '特色好货摊';
         else if (enc.type === 'gather') tag = node.title || '野生采集点';
         else if (enc.type === 'branch') tag = node.title || '隐秘支线';

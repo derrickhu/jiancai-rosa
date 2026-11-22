@@ -1,6 +1,6 @@
 import { MARKETS, MARKET_ART, SPECIAL_MARKETS, VEHICLES, getSpecialMarket, hudBuffPaths, specialBootItems, sceneBg, type MarketId, type RunState, type SpecialMarketId } from '@/sim';
 import { CARD_FRAME } from '@/gameobjects/market/MapView';
-import { HUD_ICON, UI_BTN } from '@/utils/ui';
+import { HUD_ICON, MARKET_PROP_ART, UI_BTN } from '@/utils/ui';
 
 /** 出门过场整图。厨房启动时预载，点门不用再等一堆菜图。 */
 export const OUTING_CURTAIN = 'subpkg_images/outing_curtain.jpg';
@@ -62,6 +62,8 @@ export function marketBootPaths(marketId: MarketId, run?: RunState): string[] {
     HUD_ICON.clock,
     HUD_ICON.coin,
     HUD_ICON.basket,
+    MARKET_PROP_ART.mysterySack,
+    MARKET_PROP_ART.steelyardIcon,
     ...RESULT_UI,
   ];
   if (run) {

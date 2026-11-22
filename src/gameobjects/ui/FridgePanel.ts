@@ -16,7 +16,14 @@ import {
   type Rarity,
   type RecipeId,
 } from '@/sim';
-import { bindUiClick, drawRarityFrame, fillRect, makeLabel, makeQtyMark } from '@/utils/ui';
+import {
+  bindUiClick,
+  drawItemSlotBox,
+  drawSectionTray,
+  fillRect,
+  makeLabel,
+  makeSlotBadge,
+} from '@/utils/ui';
 import { VerticalScroller } from '@/utils/scroll';
 import {
   dishTexture,
@@ -191,17 +198,21 @@ export class FridgePanel extends PIXI.Container {
     const tabY = hy + hh - 64;
     shell.addChild(this._tabBtn('食材', 'food', cx, tabY, chipW, foodCount));
     shell.addChild(this._tabBtn('饭菜', 'dish', cx + chipW + gap, tabY, chipW, dishCount));
-    const pad = 8;
+    const pad = 10;
+    const trayBg = new PIXI.Graphics();
+    drawSectionTray(trayBg, cx - 2, cy, cw + 4, ch, { radius: 16, tone: 'taupe' });
+    shell.addChild(trayBg);
+
     const cell = Math.max(48, Math.floor((cw - pad * 2) / cols));
     const gridW = cols * cell;
     const gridX = cx + (cw - gridW) / 2;
     const contentH = Math.ceil(slotCount / cols) * cell;
-    const maxScroll = Math.max(0, contentH - (ch - pad));
+    const maxScroll = Math.max(0, contentH - (ch - pad * 2));
 
     const viewport = new PIXI.Container();
     const mask = new PIXI.Graphics();
     mask.beginFill(0xffffff);
-    mask.drawRoundedRect(cx, cy, cw, ch, 18);
+    mask.drawRoundedRect(cx, cy + 3, cw, ch - 6, 14);
     mask.endFill();
     mask.eventMode = 'none';
     viewport.mask = mask;
@@ -211,9 +222,9 @@ export class FridgePanel extends PIXI.Container {
     const grid = new PIXI.Container();
     viewport.addChild(grid);
     for (let i = 0; i < slotCount; i++) {
-      const x = gridX + (i % cols) * cell;
+      const x = gridX + (i % cols) * cell + 3;
       const y = cy + pad + Math.floor(i / cols) * cell;
-      grid.addChild(this._slot(x, y, cell - 8, items[i]));
+      grid.addChild(this._slot(x, y, cell - 6, items[i]));
     }
 
     this._scroller.attach({
@@ -473,25 +484,26 @@ export class FridgePanel extends PIXI.Container {
   private _slot(x: number, y: number, size: number, it?: FridgeItem): PIXI.Container {
     const root = new PIXI.Container();
     const bg = new PIXI.Graphics();
-    if (!it) bg.lineStyle(2, INK, 0.22);
-    bg.beginFill(it ? PAPER : 0xE8DFD0, it ? 0.96 : 0.42);
-    bg.drawRoundedRect(x, y, size, size, 12);
-    bg.endFill();
-    if (it) {
-      drawRarityFrame(bg, x + 2, y + 2, size - 4, size - 4, fridgeSlotRarity(it), { radius: 12 });
-    }
-    root.addChild(bg);
     if (!it) {
+      drawItemSlotBox(bg, x, y, size, size, { radius: 10, empty: true });
+      root.addChild(bg);
       root.eventMode = 'none';
       return root;
     }
+    const rarity = fridgeSlotRarity(it);
+    drawItemSlotBox(bg, x, y, size, size, {
+      radius: 10,
+      rarity,
+      selected: this._inspectUid === it.uid,
+    });
+    root.addChild(bg);
     if (fridgeKind(it) === 'dish') {
       const tex = dishTexture(it.defId);
       if (isTextureReady(tex)) {
         const icon = new PIXI.Sprite(tex);
-        fitSpriteInBox(icon, size - 12, size - 12);
+        fitSpriteInBox(icon, size - 14, size - 14);
         icon.anchor.set(0.5);
-        icon.position.set(x + size / 2, y + size / 2);
+        icon.position.set(x + size / 2, y + size / 2 - 1);
         icon.eventMode = 'none';
         root.addChild(icon);
       }
@@ -500,19 +512,18 @@ export class FridgePanel extends PIXI.Container {
       const tex = itemLookTexture(it.defId, look);
       if (isTextureReady(tex)) {
         const icon = new PIXI.Sprite(tex);
-        fitSpriteInBox(icon, size - 12, size - 12);
+        fitSpriteInBox(icon, size - 14, size - 14);
         icon.anchor.set(0.5);
-        icon.position.set(x + size / 2, y + size / 2);
+        icon.position.set(x + size / 2, y + size / 2 - 1);
         icon.eventMode = 'none';
         root.addChild(icon);
       }
     }
     const qty = fridgeItemQty(it);
     if (qty > 1) {
-      const n = makeQtyMark(qty, 17);
-      n.anchor.set(1, 1);
-      n.position.set(x + size - 4, y + size - 2);
-      root.addChild(n);
+      const badge = makeSlotBadge(`${qty}`, 'olive', 12);
+      badge.node.position.set(x + size - badge.w - 3, y + size - badge.h - 3);
+      root.addChild(badge.node);
     }
     root.eventMode = 'static';
     root.cursor = 'pointer';

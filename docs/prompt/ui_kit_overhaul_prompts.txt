@@ -1,0 +1,10 @@
+# 《捡菜市集》全游戏 UI 统一手绘木艺风格升级 Prompt 归档
+
+## 1. 雕花胡桃木铜钉标题横匾 (`minigame/subpkg_kitchen/ui_header_ribbon.png`)
+2D hand-painted game UI asset, cozy Chinese everyday life simulation game aesthetic: a wide horizontal carved roasted-walnut wood signboard ribbon plaque for modal headers, featuring scalloped curved decorative end-scrolls, warm wood grain texture, subtle inlaid antique brass inner border line, and two small round brass corner rivets on the left and right ends, crisp dark espresso-brown hand-inked outline (#2A2018), soft top bevel highlight and subtle bottom thickness edge, completely blank center (NO text, NO letters, NO icons), centered on a pure solid flat white background (#FFFFFF), orthographic front UI view.
+
+## 2. 青榄绿 & 琥珀金 3D 胶囊三切片按钮 (`minigame/subpkg_kitchen/ui_btn_olive.png` & `ui_btn_gold.png`)
+2D hand-painted game UI button spritesheet: two horizontal pill-shaped 3D beveled tactile buttons stacked vertically with generous white space between them, matching a cozy Chinese kitchen game style with crisp dark espresso-brown hand-inked outlines (#2A2018), smooth rounded capsule ends, glossy top rim highlight, and darker 3D bottom lip thickness. Top button: warm sage-olive green (#558B4A top face, #3A6332 bottom lip). Bottom button: warm honey-amber gold (#E5A93B top face, #B5791E bottom lip). Completely blank smooth centers for 9-slice scaling (NO text, NO icons, NO symbols), isolated on a pure solid flat white background (#FFFFFF), orthographic front UI view.
+
+## 3. 陶土铜圈圆关闭按钮 (`minigame/subpkg_kitchen/ui_close_round.png`)
+2D hand-painted game UI close button icon: a cute tactile circular close button crafted like a warm terracotta ceramic token set inside a thin antique brass ring, crisp dark espresso-brown hand-inked outline (#2A2018), 3D beveled rim with soft top-left specular highlight and darker bottom thickness, featuring a clean rounded cream-white 'X' mark centered on the terracotta face, cozy Chinese kitchen simulation game aesthetic, isolated on a pure solid flat white background (#FFFFFF), orthographic front UI view.

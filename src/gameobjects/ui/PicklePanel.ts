@@ -9,14 +9,18 @@ import { KitchenManager } from '@/managers/KitchenManager';
 import {
   DAILY_AD_LIMITS,
   PICKLE_FORMULAS,
+  PICKLE_TIER_DEFS,
   SECOND_JAR_COST,
   canUseDailyAd,
   dailyAdLeft,
   formatDurationLabel,
   formatTimerShort,
   itemRarity,
+  pickleEffectiveDurationMs,
   pickleFormulaStatus,
   pickleSlotsView,
+  pickleTier,
+  pickleUpgradeState,
   recipeById,
   type PickleFormulaDef,
   type PickleSlotView,
@@ -25,12 +29,20 @@ import { playRewardCollect } from '@/utils/coinCollect';
 import {
   P0_ART,
   P2_ART,
-  drawRarityFrame,
+  UI_KIT,
+  UI_PALETTE,
+  drawCraftCard,
+  drawItemSlotBox,
+  drawRecessedWell,
+  drawSectionTray,
   fillRect,
   makeAdButton,
+  makeArtisanShell,
   makeLabel,
+  makeOrnamentalDivider,
   makeRarityFlare,
   makeSlicedButton,
+  makeSlotBadge,
 } from '@/utils/ui';
 import {
   dishTexture,
@@ -49,16 +61,12 @@ import {
   type ItemInspectView,
 } from './ItemInspectCard';
 
-const TITLE_FONT = 'Songti SC, STSong, PingFang SC, serif';
-const INK = 0x2A2018;
-const MUTED = 0x7A5A34;
+const INK = UI_PALETTE.ink;
+const MUTED = UI_PALETTE.muted;
 const PAPER = 0xFFF8F0;
-const CREAM = 0xF6EDE0;
-const WALNUT = 0x8B5A2B;
-const LINE = 0xC4A574;
-const TERRACOTTA = 0xC46A3A;
-const OLIVE = 0x4E8A42;
-const GOLD = 0xC48A14;
+const TERRACOTTA = UI_PALETTE.terracotta;
+const OLIVE = UI_PALETTE.olive;
+const GOLD = 0xB87910;
 const COIN_ICON = 'subpkg_images/hud_coin.png';
 
 interface LiveJarHud {
@@ -131,7 +139,7 @@ export class PicklePanel extends PIXI.Container {
         }
         hud.timerText.text = `发酵中 · 剩 ${formatTimerShort(remain)}`;
         const total = Math.max(1, hud.readyAt - hud.startedAt || hud.durationMs);
-        const ratio = Math.min(1, Math.max(0.05, 1 - remain / total));
+        const ratio = Math.min(1, Math.max(0.06, 1 - remain / total));
         this._paintProgressBar(hud.barFill, hud.barW, hud.barH, ratio);
       }
       if (crossedReady && !this._adBusy) {
@@ -160,9 +168,15 @@ export class PicklePanel extends PIXI.Container {
   };
 
   private _warmAssets(): void {
+    const tierArt = P2_ART.pickleTiers[pickleTier(KitchenManager.save)];
     const paths: string[] = [
+      UI_KIT.headerRibbon,
+      UI_KIT.closeRound,
+      UI_KIT.btnOlive,
+      UI_KIT.btnGold,
+      tierArt.idle,
+      tierArt.ready,
       P2_ART.pickleIdle,
-      P2_ART.pickleReady,
       P0_ART.adClapper,
       COIN_ICON,
       'subpkg_kitchen/ui_pickup_flare.png',
@@ -187,8 +201,8 @@ export class PicklePanel extends PIXI.Container {
     this.hitArea = new PIXI.Rectangle(0, 0, w, h);
 
     const dim = new PIXI.Graphics();
-    fillRect(dim, 0, 0, w, h, 0x1A120C);
-    dim.alpha = 0.52;
+    fillRect(dim, 0, 0, w, h, 0x160E08);
+    dim.alpha = 0.58;
     dim.eventMode = 'static';
     dim.on('pointertap', () => {
       if (this._inspect) {
@@ -200,86 +214,38 @@ export class PicklePanel extends PIXI.Container {
     });
     this._root.addChild(dim);
 
-    const boxW = Math.min(w - 32, 704);
-    const padX = 22;
+    const boxW = Math.min(w - 30, 706);
+    const padX = 24;
     const cw = boxW - padX * 2;
-    const headH = 84;
-    const jarCardH = 264;
+    const contentTop = 84;
+    const tierBarH = 48;
+    const jarTop = contentTop + tierBarH + 8;
+    const jarCardH = 252;
     const divH = 34;
-    const rowH = 138;
-    const rowGap = 10;
+    const rowH = 132;
+    const rowGap = 9;
     const rowsBlockH = PICKLE_FORMULAS.length * rowH + (PICKLE_FORMULAS.length - 1) * rowGap;
-    const boxH = headH + jarCardH + divH + rowsBlockH + 24;
+    const boxH = jarTop + jarCardH + divH + rowsBlockH + 24;
     const bx = Math.round((w - boxW) / 2);
-    const by = Math.round(Math.max(Game.safeTop + 8, (h - boxH) / 2));
+    const by = Math.round(Math.max(Game.safeTop + 14, (h - boxH) / 2 + 4));
 
-    const shell = new PIXI.Container();
+    const { shell } = makeArtisanShell({
+      width: boxW,
+      height: boxH,
+      title: '老 坛 腌 制 坊',
+      subtitle: '余菜封水慢发酵 · 首坛揭盖送私房大菜谱',
+      onReady: this._scheduleRelayout,
+      closeSilent: true,
+      onClose: () => {
+        if (!this._adBusy) this.close();
+      },
+    });
     shell.position.set(bx, by);
-    shell.eventMode = 'static';
-    shell.hitArea = new PIXI.Rectangle(0, 0, boxW, boxH);
-    shell.on('pointertap', (e) => e.stopPropagation());
     this._root.addChild(shell);
 
-    const panel = new PIXI.Graphics();
-    panel.lineStyle(5, WALNUT, 1);
-    panel.beginFill(CREAM, 1);
-    panel.drawRoundedRect(0, 0, boxW, boxH, 28);
-    panel.endFill();
-    shell.addChild(panel);
-
-    const inner = new PIXI.Graphics();
-    inner.lineStyle(2, LINE, 0.72);
-    inner.beginFill(0xF3E6D0, 1);
-    inner.drawRoundedRect(12, 12, boxW - 24, boxH - 24, 20);
-    inner.endFill();
-    shell.addChild(inner);
-
-    // Top plaque header
-    const plaqueW = 312;
-    const plaqueH = 46;
-    const plaque = new PIXI.Graphics();
-    plaque.lineStyle(3, INK, 1);
-    plaque.beginFill(0x8B5A2B, 1);
-    plaque.drawRoundedRect((boxW - plaqueW) / 2, 16, plaqueW, plaqueH, 14);
-    plaque.endFill();
-    shell.addChild(plaque);
-
-    const title = makeLabel('老 坛 腌 制 坊', 28, 0xFFF8F0, {
-      fontFamily: TITLE_FONT,
-      fontWeight: '700',
-      stroke: INK,
-      strokeThickness: 4,
-    });
-    title.anchor.set(0.5);
-    title.position.set(boxW / 2, 39);
-    shell.addChild(title);
-
-    const sub = makeLabel('余菜封水慢发酵 · 首坛揭盖送私房大菜谱', 15, MUTED, { fontWeight: '700' });
-    sub.anchor.set(0.5);
-    sub.position.set(boxW / 2, 71);
-    shell.addChild(sub);
-
-    // Top-right close button
-    const closeBtn = new PIXI.Container();
-    const cg = new PIXI.Graphics();
-    cg.lineStyle(3, INK, 1);
-    cg.beginFill(TERRACOTTA, 1);
-    cg.drawCircle(20, 20, 19);
-    cg.endFill();
-    const cx = makeLabel('×', 26, PAPER, { fontWeight: '700' });
-    cx.anchor.set(0.5);
-    cx.position.set(20, 18.5);
-    closeBtn.addChild(cg, cx);
-    closeBtn.position.set(boxW - 56, 19);
-    closeBtn.eventMode = 'static';
-    closeBtn.cursor = 'pointer';
-    closeBtn.hitArea = new PIXI.Circle(20, 20, 24);
-    closeBtn.on('pointertap', () => {
-      if (!this._adBusy) this.close();
-    });
-    shell.addChild(closeBtn);
-
     const save = KitchenManager.save;
+    shell.addChild(this._buildTierBar(save, padX, contentTop, cw, tierBarH));
+
     const now = Date.now();
     const slots = pickleSlotsView(save, now);
     const jarGap = 14;
@@ -287,28 +253,17 @@ export class PicklePanel extends PIXI.Container {
 
     slots.forEach((slotView, idx) => {
       const jx = padX + idx * (jarW + jarGap);
-      const jy = headH;
-      this._jarCenters[idx] = { x: bx + jx + jarW / 2, y: by + jy + 92 };
+      const jy = jarTop;
+      this._jarCenters[idx] = { x: bx + jx + jarW / 2, y: by + jy + 102 };
       shell.addChild(this._buildJarCard(slotView, jx, jy, jarW, jarCardH));
     });
 
-    // Section divider
-    const divY = headH + jarCardH + divH / 2;
-    const divLine = new PIXI.Graphics();
-    divLine.lineStyle(1.5, LINE, 0.8);
-    divLine.moveTo(padX + 12, divY);
-    divLine.lineTo(boxW / 2 - 142, divY);
-    divLine.moveTo(boxW / 2 + 142, divY);
-    divLine.lineTo(boxW - padX - 12, divY);
-    shell.addChild(divLine);
-
-    const divLabel = makeLabel('传家老卤方子（点菜品或原料可看详情）', 15, MUTED, { fontWeight: '700' });
-    divLabel.anchor.set(0.5);
-    divLabel.position.set(boxW / 2, divY);
-    shell.addChild(divLabel);
+    const div = makeOrnamentalDivider(cw, '传家老卤方子 · 点图标可查详情', { fontSize: 15 });
+    div.position.set(padX, jarTop + jarCardH + Math.round(divH / 2));
+    shell.addChild(div);
 
     const hasEmptyJar = slots.some((s) => s.status === 'empty');
-    const listTop = headH + jarCardH + divH;
+    const listTop = jarTop + jarCardH + divH;
     PICKLE_FORMULAS.forEach((formula, i) => {
       const ry = listTop + i * (rowH + rowGap);
       shell.addChild(this._buildFormulaRow(formula, padX, ry, cw, rowH, hasEmptyJar));
@@ -332,10 +287,59 @@ export class PicklePanel extends PIXI.Container {
 
   private _paintProgressBar(g: PIXI.Graphics, w: number, h: number, ratio: number): void {
     g.clear();
-    const fillW = Math.max(h, Math.round(w * Math.min(1, Math.max(0, ratio))));
-    g.beginFill(0xD98A2B, 1);
-    g.drawRoundedRect(0, 0, fillW, h, h / 2);
+    const pad = 2;
+    const fh = h - pad * 2;
+    const fillW = Math.max(fh, Math.round((w - pad * 2) * Math.min(1, Math.max(0, ratio))));
+    g.beginFill(0xDF9628, 1);
+    g.drawRoundedRect(pad, pad, fillW, fh, fh / 2);
     g.endFill();
+    g.beginFill(0xF7C665, 0.55);
+    g.drawRoundedRect(pad + 3, pad + 1.5, Math.max(4, fillW - 6), Math.max(3, fh * 0.38), fh / 4);
+    g.endFill();
+  }
+
+  private _buildTierBar(save: typeof KitchenManager.save, x: number, y: number, w: number, h: number): PIXI.Container {
+    const bar = new PIXI.Container();
+    bar.position.set(x, y);
+    const bg = new PIXI.Graphics();
+    drawSectionTray(bg, 0, 0, w, h, { radius: 12, tone: 'sand' });
+    bar.addChild(bg);
+
+    const curDef = PICKLE_TIER_DEFS[pickleTier(save)];
+    const st = pickleUpgradeState(save);
+    const leftText = st.status === 'max'
+      ? `器物品阶：${curDef.name}（${curDef.desc}）`
+      : `当前：${curDef.name}  →  下一阶「${st.nextName}」（${st.nextDesc.split('·')[0].trim()}）`;
+    const lbl = makeLabel(leftText, 13, INK, { fontWeight: '700' });
+    lbl.anchor.set(0, 0.5);
+    lbl.position.set(12, h / 2);
+    bar.addChild(lbl);
+
+    if (st.status === 'max') {
+      const done = makeSlotBadge('✓ 御瓷满阶', 'gold', 12);
+      done.node.position.set(w - done.w - 10, Math.round((h - done.h) / 2));
+      bar.addChild(done.node);
+    } else {
+      const ready = st.status === 'ready';
+      const btnW = 148;
+      const btnH = 34;
+      const btn = makeSlicedButton({
+        label: ready ? `${st.cost}金升阶` : st.error,
+        width: btnW,
+        height: btnH,
+        skin: ready ? 'gold' : 'cream',
+        textColor: ready ? INK : 0x8A7358,
+        fontSize: 13,
+        silent: !ready,
+        onReady: this._scheduleRelayout,
+      });
+      btn.position.set(w - btnW - 8, Math.round((h - btnH) / 2));
+      btn.on('pointertap', () => {
+        if (KitchenManager.upgradePickleJar() && this._isOpen) this.relayout();
+      });
+      bar.addChild(btn);
+    }
+    return bar;
   }
 
   private _buildJarCard(view: PickleSlotView, x: number, y: number, w: number, h: number): PIXI.Container {
@@ -343,29 +347,32 @@ export class PicklePanel extends PIXI.Container {
     card.position.set(x, y);
 
     const isReady = view.status === 'ready';
+    const isLocked = view.status === 'locked';
     const bg = new PIXI.Graphics();
-    bg.lineStyle(isReady ? 3.5 : 2.5, isReady ? GOLD : WALNUT, 1);
-    bg.beginFill(isReady ? 0xFFFBF0 : PAPER, 1);
-    bg.drawRoundedRect(0, 0, w, h, 18);
-    bg.endFill();
+    drawCraftCard(bg, 0, 0, w, h, {
+      radius: 18,
+      tone: isReady ? 'gold' : isLocked ? 'muted' : 'ivory',
+      headerH: 38,
+    });
     card.addChild(bg);
 
     const slotTitle = view.index === 0 ? '一号老坛' : '二号老坛';
     const save = KitchenManager.save;
+    const tierArt = P2_ART.pickleTiers[pickleTier(save)];
 
-    if (view.status === 'locked') {
-      const hdr = makeLabel(`${slotTitle} · 待添置`, 18, MUTED, { fontWeight: '700' });
-      hdr.anchor.set(0.5, 0);
-      hdr.position.set(w / 2, 12);
+    if (isLocked) {
+      const hdr = makeLabel(`${slotTitle} · 待添置`, 17, MUTED, { fontWeight: '700' });
+      hdr.anchor.set(0.5);
+      hdr.position.set(w / 2, 20);
       card.addChild(hdr);
 
-      const jarTex = gameTexture(P2_ART.pickleIdle);
+      const jarTex = gameTexture(tierArt.idle);
       if (isTextureReady(jarTex)) {
         const spr = new PIXI.Sprite(jarTex);
-        fitSpriteInBox(spr, 118, 118);
+        fitSpriteInBox(spr, 114, 114);
         spr.anchor.set(0.5);
-        spr.position.set(w / 2, 102);
-        spr.tint = 0xC9B8A4;
+        spr.position.set(w / 2, 108);
+        spr.tint = 0xC8B7A2;
         spr.alpha = 0.72;
         card.addChild(spr);
       }
@@ -379,20 +386,21 @@ export class PicklePanel extends PIXI.Container {
         label: `添置 · ${SECOND_JAR_COST} 金`,
         width: w - 28,
         height: 48,
-        skin: canBuy ? 'wood' : 'cream',
-        textColor: canBuy ? PAPER : 0x8A7358,
+        skin: canBuy ? 'gold' : 'cream',
+        textColor: canBuy ? INK : 0x8A7358,
         labelOffsetX: 12,
         onReady: this._scheduleRelayout,
         silent: !canBuy,
       });
+      const face = ((buyBtn as any)._face as PIXI.Container | undefined) ?? buyBtn;
       const cTex = gameTexture(COIN_ICON);
       if (isTextureReady(cTex)) {
         const cs = new PIXI.Sprite(cTex);
-        fitSpriteInBox(cs, 28, 28);
+        fitSpriteInBox(cs, 26, 26);
         cs.anchor.set(0.5);
-        cs.position.set(36, 24);
+        cs.position.set(36, 23);
         cs.eventMode = 'none';
-        buyBtn.addChild(cs);
+        face.addChild(cs);
       }
       buyBtn.position.set(14, h - 60);
       buyBtn.on('pointertap', () => {
@@ -403,28 +411,32 @@ export class PicklePanel extends PIXI.Container {
     }
 
     if (view.status === 'empty') {
-      const hdr = makeLabel(`${slotTitle} · 空闲中`, 18, INK, { fontWeight: '700' });
-      hdr.anchor.set(0.5, 0);
-      hdr.position.set(w / 2, 12);
+      const hdr = makeLabel(`${slotTitle} · 空闲中`, 17, INK, { fontWeight: '700' });
+      hdr.anchor.set(0.5);
+      hdr.position.set(w / 2, 20);
       card.addChild(hdr);
 
-      const jarTex = gameTexture(P2_ART.pickleIdle);
+      // Soft warm halo behind jar
+      const halo = new PIXI.Graphics();
+      halo.beginFill(0xF5E7CE, 0.75);
+      halo.drawCircle(w / 2, 118, 54);
+      halo.endFill();
+      card.addChild(halo);
+
+      const jarTex = gameTexture(tierArt.idle);
       if (isTextureReady(jarTex)) {
         const spr = new PIXI.Sprite(jarTex);
-        fitSpriteInBox(spr, 130, 130);
+        fitSpriteInBox(spr, 122, 122);
         spr.anchor.set(0.5);
-        spr.position.set(w / 2, 112);
+        spr.position.set(w / 2, 114);
         card.addChild(spr);
       }
 
-      const pill = new PIXI.Graphics();
-      pill.lineStyle(1.5, LINE, 0.9);
-      pill.beginFill(CREAM, 1);
-      pill.drawRoundedRect(18, h - 54, w - 36, 38, 19);
-      pill.endFill();
-      card.addChild(pill);
+      const well = new PIXI.Graphics();
+      drawRecessedWell(well, 16, h - 54, w - 32, 38, { radius: 19 });
+      card.addChild(well);
 
-      const hint = makeLabel('挑下方老卤方子封水入坛', 15, MUTED, { fontWeight: '700' });
+      const hint = makeLabel('挑下方老卤方子封水入坛', 14, MUTED, { fontWeight: '700' });
       hint.anchor.set(0.5);
       hint.position.set(w / 2, h - 35);
       card.addChild(hint);
@@ -433,53 +445,52 @@ export class PicklePanel extends PIXI.Container {
 
     const formula = view.formula!;
     if (view.status === 'fermenting') {
-      const hdr = makeLabel(`${slotTitle} · ${formula.name}×${view.yieldQty}`, 18, INK, { fontWeight: '700' });
-      hdr.anchor.set(0.5, 0);
-      hdr.position.set(w / 2, 10);
+      const hdr = makeLabel(`${slotTitle} · ${formula.name}×${view.yieldQty}`, 16, INK, { fontWeight: '700' });
+      hdr.anchor.set(0.5);
+      hdr.position.set(w / 2, 20);
       card.addChild(hdr);
 
-      const jarTex = gameTexture(P2_ART.pickleIdle);
+      const jarTex = gameTexture(tierArt.idle);
       if (isTextureReady(jarTex)) {
         const spr = new PIXI.Sprite(jarTex);
-        fitSpriteInBox(spr, 108, 108);
+        fitSpriteInBox(spr, 100, 100);
         spr.anchor.set(0.5);
-        spr.position.set(w / 2 - 14, 92);
+        spr.position.set(w / 2 - 14, 96);
         card.addChild(spr);
       }
-      // Output item mini badge
       const outTex = itemTexture(formula.outputDefId);
       if (isTextureReady(outTex)) {
         const badgeBg = new PIXI.Graphics();
-        badgeBg.lineStyle(2.5, WALNUT, 1);
-        badgeBg.beginFill(PAPER, 1);
-        badgeBg.drawCircle(w / 2 + 46, 116, 26);
+        badgeBg.lineStyle(2.2, UI_PALETTE.ink, 1);
+        badgeBg.beginFill(0xFFFBF2, 1);
+        badgeBg.drawCircle(w / 2 + 46, 120, 25);
         badgeBg.endFill();
         const os = new PIXI.Sprite(outTex);
-        fitSpriteInBox(os, 38, 38);
+        fitSpriteInBox(os, 36, 36);
         os.anchor.set(0.5);
-        os.position.set(w / 2 + 46, 116);
+        os.position.set(w / 2 + 46, 120);
         card.addChild(badgeBg, os);
       }
 
-      const timerText = makeLabel(`发酵中 · 剩 ${formatTimerShort(view.remainMs)}`, 15, TERRACOTTA, {
+      const timerText = makeLabel(`发酵中 · 剩 ${formatTimerShort(view.remainMs)}`, 14, TERRACOTTA, {
         fontWeight: '700',
       });
       timerText.anchor.set(0.5);
-      timerText.position.set(w / 2, 160);
+      timerText.position.set(w / 2, 162);
       card.addChild(timerText);
 
-      const barW = w - 36;
-      const barH = 14;
+      const barW = w - 34;
+      const barH = 15;
       const barBg = new PIXI.Graphics();
-      barBg.lineStyle(1.5, WALNUT, 0.8);
-      barBg.beginFill(0xE8D8C0, 1);
-      barBg.drawRoundedRect(18, 176, barW, barH, barH / 2);
+      barBg.lineStyle(1.6, 0x8F6D47, 1);
+      barBg.beginFill(0xE6D6BE, 1);
+      barBg.drawRoundedRect(17, 178, barW, barH, barH / 2);
       barBg.endFill();
       card.addChild(barBg);
 
       const barFill = new PIXI.Graphics();
-      barFill.position.set(18, 176);
-      this._paintProgressBar(barFill, barW, barH, Math.max(0.05, view.progress));
+      barFill.position.set(17, 178);
+      this._paintProgressBar(barFill, barW, barH, Math.max(0.06, view.progress));
       card.addChild(barFill);
 
       this._liveJars.push({
@@ -499,12 +510,12 @@ export class PicklePanel extends PIXI.Container {
         label: '秘方催熟 +1份',
         width: w - 28,
         height: 48,
-        skin: 'terracotta',
+        skin: 'gold',
         badge: `剩${adLeft}/${DAILY_AD_LIMITS.pickle_boost}`,
         disabled: !canBoost,
         onReady: this._scheduleRelayout,
       });
-      boostBtn.position.set(14, h - 60);
+      boostBtn.position.set(14, h - 59);
       boostBtn.on('pointertap', () => {
         if (this._adBusy) return;
         if (!canBoost) {
@@ -528,23 +539,23 @@ export class PicklePanel extends PIXI.Container {
       return card;
     }
 
-    // READY state!
-    const bonusMark = view.slot?.boosted ? '（秘方加量！）' : '';
-    const hdr = makeLabel(`${formula.name}×${view.yieldQty}${bonusMark}`, 17, GOLD, { fontWeight: '700' });
-    hdr.anchor.set(0.5, 0);
-    hdr.position.set(w / 2, 10);
+    // READY state
+    const bonusMark = view.slot?.boosted ? ' · 秘方加量' : '';
+    const hdr = makeLabel(`${formula.name}×${view.yieldQty}${bonusMark}`, 16, GOLD, { fontWeight: '700' });
+    hdr.anchor.set(0.5);
+    hdr.position.set(w / 2, 20);
     card.addChild(hdr);
 
-    const flare = makeRarityFlare(itemRarity(formula.outputDefId), 190);
-    flare.position.set(w / 2, 102);
+    const flare = makeRarityFlare(itemRarity(formula.outputDefId), 184);
+    flare.position.set(w / 2, 108);
     card.addChild(flare);
 
-    const readyTex = gameTexture(P2_ART.pickleReady);
+    const readyTex = gameTexture(tierArt.ready);
     if (isTextureReady(readyTex)) {
       const spr = new PIXI.Sprite(readyTex);
-      fitSpriteInBox(spr, 122, 122);
+      fitSpriteInBox(spr, 120, 120);
       spr.anchor.set(0.5);
-      spr.position.set(w / 2, 102);
+      spr.position.set(w / 2, 108);
       card.addChild(spr);
       TweenManager.to({
         target: spr.scale,
@@ -554,20 +565,20 @@ export class PicklePanel extends PIXI.Container {
       });
     }
 
-    const readySub = makeLabel('老卤发透 · 酸香扑鼻！', 15, OLIVE, { fontWeight: '700' });
+    const readySub = makeLabel('老卤发透 · 酸香扑鼻！', 14, OLIVE, { fontWeight: '700' });
     readySub.anchor.set(0.5);
-    readySub.position.set(w / 2, 176);
+    readySub.position.set(w / 2, 178);
     card.addChild(readySub);
 
     const harvestBtn = makeSlicedButton({
       label: `揭盖收菜 ×${view.yieldQty}`,
       width: w - 28,
       height: 50,
-      skin: 'terracotta',
+      skin: 'olive',
       textColor: PAPER,
       onReady: this._scheduleRelayout,
     });
-    harvestBtn.position.set(14, h - 62);
+    harvestBtn.position.set(14, h - 61);
     harvestBtn.on('pointertap', () => {
       const from = this._jarCenters[view.index] ?? { x: Game.designWidth / 2, y: Game.logicHeight * 0.35 };
       const res = KitchenManager.harvestPickleJar(view.index);
@@ -598,34 +609,49 @@ export class PicklePanel extends PIXI.Container {
 
     const status = pickleFormulaStatus(KitchenManager.save, formula.id);
     const bg = new PIXI.Graphics();
-    bg.lineStyle(2, status.levelMet ? LINE : 0xD8CABA, 1);
-    bg.beginFill(status.levelMet ? PAPER : 0xF5EFE6, 1);
-    bg.drawRoundedRect(0, 0, w, h, 16);
-    bg.endFill();
+    drawCraftCard(bg, 0, 0, w, h, {
+      radius: 16,
+      tone: status.levelMet ? 'ivory' : 'muted',
+    });
     row.addChild(bg);
 
-    // Left output pickled icon box (tap to inspect)
+    // Left output pickled icon slot (3D beveled slot + integrated duration footer & ×2 badge)
+    const iconW = 84;
+    const iconH = 102;
+    const footerH = 22;
     const iconBox = new PIXI.Container();
-    iconBox.position.set(14, 14);
+    iconBox.position.set(12, Math.round((h - iconH) / 2));
     const ibg = new PIXI.Graphics();
-    ibg.beginFill(CREAM, 1);
-    ibg.drawRoundedRect(0, 0, 84, 84, 14);
-    ibg.endFill();
-    drawRarityFrame(ibg, 0, 0, 84, 84, itemRarity(formula.outputDefId), { radius: 14 });
+    drawItemSlotBox(ibg, 0, 0, iconW, iconH, {
+      radius: 12,
+      rarity: itemRarity(formula.outputDefId),
+      dimmed: !status.levelMet,
+      footerH,
+    });
     iconBox.addChild(ibg);
 
     const outTex = itemTexture(formula.outputDefId);
     if (isTextureReady(outTex)) {
       const sp = new PIXI.Sprite(outTex);
-      fitSpriteInBox(sp, 68, 68);
+      fitSpriteInBox(sp, 60, 60);
       sp.anchor.set(0.5);
-      sp.position.set(42, 42);
+      sp.position.set(iconW / 2, (iconH - footerH) / 2 - 1);
       if (!status.levelMet) sp.alpha = 0.55;
       iconBox.addChild(sp);
     }
+    const yieldBadge = makeSlotBadge(`×${formula.baseQty}`, 'olive', 11);
+    yieldBadge.node.position.set(iconW - yieldBadge.w - 3, iconH - footerH - yieldBadge.h - 2);
+    iconBox.addChild(yieldBadge.node);
+
+    const effMs = pickleEffectiveDurationMs(KitchenManager.save, formula.durationMs);
+    const durLbl = makeLabel(formatDurationLabel(effMs), 11, 0x5E442D, { fontWeight: '700' });
+    durLbl.anchor.set(0.5);
+    durLbl.position.set(iconW / 2, iconH - footerH / 2 - 1);
+    iconBox.addChild(durLbl);
+
     iconBox.eventMode = 'static';
     iconBox.cursor = 'pointer';
-    iconBox.hitArea = new PIXI.Rectangle(0, 0, 84, 84);
+    iconBox.hitArea = new PIXI.Rectangle(0, 0, iconW, iconH);
     iconBox.on('pointertap', () => {
       AudioManager.play('ui_click');
       const v = inspectFromItem(formula.outputDefId);
@@ -635,51 +661,47 @@ export class PicklePanel extends PIXI.Container {
     });
     row.addChild(iconBox);
 
-    // Duration pill under icon
-    const durLbl = makeLabel(`⏱ ${formatDurationLabel(formula.durationMs)}`, 13, MUTED, { fontWeight: '700' });
-    durLbl.anchor.set(0.5, 0);
-    durLbl.position.set(56, 105);
-    row.addChild(durLbl);
+    // Middle info column + structured ingredient tray
+    const midX = 108;
+    const btnW = 136;
+    const midAvailW = w - midX - btnW - 24;
 
-    // Middle info column
-    const midX = 112;
-    const nameLbl = makeLabel(`${formula.name} ×${formula.baseQty}`, 21, status.levelMet ? INK : 0x8A7358, {
+    const nameLbl = makeLabel(formula.name, 19, status.levelMet ? INK : 0x8A7358, {
       fontWeight: '700',
     });
-    nameLbl.position.set(midX, 12);
+    nameLbl.position.set(midX, 11);
     row.addChild(nameLbl);
 
-    // Signature dish unlock badge (clickable to inspect dish!)
     const sigRecipe = recipeById(formula.unlockRecipeId);
     if (sigRecipe) {
       const chip = new PIXI.Container();
       const chipText = status.recipeAlreadyUnlocked
         ? `招牌：${sigRecipe.name} ✓`
         : `首坛送谱：${sigRecipe.name}`;
-      const clbl = makeLabel(chipText, 13, status.recipeAlreadyUnlocked ? OLIVE : TERRACOTTA, {
+      const clbl = makeLabel(chipText, 12, status.recipeAlreadyUnlocked ? OLIVE : 0x8F5808, {
         fontWeight: '700',
       });
-      const cw = Math.ceil(clbl.width) + 36;
-      const ch = 24;
+      const cw = Math.ceil(clbl.width) + 32;
+      const ch = 23;
       const cbg = new PIXI.Graphics();
-      cbg.lineStyle(1.5, status.recipeAlreadyUnlocked ? OLIVE : TERRACOTTA, 0.85);
-      cbg.beginFill(status.recipeAlreadyUnlocked ? 0xEEF7EA : 0xFFF2E8, 1);
-      cbg.drawRoundedRect(0, 0, cw, ch, ch / 2);
+      cbg.lineStyle(1.4, status.recipeAlreadyUnlocked ? 0x679458 : 0xBA8832, 0.95);
+      cbg.beginFill(status.recipeAlreadyUnlocked ? 0xEFF7EC : 0xFFF7E0, 1);
+      cbg.drawRoundedRect(0, 0, cw, ch, 7);
       cbg.endFill();
       chip.addChild(cbg);
 
       const dTex = dishTexture(sigRecipe.id);
       if (isTextureReady(dTex)) {
         const ds = new PIXI.Sprite(dTex);
-        fitSpriteInBox(ds, 20, 20);
+        fitSpriteInBox(ds, 18, 18);
         ds.anchor.set(0.5);
-        ds.position.set(14, ch / 2);
+        ds.position.set(12, ch / 2);
         chip.addChild(ds);
       }
       clbl.anchor.set(0, 0.5);
-      clbl.position.set(26, ch / 2 + 0.5);
+      clbl.position.set(24, ch / 2);
       chip.addChild(clbl);
-      chip.position.set(midX + Math.ceil(nameLbl.width) + 10, 13);
+      chip.position.set(midX + Math.ceil(nameLbl.width) + 8, 11);
       chip.eventMode = 'static';
       chip.cursor = 'pointer';
       chip.hitArea = new PIXI.Rectangle(0, -4, cw, ch + 8);
@@ -691,43 +713,45 @@ export class PicklePanel extends PIXI.Container {
       row.addChild(chip);
     }
 
-    const blurbLbl = makeLabel(formula.blurb, 14, MUTED, {
+    const blurbLbl = makeLabel(formula.blurb, 13, MUTED, {
       wordWrap: true,
-      wordWrapWidth: w - midX - 168,
+      wordWrapWidth: midAvailW,
     });
-    blurbLbl.position.set(midX, 42);
+    blurbLbl.position.set(midX, 38);
     row.addChild(blurbLbl);
 
-    // Input ingredient chips row
-    let ix = midX;
-    const iy = 88;
+    // Recessed uniform ingredient slot strip
+    const trayY = 64;
+    const trayH = 52;
+    const ingTray = new PIXI.Graphics();
+    drawSectionTray(ingTray, midX, trayY, midAvailW, trayH, { radius: 10, tone: 'sand' });
+    row.addChild(ingTray);
+
+    let ix = midX + 6;
     for (const inp of status.inputs) {
       const ok = inp.have >= inp.need;
       const ichip = new PIXI.Container();
-      const itxt = makeLabel(`${inp.name} ${inp.have}/${inp.need}`, 14, ok ? OLIVE : 0xB84A32, {
-        fontWeight: '700',
-      });
-      const iw = Math.ceil(itxt.width) + 40;
-      const ih = 32;
+      const itxt = makeLabel(inp.name, 13, ok ? INK : 0x7A6652, { fontWeight: '700' });
+      const badge = makeSlotBadge(`${inp.have}/${inp.need}`, ok ? 'olive' : 'lack', 11);
+      const iw = 38 + Math.ceil(itxt.width) + badge.w + 16;
+      const ih = 40;
       const ib = new PIXI.Graphics();
-      ib.lineStyle(1.5, ok ? 0x7AB06A : 0xD89A88, 1);
-      ib.beginFill(ok ? 0xF3FAEF : 0xFDF2EE, 1);
-      ib.drawRoundedRect(0, 0, iw, ih, ih / 2);
-      ib.endFill();
+      drawItemSlotBox(ib, 0, 0, iw, ih, { radius: 8, dimmed: !ok, medallion: false });
       ichip.addChild(ib);
 
       const itex = itemTexture(inp.defId);
       if (isTextureReady(itex)) {
         const isp = new PIXI.Sprite(itex);
-        fitSpriteInBox(isp, 24, 24);
+        fitSpriteInBox(isp, 28, 28);
         isp.anchor.set(0.5);
-        isp.position.set(17, ih / 2);
+        isp.position.set(20, ih / 2 - 1);
         ichip.addChild(isp);
       }
       itxt.anchor.set(0, 0.5);
-      itxt.position.set(31, ih / 2 + 0.5);
-      ichip.addChild(itxt);
-      ichip.position.set(ix, iy);
+      itxt.position.set(38, ih / 2 - 1);
+      badge.node.position.set(iw - badge.w - 6, Math.round((ih - badge.h) / 2) - 1);
+      ichip.addChild(itxt, badge.node);
+      ichip.position.set(ix, trayY + 6);
       ichip.eventMode = 'static';
       ichip.cursor = 'pointer';
       ichip.hitArea = new PIXI.Rectangle(0, 0, iw, ih);
@@ -737,24 +761,20 @@ export class PicklePanel extends PIXI.Container {
         this.relayout();
       });
       row.addChild(ichip);
-      ix += iw + 10;
+      ix += iw + 8;
     }
 
     // Right action button
-    const btnW = 144;
-    const btnH = 50;
+    const btnH = 48;
     const btnX = w - btnW - 14;
     const btnY = Math.round((h - btnH) / 2);
 
     if (!status.levelMet) {
       const lockPill = new PIXI.Graphics();
-      lockPill.lineStyle(1.5, 0xC9B8A4, 1);
-      lockPill.beginFill(0xEAE0D2, 1);
-      lockPill.drawRoundedRect(btnX, btnY + 4, btnW, 42, 21);
-      lockPill.endFill();
-      const ltxt = makeLabel(`厨艺 ${formula.unlockCookLevel} 级开`, 15, 0x8A7358, { fontWeight: '700' });
+      drawRecessedWell(lockPill, btnX, btnY + 3, btnW, 42, { radius: 21 });
+      const ltxt = makeLabel(`厨艺 ${formula.unlockCookLevel} 级开`, 14, 0x8A7358, { fontWeight: '700' });
       ltxt.anchor.set(0.5);
-      ltxt.position.set(btnX + btnW / 2, btnY + 25);
+      ltxt.position.set(btnX + btnW / 2, btnY + 24);
       row.addChild(lockPill, ltxt);
       return row;
     }
@@ -770,7 +790,7 @@ export class PicklePanel extends PIXI.Container {
       onReady: this._scheduleRelayout,
       silent: !canStart,
     });
-    if (!canStart) startBtn.alpha = 0.82;
+    if (!canStart) startBtn.alpha = 0.85;
     startBtn.position.set(btnX, btnY);
     startBtn.on('pointertap', () => {
       if (KitchenManager.startPickleJar(formula.id) && this._isOpen) {

@@ -25,10 +25,29 @@ import {
   explorePercent,
   marketExploration,
   liveHudBuffs,
+  dailyMarketWeather,
 } from '@/sim';
 import { AudioManager } from '@/core/AudioManager';
 import { ensureHudBuffPanel } from '@/gameobjects/ui/HudBuffPanel';
-import { HUD_ICON, PLAYER_LEVEL_HUD, bindUiClick, fillRect, hudBuffRowY, hudPillsY, makeLabel, makeMuteButton, makeHudBuffRow, makePlayerLevelHud, makeSlicedButton, makeStatPill } from '@/utils/ui';
+import {
+  HUD_ICON,
+  PLAYER_LEVEL_HUD,
+  UI_PALETTE,
+  bindUiClick,
+  drawCraftCard,
+  drawRecessedWell,
+  fillRect,
+  hudBuffRowY,
+  hudPillsY,
+  makeAdButton,
+  makeCraftProgressBar,
+  makeHudBuffRow,
+  makeLabel,
+  makeMuteButton,
+  makePlayerLevelHud,
+  makeSlicedButton,
+  makeStatPill,
+} from '@/utils/ui';
 import { VerticalScroller } from '@/utils/scroll';
 import { applyGray, applyFit, fitCover, fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from '@/utils/assets';
 import { OutingCurtain } from '@/gameobjects/ui/OutingCurtain';
@@ -291,26 +310,34 @@ export class DestinationScene implements Scene {
     const routed = ownsRouteToMarket(save, market.id);
     const unlocked = routed && isMarketUnlocked(market.id, save.level);
     const needRide = vehicleForMarket(market.id);
-    const pad = Math.max(10, Math.round(height * 0.08));
+    const pad = Math.max(12, Math.round(height * 0.085));
     const btnH = height < 176 ? 42 : 48;
+
     const frame = new PIXI.Graphics();
-    fillRect(frame, x, y, width, height, 0x5A4636, 18);
+    frame.beginFill(0x160E08, 0.28);
+    frame.drawRoundedRect(x, y + 5, width, height, 20);
+    frame.endFill();
+    frame.lineStyle(2.8, UI_PALETTE.ink, 1);
+    frame.beginFill(UI_PALETTE.walnut, 1);
+    frame.drawRoundedRect(x, y, width, height, 20);
+    frame.endFill();
+    drawCraftCard(frame, x + 6, y + 5, width - 12, height - 11, {
+      radius: 15,
+      tone: unlocked ? 'ivory' : 'muted',
+    });
     root.addChild(frame);
-    const paper = new PIXI.Graphics();
-    paper.lineStyle(3, 0x8B5A2B, 1);
-    paper.beginFill(unlocked ? 0xFFF6EA : 0xEDE3D2);
-    paper.drawRoundedRect(x + 6, y + 6, width - 12, height - 12, 14);
-    paper.endFill();
-    root.addChild(paper);
 
     const thumbH = height - pad * 2;
-    const thumbW = Math.round(Math.min(210, thumbH * (200 / 168)));
+    const thumbW = Math.round(Math.min(206, thumbH * (200 / 168)));
     const thumbX = x + pad;
-    const thumbY = y + pad;
-    const textX = thumbX + thumbW + 12;
-    const btnY = y + height - pad - btnH;
+    const thumbY = y + pad - 1;
+    const textX = thumbX + thumbW + 14;
+    const btnY = y + height - pad - btnH - 2;
     const thumbBg = new PIXI.Graphics();
-    fillRect(thumbBg, thumbX, thumbY, thumbW, thumbH, 0x2A221C, 12);
+    thumbBg.lineStyle(2.2, UI_PALETTE.ink, 1);
+    thumbBg.beginFill(0x2A221C, 1);
+    thumbBg.drawRoundedRect(thumbX, thumbY, thumbW, thumbH, 12);
+    thumbBg.endFill();
     root.addChild(thumbBg);
 
     if (market.thumb) {
@@ -320,42 +347,62 @@ export class DestinationScene implements Scene {
       });
       if (isTextureReady(tex)) {
         const sprite = new PIXI.Sprite(tex);
-        const fit = fitCover(tex.width, tex.height, thumbW, thumbH);
+        const fit = fitCover(tex.width, tex.height, thumbW - 4, thumbH - 4);
         applyFit(sprite, fit);
-        sprite.position.set(thumbX + fit.x, thumbY + fit.y);
+        sprite.position.set(thumbX + 2 + fit.x, thumbY + 2 + fit.y);
         if (!unlocked) sprite.alpha = 0.42;
         const mask = new PIXI.Graphics();
-        fillRect(mask, thumbX, thumbY, thumbW, thumbH, 0xffffff, 12);
+        fillRect(mask, thumbX + 2, thumbY + 2, thumbW - 4, thumbH - 4, 0xffffff, 10);
         sprite.mask = mask;
         root.addChild(mask);
         root.addChild(sprite);
       }
     }
     if (!unlocked) {
-      const lock = makeLabel('未解锁', 20, 0xFFF8F0, { fontWeight: '700' });
+      const lock = makeLabel('未解锁', 18, 0xFFF8F0, { fontWeight: '700' });
       const chip = new PIXI.Graphics();
-      chip.beginFill(0x2A2018, 0.62);
-      chip.drawRoundedRect(thumbX + (thumbW - 104) / 2, thumbY + (thumbH - 36) / 2, 104, 36, 18);
+      chip.lineStyle(2, UI_PALETTE.ink, 1);
+      chip.beginFill(0x3A2416, 0.85);
+      chip.drawRoundedRect(thumbX + (thumbW - 100) / 2, thumbY + (thumbH - 34) / 2, 100, 34, 17);
       chip.endFill();
-      lock.position.set(thumbX + (thumbW - 104) / 2 + 14, thumbY + (thumbH - 36) / 2 + 6);
-      root.addChild(chip);
-      root.addChild(lock);
+      lock.anchor.set(0.5);
+      lock.position.set(thumbX + thumbW / 2, thumbY + thumbH / 2);
+      root.addChild(chip, lock);
     }
 
-    const name = makeLabel(market.name, height < 176 ? 24 : 28, 0x2A2018, { fontWeight: '700' });
-    name.position.set(textX, y + pad);
+    const name = makeLabel(market.name, height < 176 ? 23 : 26, UI_PALETTE.ink, { fontWeight: '700' });
+    name.position.set(textX, y + pad - 2);
     root.addChild(name);
 
-    const hint = makeLabel(market.hint, height < 176 ? 18 : 20, 0x5A4636, {
+    if (unlocked && !TutorialManager.isActive) {
+      const weather = dailyMarketWeather(market.id);
+      const tagTxt = makeLabel(`${weather.name} · ${weather.shortDesc}`, 13, weather.pillInk, {
+        fontWeight: '700',
+      });
+      const tw = Math.ceil(tagTxt.width) + 18;
+      const th = 24;
+      const tx = x + width - pad - tw;
+      const ty = y + pad;
+      const tagBg = new PIXI.Graphics();
+      tagBg.lineStyle(1.8, weather.pillInk, 0.85);
+      tagBg.beginFill(weather.pillFill, 1);
+      tagBg.drawRoundedRect(tx, ty, tw, th, th / 2);
+      tagBg.endFill();
+      tagTxt.anchor.set(0.5);
+      tagTxt.position.set(tx + tw / 2, ty + th / 2 + 0.5);
+      root.addChild(tagBg, tagTxt);
+    }
+
+    const hint = makeLabel(market.hint, height < 176 ? 17 : 18, UI_PALETTE.muted, {
       wordWrap: true,
       wordWrapWidth: width - (textX - x) - pad,
     });
-    hint.position.set(textX, y + pad + 36);
+    hint.position.set(textX, y + pad + 32);
     root.addChild(hint);
 
     if (unlocked) {
       const goW = 158;
-      const gap = 10;
+      const gap = 12;
       const go = this._departBtn(
         textX,
         btnY,
@@ -369,12 +416,13 @@ export class DestinationScene implements Scene {
       if (market.id === 'xiangko') this._xiangkoGo = go;
       root.addChild(this._exploreMeter(textX + goW + gap, btnY, btnH, market.id));
     } else {
-      const label = routed ? `厨艺 ${market.unlockLevel} 解锁` : `先买${needRide.name}`;
+      const label = routed ? `厨艺 ${market.unlockLevel} 级开` : `需购${needRide.name}`;
       const need = makeSlicedButton({
         label,
-        width: 200,
+        width: 196,
         height: btnH,
-        skin: 'wood',
+        skin: 'cream',
+        textColor: 0x7A6248,
         onReady: () => {
           if (this.container.parent) this.relayout();
         },
@@ -402,26 +450,34 @@ export class DestinationScene implements Scene {
     const root = new PIXI.Container();
     const used = KitchenManager.specialVisitCount(market.id);
     const left = used < market.dailyLimit;
-    const pad = Math.max(10, Math.round(height * 0.08));
+    const pad = Math.max(12, Math.round(height * 0.085));
     const btnH = height < 176 ? 42 : 48;
+
     const frame = new PIXI.Graphics();
-    fillRect(frame, x, y, width, height, 0x5A4636, 18);
+    frame.beginFill(0x160E08, 0.28);
+    frame.drawRoundedRect(x, y + 5, width, height, 20);
+    frame.endFill();
+    frame.lineStyle(2.8, UI_PALETTE.ink, 1);
+    frame.beginFill(left ? 0xC98E2B : UI_PALETTE.walnut, 1);
+    frame.drawRoundedRect(x, y, width, height, 20);
+    frame.endFill();
+    drawCraftCard(frame, x + 6, y + 5, width - 12, height - 11, {
+      radius: 15,
+      tone: left ? 'gold' : 'muted',
+    });
     root.addChild(frame);
-    const paper = new PIXI.Graphics();
-    paper.lineStyle(3, 0x8B5A2B, 1);
-    paper.beginFill(left ? 0xFFF6EA : 0xEDE3D2);
-    paper.drawRoundedRect(x + 6, y + 6, width - 12, height - 12, 14);
-    paper.endFill();
-    root.addChild(paper);
 
     const thumbH = height - pad * 2;
-    const thumbW = Math.round(Math.min(210, thumbH * (200 / 168)));
+    const thumbW = Math.round(Math.min(206, thumbH * (200 / 168)));
     const thumbX = x + pad;
-    const thumbY = y + pad;
-    const textX = thumbX + thumbW + 12;
-    const btnY = y + height - pad - btnH;
+    const thumbY = y + pad - 1;
+    const textX = thumbX + thumbW + 14;
+    const btnY = y + height - pad - btnH - 2;
     const thumbBg = new PIXI.Graphics();
-    fillRect(thumbBg, thumbX, thumbY, thumbW, thumbH, 0x2A221C, 12);
+    thumbBg.lineStyle(2.2, UI_PALETTE.ink, 1);
+    thumbBg.beginFill(0x2A221C, 1);
+    thumbBg.drawRoundedRect(thumbX, thumbY, thumbW, thumbH, 12);
+    thumbBg.endFill();
     root.addChild(thumbBg);
 
     if (market.thumb) {
@@ -431,34 +487,35 @@ export class DestinationScene implements Scene {
       });
       if (isTextureReady(tex)) {
         const sprite = new PIXI.Sprite(tex);
-        const fit = fitCover(tex.width, tex.height, thumbW, thumbH);
+        const fit = fitCover(tex.width, tex.height, thumbW - 4, thumbH - 4);
         applyFit(sprite, fit);
-        sprite.position.set(thumbX + fit.x, thumbY + fit.y);
+        sprite.position.set(thumbX + 2 + fit.x, thumbY + 2 + fit.y);
         if (!left) sprite.alpha = 0.42;
         const mask = new PIXI.Graphics();
-        fillRect(mask, thumbX, thumbY, thumbW, thumbH, 0xffffff, 12);
+        fillRect(mask, thumbX + 2, thumbY + 2, thumbW - 4, thumbH - 4, 0xffffff, 10);
         sprite.mask = mask;
         root.addChild(mask);
         root.addChild(sprite);
       }
     }
 
-    const name = makeLabel(market.name, height < 176 ? 24 : 28, 0x2A2018, { fontWeight: '700' });
-    name.position.set(textX, y + pad);
+    const name = makeLabel(`✦ ${market.name}`, height < 176 ? 23 : 26, UI_PALETTE.ink, { fontWeight: '700' });
+    name.position.set(textX, y + pad - 2);
     root.addChild(name);
 
-    const hint = makeLabel(market.hint, height < 176 ? 18 : 20, 0x5A4636, {
+    const hint = makeLabel(market.hint, height < 176 ? 17 : 18, UI_PALETTE.muted, {
       wordWrap: true,
       wordWrapWidth: width - (textX - x) - pad,
     });
-    hint.position.set(textX, y + pad + 36);
+    hint.position.set(textX, y + pad + 32);
     root.addChild(hint);
 
-    const go = makeSlicedButton({
-      label: '看广告进',
-      width: 168,
+    const go = makeAdButton({
+      label: '看视频进',
+      width: 176,
       height: btnH,
-      skin: left ? 'terracotta' : 'wood',
+      skin: 'gold',
+      disabled: !left,
       onReady: () => {
         if (this.container.parent) this.relayout();
       },
@@ -469,11 +526,11 @@ export class DestinationScene implements Scene {
       this._enterSpecial(market);
     });
     root.addChild(go);
-    const chipX = textX + 180;
-    root.addChild(this._dailyChip(chipX, btnY, used, market.dailyLimit));
+    const chipX = textX + 186;
+    root.addChild(this._dailyChip(chipX, btnY, btnH, used, market.dailyLimit));
     const peek = 36;
     const btn = this._peekBtn(peek);
-    btn.position.set(chipX + 118 + 10, btnY + Math.round((btnH - peek) / 2));
+    btn.position.set(chipX + 114 + 8, btnY + Math.round((btnH - peek) / 2));
     btn.on('pointertap', (e) => {
       e.stopPropagation();
       if (this._scroller.moved) return;
@@ -483,17 +540,14 @@ export class DestinationScene implements Scene {
     return root;
   }
 
-  private _dailyChip(x: number, y: number, used: number, limit: number): PIXI.Container {
+  private _dailyChip(x: number, y: number, h: number, used: number, limit: number): PIXI.Container {
     const root = new PIXI.Container();
     const chip = new PIXI.Graphics();
-    chip.lineStyle(2, 0x8B5A2B, 1);
-    chip.beginFill(0xFFF6EA);
-    chip.drawRoundedRect(0, 0, 118, 48, 24);
-    chip.endFill();
+    drawRecessedWell(chip, 0, 2, 114, h - 4, { radius: (h - 4) / 2 });
     root.addChild(chip);
-    const n = makeLabel(`今日 ${used}/${limit}`, 20, used >= limit ? 0xC46A3A : 0x3A3228, { fontWeight: '700' });
+    const n = makeLabel(`今日 ${used}/${limit}`, 17, used >= limit ? TERRACOTTA : UI_PALETTE.ink, { fontWeight: '700' });
     n.anchor.set(0.5);
-    n.position.set(59, 24);
+    n.position.set(57, h / 2);
     root.addChild(n);
     root.position.set(x, y);
     return root;
@@ -509,12 +563,11 @@ export class DestinationScene implements Scene {
     short: boolean,
     onTap: () => void,
   ): PIXI.Container {
-    const root = new PIXI.Container();
     const btn = makeSlicedButton({
       label: '',
       width,
       height,
-      skin: 'terracotta',
+      skin: short ? 'terracotta' : 'olive',
       onReady: () => {
         if (this.container.parent) this.relayout();
       },
@@ -524,9 +577,13 @@ export class DestinationScene implements Scene {
       if (this._scroller.moved) return;
       onTap();
     });
-    root.addChild(btn);
 
-    const word = makeLabel('出发', 22, 0xFFF8F0, { fontWeight: '700' });
+    const face = ((btn as any)._face as PIXI.Container | undefined) ?? btn;
+    const word = makeLabel('出发', 21, 0xFFF8F0, {
+      fontWeight: '700',
+      stroke: UI_PALETTE.ink,
+      strokeThickness: 3,
+    });
     word.anchor.set(0, 0.5);
     const icon = HUD_ICON.stamina;
     whenTextureReady(icon, () => {
@@ -539,26 +596,28 @@ export class DestinationScene implements Scene {
       bun.anchor.set(0.5);
       bun.eventMode = 'none';
     }
-    const n = makeLabel(`-${cost}`, 18, short ? 0xF2C14D : 0xFFF8F0, { fontWeight: '700' });
+    const n = makeLabel(`-${cost}`, 18, short ? 0xFFE27A : 0xFFF8F0, {
+      fontWeight: '700',
+      stroke: UI_PALETTE.ink,
+      strokeThickness: 3,
+    });
     n.anchor.set(0, 0.5);
     const clusterW = word.width + 4 + (bun ? 22 : 0) + 2 + n.width;
-    let cx = x + (width - clusterW) / 2;
-    const mid = y + height / 2 + 1;
+    let cx = Math.round((width - clusterW) / 2);
+    const mid = height / 2 - 1;
     word.position.set(cx, mid);
     cx += word.width + 4;
     if (bun) {
       bun.position.set(cx + 11, mid);
       cx += 24;
-      root.addChild(bun);
+      face.addChild(bun);
     }
     n.position.set(cx, mid);
-    word.eventMode = 'none';
-    n.eventMode = 'none';
-    root.addChild(word, n);
-    return root;
+    face.addChild(word, n);
+    return btn;
   }
 
-  /** 无框：探索度后面跟放大镜，下面短粗金条。 */
+  /** 探索度 + 放大镜 + 双层高光进度条。 */
   private _exploreMeter(
     x: number,
     y: number,
@@ -568,16 +627,16 @@ export class DestinationScene implements Scene {
     const root = new PIXI.Container();
     const view = marketExploration(KitchenManager.save, marketId);
     const pct = explorePercent(view);
-    const peek = 36;
-    const barW = 150;
+    const peek = 34;
+    const barW = 152;
 
-    const label = makeLabel(`探索度 ${pct}%`, 22, 0x3A3228, { fontWeight: '700' });
-    label.position.set(0, 2);
+    const label = makeLabel(`探索度 ${pct}%`, 18, UI_PALETTE.ink, { fontWeight: '700' });
+    label.position.set(2, 0);
     root.addChild(label);
 
     if (view.complete) {
       const btn = this._peekBtn(peek);
-      btn.position.set(label.width + 6, Math.round((label.height - peek) / 2) + 2);
+      btn.position.set(label.width + 8, -4);
       btn.on('pointertap', (e) => {
         e.stopPropagation();
         if (this._scroller.moved) return;
@@ -587,26 +646,14 @@ export class DestinationScene implements Scene {
     }
 
     const barH = 16;
-    const barY = height - barH - 2;
-    const well = new PIXI.Graphics();
-    well.beginFill(0x5A4636);
-    well.drawRoundedRect(0, barY, barW, barH, 8);
-    well.endFill();
-    well.beginFill(0xE8DFD0);
-    well.drawRoundedRect(2, barY + 2, barW - 4, barH - 4, 6);
-    well.endFill();
-    root.addChild(well);
-    if (view.ratio > 0) {
-      const fw = Math.max(12, (barW - 4) * (view.complete ? 1 : view.ratio));
-      const fill = new PIXI.Graphics();
-      fill.beginFill(0xE0A100);
-      fill.drawRoundedRect(2, barY + 2, fw, barH - 4, 6);
-      fill.endFill();
-      fill.beginFill(0xF6D56B, 0.5);
-      fill.drawRoundedRect(2, barY + 2, fw, 5, 5);
-      fill.endFill();
-      root.addChild(fill);
-    }
+    const bar = makeCraftProgressBar({
+      width: barW,
+      height: barH,
+      ratio: view.complete ? 1 : view.ratio,
+      scheme: view.complete ? 'olive' : 'amber',
+    });
+    bar.position.set(0, height - barH - 2);
+    root.addChild(bar);
 
     root.position.set(x, y);
     return root;
@@ -756,19 +803,26 @@ export class DestinationScene implements Scene {
   private _arrow(cx: number, cy: number, dir: -1 | 1): PIXI.Container {
     const root = new PIXI.Container();
     const bg = new PIXI.Graphics();
-    bg.beginFill(0xE8DFD0, 1);
-    bg.lineStyle(2, WALNUT, 1);
-    bg.drawCircle(0, 0, 22);
+    bg.beginFill(0x160E08, 0.28);
+    bg.drawCircle(0, 3, 24);
+    bg.endFill();
+    bg.lineStyle(2.8, UI_PALETTE.ink, 1);
+    bg.beginFill(UI_PALETTE.brass, 1);
+    bg.drawCircle(0, 0, 23);
+    bg.endFill();
+    bg.lineStyle(1.4, 0xFFFDF8, 0.85);
+    bg.beginFill(0xFFF9EE, 1);
+    bg.drawCircle(0, 0, 18.5);
     bg.endFill();
     const tri = new PIXI.Graphics();
     tri.beginFill(TERRACOTTA, 1);
     if (dir < 0) {
-      tri.moveTo(6, -10);
-      tri.lineTo(6, 10);
+      tri.moveTo(5, -9);
+      tri.lineTo(5, 9);
       tri.lineTo(-8, 0);
     } else {
-      tri.moveTo(-6, -10);
-      tri.lineTo(-6, 10);
+      tri.moveTo(-5, -9);
+      tri.lineTo(-5, 9);
       tri.lineTo(8, 0);
     }
     tri.closePath();

@@ -4,11 +4,12 @@ import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { Platform } from '@/core/PlatformService';
 import { KitchenManager } from '@/managers/KitchenManager';
-import { GAME_CLUB_DAILY_COINS } from '@/sim';
+import { dailyGameClubPack, itemRarity } from '@/sim';
 import { fetchDailyPostCount, isGameClubButtonSupported } from '@/services/GameClubService';
-import { HUD_ICON, fillRect, makeLabel, makeSlicedButton } from '@/utils/ui';
-import { fitSpriteInBox, gameTexture, isTextureReady, watchTextures, whenTextureReady } from '@/utils/assets';
-import { PANEL_SHELL } from '@/utils/panelAssets';
+import { HUD_ICON, drawItemSlotBox, fillRect, makeLabel, makeSlicedButton, makeSlotBadge } from '@/utils/ui';
+import { fitSpriteInBox, gameTexture, isTextureReady, itemTexture, watchTextures, whenTextureReady } from '@/utils/assets';
+import { PANEL_SHELL, itemIconPath } from '@/utils/panelAssets';
+import { kitchenGachaHudPos, playRewardCollect, playTicketCollect } from '@/utils/coinCollect';
 
 const BG = 'subpkg_kitchen/ui_gameclub_panel.png';
 const INK = 0x2A2018;
@@ -94,12 +95,13 @@ export class GameClubPanel extends PIXI.Container {
     dim.on('pointertap', () => this.close());
     this._root.addChild(dim);
 
-    whenTextureReady(BG, () => {
-      if (this._isOpen) this.relayout();
-    });
-    whenTextureReady(HUD_ICON.coin, () => {
-      if (this._isOpen) this.relayout();
-    });
+    const pack = dailyGameClubPack(KitchenManager.save);
+    watchTextures(
+      [BG, HUD_ICON.ticket, HUD_ICON.coin, ...pack.foods.map((f) => itemIconPath(f.defId))],
+      () => {
+        if (this._isOpen) this.relayout();
+      },
+    );
 
     const box = this._panelBox(w, h);
     const shell = new PIXI.Container();
@@ -181,17 +183,19 @@ export class GameClubPanel extends PIXI.Container {
   }
 
   private _drawLine(shell: PIXI.Container, pw: number, ph: number): void {
+    const pack = dailyGameClubPack(KitchenManager.save);
+    const foodNames = pack.foods.map((f) => (f.qty > 1 ? `${f.name}×${f.qty}` : f.name)).join('、');
     const boxX = pw * ART.bubble.x;
     const boxY = ph * ART.bubble.y;
     const boxW = pw * ART.bubble.w;
     const boxH = ph * ART.bubble.h;
-    const size = Math.round(pw * 0.048);
-    const prizeSize = Math.round(size * 1.16);
+    const size = Math.round(pw * 0.041);
+    const prizeSize = Math.round(pw * 0.044);
     const rows: Array<{ text: string; color: number; size: number }> = [
-      { text: '每日去游戏圈', color: ACCENT, size },
-      { text: '发个帖，', color: ACCENT, size },
-      { text: '回来就能领', color: ACCENT, size },
-      { text: `${GAME_CLUB_DAILY_COINS} 金币`, color: GOLD, size: prizeSize },
+      { text: '每日去游戏圈晒晒菜', color: ACCENT, size },
+      { text: '回来领鲜货补给包：', color: WALNUT, size },
+      { text: foodNames, color: GOLD, size: prizeSize },
+      { text: `+ 菜谱券 ×${pack.tickets}`, color: ACCENT, size: prizeSize },
     ];
     const stack = new PIXI.Container();
     let y = 0;
@@ -200,12 +204,14 @@ export class GameClubPanel extends PIXI.Container {
         fontWeight: '700',
         fontFamily: TITLE_FONT,
         align: 'center',
+        wordWrap: true,
+        wordWrapWidth: boxW - 10,
       });
       label.anchor.set(0.5, 0);
       label.position.set(0, y);
       label.eventMode = 'none';
       stack.addChild(label);
-      y += Math.round(row.size * 1.32);
+      y += Math.round(label.height + 4);
     }
     stack.position.set(boxX + boxW / 2, boxY + boxH / 2 - y / 2);
     stack.eventMode = 'none';
@@ -213,6 +219,7 @@ export class GameClubPanel extends PIXI.Container {
   }
 
   private _drawTask(shell: PIXI.Container, pw: number, ph: number): void {
+    const pack = dailyGameClubPack(KitchenManager.save);
     const claimed = KitchenManager.hasClaimedGameClubToday();
     const claimable = KitchenManager.canClaimGameClub(this._postCount);
     const done = Math.min(1, this._postCount);
@@ -220,34 +227,74 @@ export class GameClubPanel extends PIXI.Container {
     const width = pw * ART.plank.w;
     const midY = ph * ART.plank.cy;
 
+    // Left: tactile slot tiles for today's 2 rare/epic foods + 1 recipe ticket
     const reward = new PIXI.Container();
-    const coinTex = gameTexture(HUD_ICON.coin);
-    let rewardW = 0;
-    if (isTextureReady(coinTex)) {
-      const spr = new PIXI.Sprite(coinTex);
-      fitSpriteInBox(spr, 34, 34);
-      spr.anchor.set(0.5);
-      spr.position.set(17, 0);
-      spr.eventMode = 'none';
-      reward.addChild(spr);
-      rewardW = 34;
+    const slotSize = Math.min(48, Math.round(width * 0.118));
+    const slotGap = 5;
+    let sx = 0;
+    for (const f of pack.foods) {
+      const slot = new PIXI.Container();
+      slot.position.set(sx, -slotSize / 2);
+      const sg = new PIXI.Graphics();
+      drawItemSlotBox(sg, 0, 0, slotSize, slotSize, {
+        radius: 9,
+        rarity: itemRarity(f.defId),
+        dimmed: claimed,
+      });
+      slot.addChild(sg);
+      const tex = itemTexture(f.defId);
+      if (isTextureReady(tex)) {
+        const spr = new PIXI.Sprite(tex);
+        fitSpriteInBox(spr, slotSize - 8, slotSize - 8);
+        spr.anchor.set(0.5);
+        spr.position.set(slotSize / 2, slotSize / 2);
+        slot.addChild(spr);
+      }
+      if (f.qty > 1) {
+        const b = makeSlotBadge(`×${f.qty}`, 'olive', 10);
+        b.node.position.set(slotSize - b.w + 2, slotSize - b.h + 2);
+        slot.addChild(b.node);
+      }
+      reward.addChild(slot);
+      sx += slotSize + slotGap;
     }
-    const amt = makeLabel(`${GAME_CLUB_DAILY_COINS}`, Math.round(pw * 0.048), WALNUT, { fontWeight: '700' });
-    amt.anchor.set(0, 0.5);
-    amt.position.set(rewardW + 6, 1);
-    amt.eventMode = 'none';
-    reward.addChild(amt);
+    // Recipe ticket slot
+    const tSlot = new PIXI.Container();
+    tSlot.position.set(sx, -slotSize / 2);
+    const tg = new PIXI.Graphics();
+    drawItemSlotBox(tg, 0, 0, slotSize, slotSize, {
+      radius: 9,
+      rarity: 'epic',
+      dimmed: claimed,
+    });
+    tSlot.addChild(tg);
+    const ticketTex = gameTexture(HUD_ICON.ticket);
+    if (isTextureReady(ticketTex)) {
+      const tspr = new PIXI.Sprite(ticketTex);
+      fitSpriteInBox(tspr, slotSize - 8, slotSize - 8);
+      tspr.anchor.set(0.5);
+      tspr.position.set(slotSize / 2, slotSize / 2);
+      tSlot.addChild(tspr);
+    }
+    const tb = makeSlotBadge(`×${pack.tickets}`, 'gold', 10);
+    tb.node.position.set(slotSize - tb.w + 2, slotSize - tb.h + 2);
+    tSlot.addChild(tb.node);
+    reward.addChild(tSlot);
+    sx += slotSize;
+
     reward.position.set(left, midY);
+    reward.eventMode = 'none';
     shell.addChild(reward);
 
-    const barW = Math.round(width * 0.32);
-    const barH = 26;
-    const barX = left + width * 0.36;
+    const claimW = Math.min(112, Math.round(width * 0.26));
+    const barX = left + sx + 10;
+    const barW = Math.max(54, Math.round(width - sx - claimW - 20));
+    const barH = 24;
     const track = new PIXI.Graphics();
-    fillRect(track, 0, -barH / 2, barW, barH, 0xD8C4A4, 13);
+    fillRect(track, 0, -barH / 2, barW, barH, 0xD8C4A4, 12);
     const fill = new PIXI.Graphics();
-    fillRect(fill, 0, -barH / 2, Math.max(0, barW * done), barH, 0xE8A04A, 13);
-    const prog = makeLabel(`${done}/1`, 18, INK, { fontWeight: '700' });
+    fillRect(fill, 0, -barH / 2, Math.max(0, barW * done), barH, 0xE8A04A, 12);
+    const prog = makeLabel(`${done}/1`, 16, INK, { fontWeight: '700' });
     prog.anchor.set(0.5);
     prog.position.set(barW / 2, 1);
     track.eventMode = 'none';
@@ -258,14 +305,14 @@ export class GameClubPanel extends PIXI.Container {
     bar.position.set(barX, midY);
     shell.addChild(bar);
 
-    const claimW = Math.min(120, Math.round(width * 0.28));
     const claimH = 46;
     const claim = makeSlicedButton({
-      label: claimed ? '已领取' : '领取',
+      label: claimed ? '已领取' : '领补给',
       width: claimW,
       height: claimH,
       skin: claimable ? 'terracotta' : 'wood',
       textColor: PAPER,
+      fontSize: 18,
       silent: true,
     });
     claim.position.set(left + width - claimW, midY - claimH / 2);
@@ -274,7 +321,7 @@ export class GameClubPanel extends PIXI.Container {
     claim.cursor = claimable ? 'pointer' : 'default';
     claim.on('pointertap', (e) => {
       e.stopPropagation();
-      this._handleClaim();
+      this._handleClaim({ x: e.global.x, y: e.global.y });
     });
     shell.addChild(claim);
   }
@@ -305,13 +352,25 @@ export class GameClubPanel extends PIXI.Container {
     shell.addChild(enter);
   }
 
-  private _handleClaim(): void {
+  private _handleClaim(from?: { x: number; y: number }): void {
     if (!KitchenManager.canClaimGameClub(this._postCount)) {
       if (this._postCount < 1) Platform.showToast('请先在游戏圈发帖');
       else if (KitchenManager.hasClaimedGameClubToday()) Platform.showToast('今日奖励已领取');
       return;
     }
-    if (!KitchenManager.claimGameClubDaily(this._postCount)) return;
+    const res = KitchenManager.claimGameClubDaily(this._postCount);
+    if (!res.ok) return;
+    const origin = from ?? { x: Game.designWidth / 2, y: Math.round(Game.logicHeight * 0.62) };
+    const firstFood = res.foods.find((f) => !f.folded);
+    playRewardCollect({
+      gold: res.foldGold,
+      foodDefId: firstFood?.defId,
+      foodFolded: !firstFood && res.foldGold > 0,
+      from: origin,
+    });
+    if (res.tickets > 0) {
+      playTicketCollect(origin, kitchenGachaHudPos(), 0.08);
+    }
     this.relayout();
   }
 

@@ -21,7 +21,21 @@ import {
 } from '@/sim';
 import { playRewardCollect } from '@/utils/coinCollect';
 import { orderPanelPaths } from '@/utils/panelAssets';
-import { P0_ART, fillRect, makeAdButton, makeLabel, makeRewardStrip, makeSlicedButton } from '@/utils/ui';
+import {
+  P0_ART,
+  UI_KIT,
+  UI_PALETTE,
+  drawCraftCard,
+  drawItemSlotBox,
+  drawSectionTray,
+  fillRect,
+  makeAdButton,
+  makeArtisanShell,
+  makeLabel,
+  makeRewardStrip,
+  makeSlicedButton,
+  makeSlotBadge,
+} from '@/utils/ui';
 import {
   dishTexture,
   fitSpriteInBox,
@@ -37,15 +51,11 @@ import {
   type ItemInspectView,
 } from './ItemInspectCard';
 
-const TITLE_FONT = 'Songti SC, STSong, PingFang SC, serif';
-const INK = 0x2A2018;
-const MUTED = 0x8A6A40;
-const PAPER = 0xFFF8F0;
-const CREAM = 0xF6EDE0;
-const WALNUT = 0x8B5A2B;
-const LINE = 0xC4A574;
-const TERRACOTTA = 0xC46A3A;
-const GOLD = 0xC48A14;
+const INK = UI_PALETTE.ink;
+const MUTED = UI_PALETTE.muted;
+const TERRACOTTA = UI_PALETTE.terracotta;
+const OLIVE = UI_PALETTE.olive;
+const GOLD = 0xB87910;
 
 export class OrderPanel extends PIXI.Container {
   _isOpen = false;
@@ -91,7 +101,14 @@ export class OrderPanel extends PIXI.Container {
 
   private _warm(): void {
     watchTextures(
-      [...orderPanelPaths(KitchenManager.save, KitchenManager.liveNeighborOrders()), P0_ART.adClapper],
+      [
+        UI_KIT.headerRibbon,
+        UI_KIT.closeRound,
+        UI_KIT.btnOlive,
+        UI_KIT.btnGold,
+        ...orderPanelPaths(KitchenManager.save, KitchenManager.liveNeighborOrders()),
+        P0_ART.adClapper,
+      ],
       this._scheduleRelayout,
     );
   }
@@ -123,73 +140,45 @@ export class OrderPanel extends PIXI.Container {
     const h = Game.logicHeight;
     this.hitArea = new PIXI.Rectangle(0, 0, w, h);
     const dim = new PIXI.Graphics();
-    fillRect(dim, 0, 0, w, h, 0x1A120C);
-    dim.alpha = 0.36;
+    fillRect(dim, 0, 0, w, h, 0x160E08);
+    dim.alpha = 0.56;
     dim.eventMode = 'static';
     dim.on('pointertap', () => {
-      if (this._inspect) return;
-      this.close();
+      if (this._inspect) {
+        this._inspect = null;
+        this.relayout();
+        return;
+      }
+      if (!this._adBusy) this.close();
     });
     this._root.addChild(dim);
 
-    const rowH = 264;
-    const boxW = w - 36;
-    const headH = 118;
-    const footH = 72;
-    const boxH = headH + orders.length * (rowH + 14) + footH;
-    const x = 18;
-    const y = Math.round(Math.max(Game.safeTop + 14, (h - boxH) / 2));
+    const rowH = 258;
+    const rowGap = 12;
+    const boxW = Math.min(w - 30, 710);
+    const padX = 24;
+    const contentTop = 90;
+    const boxH = contentTop + orders.length * rowH + (orders.length - 1) * rowGap + 28;
+    const bx = Math.round((w - boxW) / 2);
+    const by = Math.round(Math.max(Game.safeTop + 22, (h - boxH) / 2 + 6));
 
-    const panel = new PIXI.Graphics();
-    panel.lineStyle(5, WALNUT, 1);
-    panel.beginFill(CREAM);
-    panel.drawRoundedRect(x, y, boxW, boxH, 28);
-    panel.endFill();
-    panel.eventMode = 'static';
-    panel.on('pointertap', (e) => e.stopPropagation());
-    this._root.addChild(panel);
-    const inner = new PIXI.Graphics();
-    inner.lineStyle(2, LINE, 0.7);
-    inner.beginFill(0xF3E6D0);
-    inner.drawRoundedRect(x + 14, y + 14, boxW - 28, boxH - 28, 20);
-    inner.endFill();
-    this._root.addChild(inner);
-
-    const title = new PIXI.Text('街坊点菜', {
-      fontFamily: TITLE_FONT,
-      fontSize: 34,
-      fill: INK,
-      fontWeight: '700',
-      letterSpacing: 2,
-      stroke: '#FFF6E8',
-      strokeThickness: 5,
+    const { shell } = makeArtisanShell({
+      width: boxW,
+      height: boxH,
+      title: '街 坊 点 菜',
+      subtitle: '做好了点交菜 · 街坊给赏钱与余菜谢礼',
+      onReady: this._scheduleRelayout,
+      closeSilent: true,
+      onClose: () => {
+        if (!this._adBusy) this.close();
+      },
     });
-    title.position.set(x + 36, y + 28);
-    title.eventMode = 'none';
-    this._root.addChild(title);
-    const hint = makeLabel('做好了点交菜。街坊给钱，有时还拿家里余的换。', 18, MUTED, {
-      wordWrap: true,
-      breakWords: true,
-      wordWrapWidth: boxW - 72,
-    });
-    hint.position.set(x + 36, y + 72);
-    this._root.addChild(hint);
+    shell.position.set(bx, by);
+    this._root.addChild(shell);
 
     orders.forEach((order, i) => {
-      this._root.addChild(this._row(order, x + 28, y + headH + i * (rowH + 14), boxW - 56, rowH, now));
+      shell.addChild(this._row(order, padX, contentTop + i * (rowH + rowGap), boxW - padX * 2, rowH, now));
     });
-
-    const closeW = 168;
-    const close = makeSlicedButton({
-      label: '关上',
-      width: closeW,
-      height: 46,
-      skin: 'wood',
-      onReady: this._scheduleRelayout,
-    });
-    close.position.set(x + (boxW - closeW) / 2, y + boxH - 60);
-    close.on('pointertap', () => this.close());
-    this._root.addChild(close);
 
     if (this._inspect) {
       this._root.addChild(makeItemInspectCard({
@@ -198,6 +187,7 @@ export class OrderPanel extends PIXI.Container {
         actions: false,
         onQty: () => {},
         onClose: () => {
+          AudioManager.play('ui_close');
           this._inspect = null;
           this.relayout();
         },
@@ -215,38 +205,90 @@ export class OrderPanel extends PIXI.Container {
     now: number,
   ): PIXI.Container {
     const root = new PIXI.Container();
-    const bg = new PIXI.Graphics();
-    bg.lineStyle(3, LINE, 1);
-    bg.beginFill(PAPER, 1);
-    bg.drawRoundedRect(x, y, width, height, 16);
-    bg.endFill();
-    root.addChild(bg);
-
     const save = KitchenManager.save;
     const npc = neighborNpc(order.npcId);
     const recipe = recipeById(order.recipeId);
     const view = recipeUnlockView(save);
     const have = fridgeDishQty(save.fridge, order.recipeId);
+
+    const headerH = 40;
+    const bg = new PIXI.Graphics();
+    drawCraftCard(bg, x, y, width, height, {
+      radius: 16,
+      tone: have > 0 ? 'gold' : 'ivory',
+      headerH,
+    });
+    root.addChild(bg);
+
     const canRefresh = canUseDailyAd(save, 'order_refresh', now);
     const refreshLeft = dailyAdLeft(save, 'order_refresh', now);
     const canDouble = canUseDailyAd(save, 'order_double', now);
     const doubleLeft = dailyAdLeft(save, 'order_double', now);
 
-    const pad = 14;
-    const faceW = 142;
-    const faceH = 216;
-    const faceX = x + 8;
+    // Structured top header bar: Dish order title on left + Timer tag & Abandon link on right
+    const name = makeLabel(`${npc.name}点：${recipe?.name ?? '家常菜'}`, 19, INK, { fontWeight: '700' });
+    name.anchor.set(0, 0.5);
+    name.position.set(x + 16, y + headerH / 2 + 1);
+    root.addChild(name);
+
+    const remainTxt = `⏱ ${formatOrderRemain(order.expiresAt - now)}`;
+    const remainLbl = makeLabel(remainTxt, 13, 0xFFFDF8, { fontWeight: '700' });
+    const rPillW = Math.ceil(remainLbl.width) + 16;
+    const rPillH = 22;
+    const rPill = new PIXI.Graphics();
+    rPill.beginFill(0x7A5B40, 1);
+    rPill.drawRoundedRect(0, 0, rPillW, rPillH, rPillH / 2);
+    rPill.endFill();
+    remainLbl.anchor.set(0.5);
+    remainLbl.position.set(rPillW / 2, rPillH / 2 - 0.5);
+    const rWrap = new PIXI.Container();
+    rWrap.addChild(rPill, remainLbl);
+    const rightMetaX = x + width - (canRefresh ? rPillW + 84 : rPillW + 14);
+    rWrap.position.set(rightMetaX, y + Math.round((headerH - rPillH) / 2) + 1);
+    root.addChild(rWrap);
+
+    if (canRefresh) {
+      const dropLink = makeLabel('放弃此单', 13, MUTED, { fontWeight: '700' });
+      dropLink.anchor.set(0, 0.5);
+      dropLink.position.set(rightMetaX + rPillW + 10, y + headerH / 2 + 1);
+      dropLink.eventMode = 'static';
+      dropLink.cursor = 'pointer';
+      dropLink.hitArea = new PIXI.Rectangle(-6, -13, dropLink.width + 12, 26);
+      dropLink.on('pointertap', (e) => {
+        e.stopPropagation();
+        KitchenManager.abandonNeighborOrder(order.id);
+        this._inspect = null;
+        if (this._isOpen) this.relayout();
+      });
+      root.addChild(dropLink);
+    }
+
+    const bodyTop = y + headerH + 10;
+    const faceW = 128;
+    const faceH = height - headerH - 20;
+    const faceX = x + 12;
+
+    // Framed recessed portrait card slot
+    const arch = new PIXI.Graphics();
+    drawSectionTray(arch, faceX, bodyTop, faceW, faceH, { radius: 13, tone: 'sand' });
+    root.addChild(arch);
+
     const tex = gameTexture(npc.portrait);
     if (isTextureReady(tex)) {
       const spr = new PIXI.Sprite(tex);
-      fitSpriteInBox(spr, faceW, faceH);
+      fitSpriteInBox(spr, faceW - 8, faceH - 6);
       spr.anchor.set(0.5, 1);
-      spr.position.set(faceX + faceW / 2, y + height - 8);
+      spr.position.set(faceX + faceW / 2, bodyTop + faceH - 2);
       spr.eventMode = 'none';
-      root.addChild(spr);
+      const clip = new PIXI.Graphics();
+      clip.beginFill(0xffffff);
+      clip.drawRoundedRect(faceX + 2, bodyTop + 2, faceW - 4, faceH - 4, 11);
+      clip.endFill();
+      spr.mask = clip;
+      root.addChild(clip, spr);
     }
 
-    const actW = 148;
+    const actW = 146;
     const actX = x + width - actW - 12;
 
     if (canRefresh) {
@@ -256,10 +298,10 @@ export class OrderPanel extends PIXI.Container {
         height: 42,
         skin: 'cream',
         textColor: INK,
-        badge: `免冷却·${refreshLeft}`,
+        badge: `免冷·${refreshLeft}`,
         onReady: this._scheduleRelayout,
       });
-      refreshBtn.position.set(actX, y + pad + 2);
+      refreshBtn.position.set(actX, bodyTop + 4);
       refreshBtn.on('pointertap', () => {
         if (this._adBusy) return;
         this._adBusy = true;
@@ -286,7 +328,7 @@ export class OrderPanel extends PIXI.Container {
         textColor: INK,
         onReady: this._scheduleRelayout,
       });
-      drop.position.set(actX, y + pad + 2);
+      drop.position.set(actX, bodyTop + 4);
       drop.on('pointertap', () => {
         KitchenManager.abandonNeighborOrder(order.id);
         this._inspect = null;
@@ -295,79 +337,66 @@ export class OrderPanel extends PIXI.Container {
       root.addChild(drop);
     }
 
-    const colX = faceX + faceW + 6;
-    const dishSize = 62;
-    root.addChild(this._dishTile(order, colX, y + pad + 4, dishSize));
+    // Center Unified Recessed Tray: Dish Tile + Required Ingredients / Ready Status
+    const colX = faceX + faceW + 12;
+    const trayW = actX - colX - 12;
+    const trayH = 82;
+    const trayY = bodyTop + 4;
+    const tray = new PIXI.Graphics();
+    drawSectionTray(tray, colX, trayY, trayW, trayH, {
+      radius: 13,
+      tone: have > 0 ? 'sage' : 'sand',
+    });
+    root.addChild(tray);
 
-    const textX = colX + dishSize + 12;
-    const name = makeLabel(`${npc.name}要的${recipe?.name ?? '菜'}`, 21, INK, { fontWeight: '700' });
-    name.position.set(textX, y + pad + 2);
-    root.addChild(name);
-    const remain = makeLabel(formatOrderRemain(order.expiresAt - now), 19, GOLD, { fontWeight: '700' });
-    remain.position.set(textX, y + pad + 34);
-    root.addChild(remain);
+    const dishSize = 66;
+    root.addChild(this._dishTile(order, colX + 8, trayY + 8, dishSize));
 
-    if (canRefresh) {
-      const dropLink = makeLabel('放弃此单', 16, MUTED, { fontWeight: '600' });
-      dropLink.position.set(textX + Math.ceil(remain.width) + 14, y + pad + 36);
-      dropLink.eventMode = 'static';
-      dropLink.cursor = 'pointer';
-      dropLink.hitArea = new PIXI.Rectangle(-6, -4, dropLink.width + 12, 26);
-      dropLink.on('pointertap', (e) => {
-        e.stopPropagation();
-        KitchenManager.abandonNeighborOrder(order.id);
-        this._inspect = null;
-        if (this._isOpen) this.relayout();
-      });
-      root.addChild(dropLink);
-    }
-
-    const lackY = y + pad + 82;
+    const innerX = colX + 8 + dishSize + 10;
     const missing = recipeNeeds(view, order.recipeId).filter((row) => row.have < row.need);
     if (have > 0) {
-      const ready = makeLabel(
-        canDouble ? '菜已备好！可双倍领街坊谢礼' : '冰箱里有现成的，点交菜就扣。',
-        19,
-        canDouble ? TERRACOTTA : MUTED,
-        { fontWeight: '700' },
-      );
-      ready.position.set(textX, lackY + 14);
-      root.addChild(ready);
+      const readyTitle = makeLabel('✓ 菜已备好', 17, OLIVE, { fontWeight: '700' });
+      readyTitle.position.set(innerX, trayY + 18);
+      const readySub = makeLabel(canDouble ? '可双倍领街坊谢礼' : '点右侧交菜立领赏金', 13, 0x55734A, { fontWeight: '700' });
+      readySub.position.set(innerX, trayY + 44);
+      root.addChild(readyTitle, readySub);
     } else if (missing.length) {
-      const lack = makeLabel('还缺', 19, MUTED);
-      lack.anchor.set(0, 0.5);
-      lack.position.set(textX, lackY + 24);
-      root.addChild(lack);
-      let usedX = textX + Math.ceil(lack.width) + 10;
+      const lackTag = makeLabel('缺料', 13, 0x7A5B40, { fontWeight: '700' });
+      lackTag.anchor.set(0.5);
+      lackTag.position.set(innerX + 16, trayY + trayH / 2);
+      root.addChild(lackTag);
+      let usedX = innerX + 36;
+      const slotS = 58;
       for (const row of missing) {
-        if (usedX + 52 > actX - 6) break;
-        root.addChild(this._needTile(usedX, lackY, 46, row.iconId, row.have, row.need));
-        usedX += 54;
+        if (usedX + slotS > colX + trayW - 6) break;
+        root.addChild(this._needTile(usedX, trayY + Math.round((trayH - slotS) / 2), slotS, row.iconId, row.have, row.need));
+        usedX += slotS + 6;
       }
     } else {
-      const ready = makeLabel('材料齐了', 19, MUTED);
+      const ready = makeLabel('食材齐备', 16, OLIVE, { fontWeight: '700' });
       ready.anchor.set(0, 0.5);
-      ready.position.set(textX, lackY + 22);
+      ready.position.set(innerX, trayY + trayH / 2);
       root.addChild(ready);
       const cook = makeSlicedButton({
         label: '去做菜',
-        width: 108,
-        height: 42,
+        width: 102,
+        height: 40,
         skin: 'terracotta',
         textColor: 0xFFF8F0,
         onReady: this._scheduleRelayout,
       });
-      cook.position.set(textX + Math.ceil(ready.width) + 10, lackY);
+      cook.position.set(innerX + Math.ceil(ready.width) + 8, trayY + Math.round((trayH - 40) / 2));
       cook.on('pointertap', () => {
         this.onCook?.(order.recipeId);
       });
       root.addChild(cook);
     }
 
+    // Bottom Structured Reward Strip aligned cleanly with tray
     const chips = neighborRewardChips(neighborOrderReward(order));
     if (chips.length) {
-      const strip = makeRewardStrip(chips, this._scheduleRelayout, '交菜给', 'paper');
-      strip.position.set(colX, y + pad + 178);
+      const strip = makeRewardStrip(chips, this._scheduleRelayout, '谢礼', 'paper');
+      strip.position.set(colX, bodyTop + trayH + 22);
       root.addChild(strip);
     }
 
@@ -384,12 +413,12 @@ export class OrderPanel extends PIXI.Container {
     const btn = makeSlicedButton({
       label: '交菜',
       width: actW,
-      height: 42,
-      skin: have > 0 ? (canDouble ? 'wood' : 'terracotta') : 'cream',
-      textColor: have > 0 ? 0xFFF8F0 : INK,
+      height: 44,
+      skin: have > 0 ? 'olive' : 'cream',
+      textColor: have > 0 ? 0xFFF8F0 : 0x8A7358,
       onReady: this._scheduleRelayout,
     });
-    btn.position.set(actX, y + pad + 54);
+    btn.position.set(actX, bodyTop + 56);
     btn.on('pointertap', () => submitNormal(false));
     root.addChild(btn);
 
@@ -397,13 +426,13 @@ export class OrderPanel extends PIXI.Container {
       const dblBtn = makeAdButton({
         label: '双倍交菜',
         width: actW,
-        height: 44,
-        skin: 'terracotta',
+        height: 46,
+        skin: 'gold',
         disabled: have <= 0,
         badge: `×2·剩${doubleLeft}`,
         onReady: this._scheduleRelayout,
       });
-      dblBtn.position.set(actX, y + pad + 108);
+      dblBtn.position.set(actX, bodyTop + 112);
       dblBtn.on('pointertap', () => {
         if (this._adBusy) return;
         if (have <= 0) {
@@ -430,18 +459,16 @@ export class OrderPanel extends PIXI.Container {
 
   private _dishTile(order: NeighborOrder, x: number, y: number, size: number): PIXI.Container {
     const root = new PIXI.Container();
+    const recipe = recipeById(order.recipeId);
     const plate = new PIXI.Graphics();
-    plate.lineStyle(2, LINE, 1);
-    plate.beginFill(CREAM);
-    plate.drawRoundedRect(x, y, size, size, 14);
-    plate.endFill();
+    drawItemSlotBox(plate, x, y, size, size, { radius: 11, rarity: recipe?.rarity ?? 'common' });
     root.addChild(plate);
     const dishTex = dishTexture(order.recipeId);
     if (isTextureReady(dishTex)) {
       const dish = new PIXI.Sprite(dishTex);
       fitSpriteInBox(dish, size - 10, size - 10);
       dish.anchor.set(0.5);
-      dish.position.set(x + size / 2, y + size / 2);
+      dish.position.set(x + size / 2, y + size / 2 - 1);
       dish.eventMode = 'none';
       root.addChild(dish);
     }
@@ -463,29 +490,25 @@ export class OrderPanel extends PIXI.Container {
   private _needTile(x: number, y: number, size: number, iconId: string, have: number, need: number): PIXI.Container {
     const root = new PIXI.Container();
     const plate = new PIXI.Graphics();
-    plate.lineStyle(2, LINE, 1);
-    plate.beginFill(CREAM);
-    plate.drawRoundedRect(x, y, size, size, 12);
-    plate.endFill();
+    drawItemSlotBox(plate, x, y, size, size, { radius: 10, dimmed: have < need });
     root.addChild(plate);
     const iconTex = itemTexture(iconId);
     if (isTextureReady(iconTex)) {
       const icon = new PIXI.Sprite(iconTex);
-      fitSpriteInBox(icon, size - 8, size - 8);
+      fitSpriteInBox(icon, size - 12, size - 12);
       icon.anchor.set(0.5);
-      icon.position.set(x + size / 2, y + size / 2);
+      icon.position.set(x + size / 2, y + size / 2 - 2);
       icon.eventMode = 'none';
       root.addChild(icon);
     }
 
-    const count = makeLabel(`${have}/${need}`, 16, TERRACOTTA, { fontWeight: '700' });
-    count.anchor.set(0.5, 0);
-    count.position.set(x + size / 2, y + size + 2);
-    root.addChild(count);
+    const badge = makeSlotBadge(`${have}/${need}`, have >= need ? 'olive' : 'lack', 11);
+    badge.node.position.set(x + size - badge.w - 2, y + size - badge.h - 2);
+    root.addChild(badge.node);
 
     root.eventMode = 'static';
     root.cursor = 'pointer';
-    root.hitArea = new PIXI.Rectangle(x, y, size, size + 20);
+    root.hitArea = new PIXI.Rectangle(x, y, size, size);
     root.on('pointertap', (e) => {
       e.stopPropagation();
       const view = inspectFromItem(iconId);

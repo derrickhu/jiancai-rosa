@@ -24,7 +24,7 @@ import { inspectFromFood, makeItemInspectCard } from './ItemInspectCard';
 import { TutorialOverlay, worldRectToStage, type SpotlightRect } from './TutorialOverlay';
 import { TutorialManager, TutorialStep } from '@/managers/TutorialManager';
 import { TutorialGuard } from '@/systems/TutorialGuard';
-import { drawRarityFrame, fillRect, makeLabel, makeSlicedButton } from '@/utils/ui';
+import { drawItemSlotBox, fillRect, makeLabel, makeSlicedButton } from '@/utils/ui';
 import { VerticalScroller } from '@/utils/scroll';
 import { fitSpriteInBox, gameTexture, isTextureReady, itemTexture, watchTextures } from '@/utils/assets';
 import { basketPanelPaths } from '@/utils/panelAssets';
@@ -443,10 +443,10 @@ export class BasketPanel extends PIXI.Container {
     for (let y = 0; y < rows; y++) {
       for (let x = 0; x < cols; x++) {
         const g = new PIXI.Graphics();
-        g.lineStyle(1, INK, 0.16);
-        g.beginFill(0xEDE3D0, 0.38);
-        g.drawRoundedRect(gridX + x * stageCell, gridY + y * stageCell, stageCell - 3, stageCell - 3, 7);
-        g.endFill();
+        drawItemSlotBox(g, gridX + x * stageCell, gridY + y * stageCell, stageCell - 3, stageCell - 3, {
+          radius: 7,
+          empty: true,
+        });
         g.eventMode = 'none';
         content.addChild(g);
       }
@@ -518,18 +518,11 @@ export class BasketPanel extends PIXI.Container {
         const kind = basketCellKind(basket, x, y);
         if (kind === 'none') continue;
         const g = new PIXI.Graphics();
-        if (kind === 'wet') {
-          g.lineStyle(1.5, INK, 0.22);
-          g.beginFill(WET, 0.34);
-        } else if (kind === 'dry') {
-          g.lineStyle(2, 0x6A5848, 0.42);
-          g.beginFill(0xF4EDE0, 0.46);
-        } else {
-          g.lineStyle(1.5, INK, 0.22);
-          g.beginFill(FLEX, 0.34);
-        }
-        g.drawRoundedRect(gridX + x * cell, gridY + y * cell, cell - 3, cell - 3, 7);
-        g.endFill();
+        drawItemSlotBox(g, gridX + x * cell, gridY + y * cell, cell - 3, cell - 3, {
+          radius: 8,
+          empty: true,
+          zoneTone: kind === 'wet' ? 'wet' : kind === 'flex' ? 'flex' : 'dry',
+        });
         g.eventMode = 'none';
         content.addChild(g);
       }
@@ -681,14 +674,12 @@ export class BasketPanel extends PIXI.Container {
   }
 
   private _paintItemCell(g: PIXI.Graphics, w: number, h: number, rarity: Rarity, selected: boolean): void {
-    g.beginFill(rarityCell(rarity), rarityCellAlpha(rarity));
-    g.drawRoundedRect(0, 0, w, h, 10);
-    g.endFill();
-    drawRarityFrame(g, 2, 2, w - 4, h - 4, rarity, { thick: selected });
-    if (selected) {
-      g.lineStyle(3, 0xE0A100, 1);
-      g.drawRoundedRect(0, 0, w, h, 10);
-    }
+    drawItemSlotBox(g, 0, 0, w, h, {
+      radius: 9,
+      rarity,
+      selected,
+      medallion: Math.min(w, h) >= 48 && Math.abs(w - h) < 16,
+    });
   }
 
   private _basketTile(item: BasketItem, gridX: number, gridY: number, cell: number): PIXI.Container {

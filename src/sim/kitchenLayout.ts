@@ -108,7 +108,8 @@ export function furnLabel(id: FurnId, level = 0): string {
     if (lv <= 7) return '保温箱';
     if (lv <= 9) return '双层保温箱';
     if (lv <= 12) return '冰鲜箱';
-    return '车载冰柜';
+    if (lv === 13) return '花梨冰鉴';
+    return '鎏金冰鉴';
   }
   if (id === 'basket') {
     if (lv <= 1) return '塑料袋';
@@ -117,15 +118,22 @@ export function furnLabel(id: FurnId, level = 0): string {
     if (lv <= 7) return '菜筐';
     if (lv <= 9) return '双层菜篮';
     if (lv <= 12) return '竹筐';
-    return '双层竹筐';
+    if (lv === 13) return '紫竹吊篮';
+    return '描金食篮';
   }
   if (id === 'table') {
-    if (lv >= 13) return '双灶岛台';
+    if (lv === 14) return '御膳双灶案';
+    if (lv === 13) return '花梨双灶台';
     if (lv >= 10) return '铜灶台';
     if (lv >= 8) return '大理石岛台';
     if (lv >= 5) return '岛台灶';
     if (lv >= 3) return '蛋卷桌';
     return '烹饪台';
+  }
+  if (id === 'fridge') {
+    if (lv === 14) return '博古冰鉴橱';
+    if (lv === 13) return '花梨藏鲜橱';
+    return '冰箱';
   }
   return FURN_LABEL[id];
 }
@@ -294,23 +302,23 @@ const BAKED_POSES: FurnLayout[] = [
   { id: 'fridge', house: 0, level: 10, nx: 0.496, ny: 0.179, nw: 0.198, nh: 0.540 },
   { id: 'fridge', house: 0, level: 11, nx: 0.475, ny: 0.164, nw: 0.220, nh: 0.560 },
   { id: 'fridge', house: 0, level: 12, nx: 0.468, ny: 0.137, nw: 0.233, nh: 0.580 },
-  { id: 'fridge', house: 0, level: 13, nx: 0.449, ny: 0.123, nw: 0.260, nh: 0.600 },
-  { id: 'fridge', house: 0, level: 14, nx: 0.454, ny: 0.084, nw: 0.244, nh: 0.640 },
+  { id: 'fridge', house: 0, level: 13, nx: 0.458, ny: 0.115, nw: 0.252, nh: 0.595 },
+  { id: 'fridge', house: 0, level: 14, nx: 0.456, ny: 0.088, nw: 0.248, nh: 0.628 },
   { id: 'table', house: 0, level: 10, nx: 0.159, ny: 0.528, nw: 0.405, nh: 0.492 },
   { id: 'table', house: 0, level: 11, nx: 0.096, ny: 0.520, nw: 0.504, nh: 0.518 },
   { id: 'table', house: 0, level: 12, nx: 0.078, ny: 0.496, nw: 0.580, nh: 0.598 },
   { id: 'table', house: 0, level: 13, nx: 0.053, ny: 0.537, nw: 0.620, nh: 0.514 },
-  { id: 'table', house: 0, level: 14, nx: 0.020, ny: 0.512, nw: 0.660, nh: 0.533 },
+  { id: 'table', house: 0, level: 14, nx: 0.024, ny: 0.512, nw: 0.652, nh: 0.530 },
   { id: 'basket', house: 0, level: 10, nx: 0.302, ny: 0.321, nw: 0.127, nh: 0.296, hang: true },
   { id: 'basket', house: 0, level: 11, nx: 0.305, ny: 0.266, nw: 0.144, nh: 0.343, hang: true },
   { id: 'basket', house: 0, level: 12, nx: 0.293, ny: 0.253, nw: 0.157, nh: 0.350, hang: true },
-  { id: 'basket', house: 0, level: 13, nx: 0.286, ny: 0.243, nw: 0.175, nh: 0.405, hang: true },
-  { id: 'basket', house: 0, level: 14, nx: 0.286, ny: 0.249, nw: 0.157, nh: 0.365, hang: true },
+  { id: 'basket', house: 0, level: 13, nx: 0.286, ny: 0.266, nw: 0.160, nh: 0.285, hang: true },
+  { id: 'basket', house: 0, level: 14, nx: 0.288, ny: 0.266, nw: 0.158, nh: 0.284, hang: true },
   { id: 'foam', house: 0, level: 10, nx: 0.254, ny: 0.513, nw: 0.210, nh: 0.180 },
   { id: 'foam', house: 0, level: 11, nx: 0.239, ny: 0.506, nw: 0.237, nh: 0.204 },
   { id: 'foam', house: 0, level: 12, nx: 0.221, ny: 0.525, nw: 0.248, nh: 0.200 },
-  { id: 'foam', house: 0, level: 13, nx: 0.235, ny: 0.408, nw: 0.216, nh: 0.314 },
-  { id: 'foam', house: 0, level: 14, nx: 0.226, ny: 0.294, nw: 0.178, nh: 0.420 },
+  { id: 'foam', house: 0, level: 13, nx: 0.228, ny: 0.520, nw: 0.226, nh: 0.198 },
+  { id: 'foam', house: 0, level: 14, nx: 0.226, ny: 0.492, nw: 0.232, nh: 0.228 },
 ];
 
 const BAKED_MAP = new Map(

@@ -29,7 +29,19 @@ import {
   recipeEatLabel,
   type RecipeId,
 } from '@/sim';
-import { FONT, P0_ART, bindUiClick, drawRarityFrame, fillRect, makeCornerMark, makeLabel, makeMasterySpoonRow } from '@/utils/ui';
+import {
+  FONT,
+  P0_ART,
+  bindUiClick,
+  drawItemSlotBox,
+  drawRecessedWell,
+  drawSectionTray,
+  fillRect,
+  makeLabel,
+  makeMasterySpoonRow,
+  makeOrnamentalDivider,
+  makeSlotBadge,
+} from '@/utils/ui';
 import { VerticalScroller } from '@/utils/scroll';
 import {
   dishTexture,
@@ -442,17 +454,17 @@ export class CookPanel extends PIXI.Container {
       cy += 52;
     };
     if (pinned.length) {
-      const tag = makeLabel('先做', 18, TERRACOTTA, { fontWeight: '700' });
-      tag.position.set(x + 10, cy);
-      list.addChild(tag);
+      const div = makeOrnamentalDivider(rowW, '先做', { fontSize: 15, color: TERRACOTTA });
+      div.position.set(x + 6, cy + 12);
+      list.addChild(div);
       cy += 28;
       for (const recipe of pinned) addRow(recipe);
       cy += 10;
     }
     for (const group of groups) {
-      const tag = makeLabel(group, 18, TERRACOTTA, { fontWeight: '700' });
-      tag.position.set(x + 10, cy);
-      list.addChild(tag);
+      const div = makeOrnamentalDivider(rowW, group, { fontSize: 15, color: 0x6E5038 });
+      div.position.set(x + 6, cy + 12);
+      list.addChild(div);
       cy += 28;
       for (const recipe of rest.filter((r) => r.group === group)) addRow(recipe);
       cy += 10;
@@ -494,10 +506,10 @@ export class CookPanel extends PIXI.Container {
     const dx = bw * (INSET.x + INSET.w * LEFT_W) + pad;
     const dy = bh * INSET.y + 4;
     const dw = bw * INSET.w * (1 - LEFT_W) - pad;
-    const dishSize = Math.min(Math.round(dw * 0.72), Math.round(bh * INSET.h * 0.24));
+    const dishSize = Math.min(Math.round(dw * 0.68), Math.round(bh * INSET.h * 0.22));
     const dishX = dx + (dw - dishSize) / 2;
     const frame = new PIXI.Graphics();
-    drawRarityFrame(frame, dishX + 2, dy + 2, dishSize - 4, dishSize - 4, recipe.rarity, { radius: 14 });
+    drawItemSlotBox(frame, dishX, dy, dishSize, dishSize, { radius: 14, rarity: recipe.rarity });
     frame.eventMode = 'none';
     root.addChild(frame);
 
@@ -506,7 +518,7 @@ export class CookPanel extends PIXI.Container {
       const dish = new PIXI.Sprite(dishTex);
       fitSpriteInBox(dish, dishSize * 0.78, dishSize * 0.78);
       dish.anchor.set(0.5);
-      dish.position.set(dishX + dishSize / 2, dy + dishSize / 2);
+      dish.position.set(dishX + dishSize / 2, dy + dishSize / 2 - 1);
       dish.eventMode = 'none';
       root.addChild(dish);
     }
@@ -595,26 +607,38 @@ export class CookPanel extends PIXI.Container {
     const tw = dw;
     const blurb = new PIXI.Text(recipe.blurb, {
       fontFamily: FONT,
-      fontSize: 20,
-      fill: MUTED,
-      fontWeight: '500',
+      fontSize: 16,
+      fill: 0x5C442E,
+      fontWeight: '600',
       wordWrap: true,
       breakWords: true,
-      wordWrapWidth: Math.max(80, tw - 12),
-      lineHeight: 30,
+      wordWrapWidth: Math.max(80, tw - 28),
+      lineHeight: 23,
     });
-    blurb.position.set(tx + 6, eatY + 22);
     blurb.eventMode = 'none';
-    root.addChild(blurb);
+    const blurbBoxY = eatY + 18;
+    const blurbBoxH = Math.max(44, Math.ceil(blurb.height) + 16);
+    const blurbBg = new PIXI.Graphics();
+    drawRecessedWell(blurbBg, tx + 2, blurbBoxY, tw - 4, blurbBoxH, { radius: 11 });
+    blurb.position.set(tx + 14, blurbBoxY + 8);
+    root.addChild(blurbBg, blurb);
 
-    const slot = Math.min(84, (tw - 16) / Math.max(2, needs.length));
-    const gap = 14;
-    const rowW = needs.length * slot + (needs.length - 1) * gap;
-    let sx = tx + (tw - rowW) / 2;
-    const slotY = eatY + 22 + blurb.height + 16;
+    const gap = 8;
+    const trayPad = 8;
+    const slotW = Math.min(82, Math.floor((tw - 4 - trayPad * 2 - (needs.length - 1) * gap) / Math.max(2, needs.length)));
+    const slotH = slotW + 22;
+    const rowW = needs.length * slotW + (needs.length - 1) * gap;
+    const trayW = Math.min(tw - 4, Math.max(rowW + trayPad * 2, Math.round(tw * 0.82)));
+    const trayX = tx + Math.round((tw - trayW) / 2);
+    const slotY = blurbBoxY + blurbBoxH + 10;
+    const trayBg = new PIXI.Graphics();
+    drawSectionTray(trayBg, trayX, slotY, trayW, slotH + trayPad * 2, { radius: 13, tone: 'sand' });
+    root.addChild(trayBg);
+
+    let sx = trayX + Math.round((trayW - rowW) / 2);
     needs.forEach((need) => {
-      root.addChild(this._needSlot(sx, slotY, slot, need.label, need.iconId, need.have, need.need * qty));
-      sx += slot + gap;
+      root.addChild(this._needSlot(sx, slotY + trayPad, slotW, slotH, need.label, need.iconId, need.have, need.need * qty));
+      sx += slotW + gap;
     });
 
     const btnH = 62;
@@ -704,48 +728,48 @@ export class CookPanel extends PIXI.Container {
   private _needSlot(
     x: number,
     y: number,
-    size: number,
+    w: number,
+    h: number,
     label: string,
     iconId: string,
     have: number,
     need: number,
   ): PIXI.Container {
     const ok = have >= need;
+    const footerH = 22;
+    const iconAreaH = h - footerH;
     const root = new PIXI.Container();
     const bg = new PIXI.Graphics();
-    bg.beginFill(PAPER, 0.9);
-    bg.drawRoundedRect(x, y, size, size, 12);
-    bg.endFill();
-    drawRarityFrame(bg, x + 2, y + 2, size - 4, size - 4, itemRarity(iconId), { radius: 12 });
-    if (ok) {
-      bg.lineStyle(2, OK, 0.85);
-      bg.drawRoundedRect(x, y, size, size, 12);
-    }
+    drawItemSlotBox(bg, x, y, w, h, {
+      radius: 10,
+      rarity: itemRarity(iconId),
+      dimmed: !ok,
+      footerH,
+    });
     root.addChild(bg);
 
     const iconTex = itemTexture(iconId);
     if (isTextureReady(iconTex)) {
       const icon = new PIXI.Sprite(iconTex);
-      fitSpriteInBox(icon, size - 16, size - 16);
+      fitSpriteInBox(icon, w - 16, iconAreaH - 14);
       icon.anchor.set(0.5);
-      icon.position.set(x + size / 2, y + size / 2);
+      icon.position.set(x + w / 2, y + iconAreaH / 2 - 1);
       icon.eventMode = 'none';
-      if (!ok) icon.alpha = 0.45;
+      if (!ok) icon.alpha = 0.55;
       root.addChild(icon);
     }
 
-    const count = makeCornerMark(`${have}/${need}`, 16, ok ? OK : TERRACOTTA);
-    count.anchor.set(1, 1);
-    count.position.set(x + size - 4, y + size - 2);
-    root.addChild(count);
+    const badge = makeSlotBadge(`${have}/${need}`, ok ? 'olive' : 'lack', 11);
+    badge.node.position.set(x + w - badge.w - 3, y + iconAreaH - badge.h - 2);
+    root.addChild(badge.node);
 
-    const name = makeLabel(label, 16, INK, { fontWeight: '600' });
-    name.anchor.set(0.5, 0);
-    name.position.set(x + size / 2, y + size + 8);
+    const name = makeLabel(label, 13, ok ? INK : 0x7A6652, { fontWeight: '700' });
+    name.anchor.set(0.5);
+    name.position.set(x + w / 2, y + h - footerH / 2 - 1);
     root.addChild(name);
     root.eventMode = 'static';
     root.cursor = 'pointer';
-    root.hitArea = new PIXI.Rectangle(x, y, size, size + 28);
+    root.hitArea = new PIXI.Rectangle(x, y, w, h);
     root.on('pointertap', (e) => {
       e.stopPropagation();
       this._inspect = inspectFromItem(iconId);

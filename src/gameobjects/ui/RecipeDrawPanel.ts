@@ -19,7 +19,7 @@ import {
   type RecipeId,
 } from '@/sim';
 import { playRewardCollect } from '@/utils/coinCollect';
-import { P0_ART, fillRect, makeAdButton, makeLabel, makeRarityFlare, makeSlicedButton } from '@/utils/ui';
+import { P0_ART, UI_KIT, fillRect, makeAdButton, makeCloseButton, makeLabel, makeRarityFlare, makeSlicedButton } from '@/utils/ui';
 import {
   fitSpriteInBox,
   gameTexture,
@@ -118,7 +118,7 @@ export class RecipeDrawPanel extends PIXI.Container {
     this._box = null;
     if (!this._isOpen) return;
 
-    watchTextures([P0_ART.gachaStage, P0_ART.adClapper, BOX, TICKET, PAPER, FLARE], this._scheduleRelayout);
+    watchTextures([P0_ART.gachaStage, P0_ART.adClapper, UI_KIT.closeRound, UI_KIT.btnGold, BOX, TICKET, PAPER, FLARE], this._scheduleRelayout);
 
     const w = Game.designWidth;
     const h = Game.logicHeight;
@@ -161,24 +161,16 @@ export class RecipeDrawPanel extends PIXI.Container {
       shell.addChild(fb);
     }
 
-    // Top-right close circle
-    const closeBtn = new PIXI.Container();
-    const cg = new PIXI.Graphics();
-    cg.lineStyle(3, INK, 1);
-    cg.beginFill(0xC46A3A, 1);
-    cg.drawCircle(22, 22, 20);
-    cg.endFill();
-    const cxTxt = makeLabel('×', 28, 0xFFF8F0, { fontWeight: '700' });
-    cxTxt.anchor.set(0.5);
-    cxTxt.position.set(22, 20);
-    closeBtn.addChild(cg, cxTxt);
-    closeBtn.position.set(boardW - 56, 48);
-    closeBtn.eventMode = 'static';
-    closeBtn.cursor = 'pointer';
-    closeBtn.hitArea = new PIXI.Circle(22, 22, 24);
-    closeBtn.on('pointertap', () => {
-      if (!this._playing && !this._adBusy) this.close();
+    // Top-right crafted close button
+    const closeBtn = makeCloseButton({
+      size: 46,
+      silent: true,
+      onReady: this._scheduleRelayout,
+      onTap: () => {
+        if (!this._playing && !this._adBusy) this.close();
+      },
     });
+    closeBtn.position.set(boardW - 58, 44);
     shell.addChild(closeBtn);
 
     // Header Title on Wooden Plaque
@@ -292,7 +284,7 @@ export class RecipeDrawPanel extends PIXI.Container {
         label: '免费开一箱',
         width: colW,
         height: btnH,
-        skin: 'wood',
+        skin: 'gold',
         badge: '每日1次',
         onReady: this._scheduleRelayout,
       })

@@ -1,0 +1,48 @@
+# 《捡菜市集》全项目画风排查与统一重绘 Prompt 归档
+
+## 一、后期 3 位街坊/摊主半身像 & 主角小厨娘头像（对齐王婶 / 刘伯中式绘本水彩厚涂风）
+- `npc_guoyuan_tao.png`（阿桃）：Hand-painted Chinese storybook watercolor/gouache half-body portrait from hips up, adult 7-head natural proportions matching npc_neighbor.png (王婶), friendly young ~25yo Chinese orchard woman wearing a woven straw sun-hat, olive-green cotton apron over rolled-sleeve warm cream linen shirt, right hand gesturing warmly forward, left arm cradling a woven bamboo basket of ripe pineapple and red apples, fine #2A2018 ink linework, pure white background (#FFFFFF).
+- `npc_tiantou_zhou.png`（老周）：Hand-painted Chinese storybook watercolor/gouache half-body portrait from hips up, adult natural proportions, kind ~58yo Chinese vegetable farmer with salt-and-pepper grey hair, faded indigo cotton work jacket over warm beige undershirt, right hand gesturing warmly in conversation, left arm holding a woven bamboo basket of fresh green loofah gourds and tied asparagus spears, pure white background (#FFFFFF).
+- `npc_futou_hai.png`（阿海）：Hand-painted Chinese storybook watercolor/gouache half-body portrait from hips up, adult natural proportions, cheerful ~28yo southern Chinese fisherman/vendor in muted sea-teal vest over rolled-sleeve off-white linen shirt, right hand gesturing warmly, left arm holding a woven bamboo basket with a silver sea bass and red lychees, pure white background (#FFFFFF).
+- `hud_player.png`（主角小厨娘头像）：Square 1:1 hand-painted Chinese storybook watercolor/gouache bust avatar portrait, cheerful ~23yo Chinese woman home-cook with loosely tied dark-brown hair, brown cotton apron over soft cream knit top, bathed in golden morning kitchen sunlight with softly blurred shelves and ceramic jars behind.
+
+## 二、厨房升级房屋背景 4 张（严格对齐 `kitchen_room_0.jpg` 机位结构，明快色彩逐级递进）
+- `kitchen_room_1.jpg`（精装屋）：清爽晴空水彩蓝墙面 + 蜂蜜浅木线条与木门 + 奶黄与暖白棋盘格釉面方砖 + 红白格窗帘与窗台小绿植。
+- `kitchen_room_2.jpg`（雅致屋）：通透奶白香槟嫩枝壁纸 + 奶油白镶板木门 + 浅金原木地板斜阳 + 蕾丝白纱帘与窗外繁花。
+- `kitchen_room_3.jpg`（宽宅）：明快蜜桃粉橘上墙 + 立体奶油雕花护墙板与柿红腰线 + 双色镶板门 + 菱格拼花釉砖 + 蝴蝶结窗帘与窗台小柿子盆栽。
+- `kitchen_room_4.jpg`（宅院）：宋韵熟宣象牙绢本墙面配折枝金桂红梅与远山水墨 + 温润花梨红木回纹雕花藻井天花、博古画屏边框与透光暖绢格扇门（配黄铜如意云头门把） + 苏式花窗外粉墙黛瓦飞檐、太湖石与红梅翠竹庭院（配香槟金帘头与朱红中国结） + 古建回纹镶边暖玉金砖地坪与斜阳花窗光影。
+
+## 三、抽谱百宝箱 & 左侧独立功能徽章图标
+- `hud_gacha_box.png`：3/4 isometric vintage roasted-walnut wooden recipe draw-chest with antique brass clasps, vermilion-and-jade woven ribbon, two rolled parchment scrolls and stamped ticket peeking from top slot.
+- `hud_dex.png` / `hud_gameclub.png` / `hud_table.png` / `hud_gacha.png`：Standalone 3D hand-painted gouache icons (no baked-in square frames): terracotta cloth culinary book, tiled-roof wooden message board, square wooden home dining table with 3 dishes & chopsticks, and brass-trimmed wooden recipe lottery box.
+
+## 四、20 道后期果香与海鲜菜肴（斜 45° 暖瓷盘油润家常菜绘本风，对齐 `dish_tomato_egg.png`）
+- 覆盖 `f95da7c` 提交的全部 20 道菜：`dish_apple_ribs`, `dish_asparagus_lamb`, `dish_bitter_egg`, `dish_braised_lamb`, `dish_coconut_chicken`, `dish_dragon_beef`, `dish_garlic_okra`, `dish_hawthorn_ribs`, `dish_lemon_bass`, `dish_loofah_soup`, `dish_lychee_ribs`, `dish_mango_shrimp`, `dish_orange_wings`, `dish_papaya_fish`, `dish_pea_shrimp`, `dish_pear_shrimp`, `dish_pear_tremella`, `dish_pineapple_pork`, `dish_squid_stir`, `dish_steam_bass`。
+
+## 五、满级「宅院」专属最后两级（Lv.13 / Lv.14）古风雅器厨具重设（共 8 张）
+- `kitchen_table_13.png`（花梨双灶台）：温润花梨红木回纹雕花柜身配黄铜拉环、暖白汉白玉台面、粉青汝窑双耳砂锅与手作熟铁木柄炒锅。
+- `kitchen_table_14.png`（御膳双灶案）：花梨红木镶金回纹与海棠牡丹浮雕双开门、如意云足、白玉台面鎏金瑞云双灶眼，左置鎏金莲钮双耳汝窑炖盅、中置手作锤纹熟铁铜边花梨柄炒锅，右设红木博古紫铜汤勺挂架与青瓷生姜碟。
+- `kitchen_fridge_13.png`（花梨藏鲜橱）：高挑花梨红木雕花双层藏鲜立橱，上层如意浮雕木门配黄铜云扣，下层中式冰裂格透光玻璃门映出满架鲜蔬，顶置青瓷茶叶罐、侧挂素麻巾。
+- `kitchen_fridge_14.png`（博古冰鉴橱）：满级花梨红木鎏金包角双开博古冰橱，上嵌折枝金桂熟宣绢面，下设暖光中式花格玻璃门陈列白菜番茄紫茄鲜蔬，顶置绿植青瓷盆与紫铜煲，侧垂织锦朱红流苏搭巾。
+- `kitchen_foam_13.png`（花梨冰鉴）：中式花梨红木镶黄铜包角与如意云扣保温冰鉴箱，内嵌浅青玉封冷边条、侧设黄铜提环。
+- `kitchen_foam_14.png`（鎏金冰鉴）：宫廷式花梨红木如意足鎏金冰鉴，正面嵌羊脂青白玉浮雕云纹牌，配多层卷草雕花盖顶与黄铜莲花钮。
+- `kitchen_basket_13.png`（紫竹吊篮）：湘妃紫竹包边细编双层吊篮，配复古青铜如意云头挂钩与木珠麻丝编绳。
+- `kitchen_basket_14.png`（描金食篮）：朱红描金回纹漆边细金竹双层食篮，配鎏金瑞云挂钩与朱红盘金中国结丝绳。
+
+
+---
+
+## 四、主角头像、菜场奇遇与窗边器物三阶外观（方案 A + C 新增）
+
+1. **主角默认头像重绘（`hud_player.png`）**
+   - 风格：治愈中式绘本水彩，粗暖深褐手绘线稿 + 水彩纸肌理，暖阳厨房柔焦木架背景。
+   - 形象：甜美俏皮的年轻女小厨师（高丸子头配米白布发带、柿子与金桂花发簪、梨涡微笑、青瓷绿立领盘扣小衫与亚麻围裙）。
+2. **菜场奇遇与老杆秤道具（`market_mystery_sack.png` / `ui_steelyard_icon.png`）**
+   - `market_mystery_sack.png`：麻绳封口鼓鼓囊囊的压箱尾货竹篓麻袋，露出半截翠绿嫩菜叶与鲜香菇角。
+   - `ui_steelyard_icon.png`：传统木杆黄铜星点老杆秤，红绳悬黄铜秤盘与秤砣。
+3. **老坛腌制坊器物升阶（`kitchen_pickle_{1,2}_{idle,ready}.png`）**
+   - 二阶 `青釉双耳坛`（Lv.8）：龙泉粉青冰裂纹双耳瓷坛，朱红中国结丝绳与榆木圆几。
+   - 三阶 `青花御瓷坛`（Lv.14）：缠枝莲纹青花描金双耳御瓷坛，雕花红木束腰底座。
+4. **小橘猫阿橘小窝焕新（`kitchen_cat_{1,2}_{idle,away,gift}.png`）**
+   - 二阶 `柿红碎花棉窝`（Lv.7）：厚实蓬松米白柿红小碎花布艺猫窝 + 青瓷鱼形猫碗。
+   - 三阶 `花梨雕花猫榻`（Lv.13）：宋明风回纹透雕黄花梨迷你罗汉猫榻 + 织锦圆枕与绣金福袋。

@@ -4,9 +4,14 @@ import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { KitchenManager } from '@/managers/KitchenManager';
 import {
+  CAT_BED_TIER_DEFS,
   FURN_IDS,
   FURN_MAX_LEVEL,
   HOUSE_MAX_LEVEL,
+  PICKLE_TIER_DEFS,
+  catBedTier,
+  catBedUpgradeState,
+  catUnlocked,
   furnLabel,
   furnLevel,
   houseFurnCap,
@@ -15,9 +20,23 @@ import {
   houseUpgradeState,
   minHouseForFurn,
   furnUpgradeState,
+  pickleTier,
+  pickleUnlocked,
+  pickleUpgradeState,
   type FurnId,
+  type PropUpgradeState,
 } from '@/sim';
-import { fillRect, makeButton, makeLabel } from '@/utils/ui';
+import { watchTextures } from '@/utils/assets';
+import {
+  UI_KIT,
+  UI_PALETTE,
+  drawCraftCard,
+  drawRecessedWell,
+  fillRect,
+  makeArtisanShell,
+  makeLabel,
+  makeSlicedButton,
+} from '@/utils/ui';
 
 export class UpgradePanel extends PIXI.Container {
   _isOpen = false;
@@ -43,67 +62,181 @@ export class UpgradePanel extends PIXI.Container {
     if (this._isOpen && !silent) AudioManager.play('ui_close');
     this._isOpen = false;
     this.visible = false;
+    this._root.removeChildren();
   }
 
   relayout(): void {
     this._root.removeChildren();
+    if (!this._isOpen) return;
+
+    watchTextures([UI_KIT.headerRibbon, UI_KIT.closeRound, UI_KIT.btnOlive, UI_KIT.btnGold], () => {
+      if (this._isOpen) this.relayout();
+    });
+
     const w = Game.designWidth;
     const h = Game.logicHeight;
     const dim = new PIXI.Graphics();
-    fillRect(dim, 0, 0, w, h, 0x000000);
-    dim.alpha = 0.55;
+    fillRect(dim, 0, 0, w, h, 0x160E08);
+    dim.alpha = 0.56;
     dim.eventMode = 'static';
     dim.on('pointertap', () => this.close());
     this._root.addChild(dim);
 
-    const panel = new PIXI.Graphics();
-    fillRect(panel, 24, Game.safeTop + 20, w - 48, h - Game.safeTop - 40, 0x3A3228, 18);
-    panel.eventMode = 'static';
-    this._root.addChild(panel);
-
-    const title = makeLabel('装修厨房', 34, 0xF4EFE6);
-    title.position.set(48, Game.safeTop + 40);
-    this._root.addChild(title);
-    const hint = makeLabel('大件家具要先把屋子装修上去，才放得下', 20, 0xC9B8A4);
-    hint.position.set(48, Game.safeTop + 86);
-    this._root.addChild(hint);
-
     const save = KitchenManager.save;
+    const showProps = pickleUnlocked(save) || catUnlocked(save);
+    const propCount = (pickleUnlocked(save) ? 1 : 0) + (catUnlocked(save) ? 1 : 0);
+    const boxW = Math.min(w - 36, 680);
+    const padX = 26;
+    const cw = boxW - padX * 2;
+    const contentTop = 90;
+    const houseH = 80;
+    const rowH = 64;
+    const rowGap = 9;
+    const totalRows = FURN_IDS.length + propCount;
+    const boxH = contentTop + houseH + 12 + totalRows * rowH + Math.max(0, totalRows - 1) * rowGap + (showProps ? 8 : 0) + 26;
+    const bx = Math.round((w - boxW) / 2);
+    const by = Math.round(Math.max(Game.safeTop + 14, (h - boxH) / 2));
+
+    const { shell } = makeArtisanShell({
+      width: boxW,
+      height: boxH,
+      title: '装 修 厨 房',
+      subtitle: '先把屋子扩宽敞，大件厨具与窗边器物才更气派',
+      closeSilent: true,
+      onReady: () => {
+        if (this._isOpen) this.relayout();
+      },
+      onClose: () => this.close(),
+    });
+    shell.position.set(bx, by);
+    this._root.addChild(shell);
+
     const house = houseLevel(save);
-    this._root.addChild(this._houseRow(house, 40, Game.safeTop + 128, w - 80));
+    shell.addChild(this._houseRow(house, padX, contentTop, cw, houseH));
 
-    let y = Game.safeTop + 212;
+    let y = contentTop + houseH + 12;
     for (const id of FURN_IDS) {
-      this._root.addChild(this._row(id, furnLevel(save, id), house, 40, y, w - 80));
-      y += 68;
+      shell.addChild(this._row(id, furnLevel(save, id), house, padX, y, cw, rowH));
+      y += rowH + rowGap;
     }
-
-    const close = makeButton('关掉', w - 96, 56, 0xC46A3A);
-    close.position.set(48, h - 100);
-    close.on('pointertap', () => this.close());
-    this._root.addChild(close);
+    if (showProps) {
+      y += 4;
+      if (pickleUnlocked(save)) {
+        const pTier = pickleTier(save);
+        shell.addChild(this._propRow(
+          `🏺 ${PICKLE_TIER_DEFS[pTier].name}`,
+          `老坛品阶 ${pTier + 1}/3 · ${PICKLE_TIER_DEFS[pTier].desc}`,
+          pickleUpgradeState(save),
+          () => KitchenManager.upgradePickleJar(),
+          padX,
+          y,
+          cw,
+          rowH,
+        ));
+        y += rowH + rowGap;
+      }
+      if (catUnlocked(save)) {
+        const cTier = catBedTier(save);
+        shell.addChild(this._propRow(
+          `🐾 ${CAT_BED_TIER_DEFS[cTier].name}`,
+          `猫窝品阶 ${cTier + 1}/3 · ${CAT_BED_TIER_DEFS[cTier].desc}`,
+          catBedUpgradeState(save),
+          () => KitchenManager.upgradeCatBed(),
+          padX,
+          y,
+          cw,
+          rowH,
+        ));
+      }
+    }
   }
 
-  private _houseRow(level: number, x: number, y: number, width: number): PIXI.Container {
+  private _propRow(
+    title: string,
+    subText: string,
+    state: PropUpgradeState,
+    onBuy: () => boolean,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ): PIXI.Container {
     const row = new PIXI.Container();
     const bg = new PIXI.Graphics();
-    fillRect(bg, x, y, width, 72, 0x4A3A28, 10);
+    drawCraftCard(bg, x, y, width, height, { radius: 14, tone: 'ivory' });
     row.addChild(bg);
-    const name = makeLabel(`${houseLabel(level)}  ${level + 1}/${HOUSE_MAX_LEVEL + 1}档`, 26, 0xF4EFE6);
-    name.position.set(x + 16, y + 20);
+
+    const name = makeLabel(title, 19, UI_PALETTE.ink, { fontWeight: '700' });
+    name.position.set(x + 18, y + 10);
     row.addChild(name);
-    if (level >= HOUSE_MAX_LEVEL) {
-      const done = makeLabel('最大', 22, 0xC8E6A0);
-      done.position.set(x + width - 90, y + 22);
+
+    const sub = makeLabel(subText, 13, UI_PALETTE.muted, { fontWeight: '600' });
+    sub.position.set(x + 18, y + 37);
+    row.addChild(sub);
+
+    if (state.status === 'max') {
+      const done = makeLabel('✓ 满阶', 18, UI_PALETTE.olive, { fontWeight: '700' });
+      done.anchor.set(1, 0.5);
+      done.position.set(x + width - 20, y + height / 2);
       row.addChild(done);
       return row;
     }
+
+    const ready = state.status === 'ready';
+    const btn = makeSlicedButton({
+      label: ready ? `${state.cost} 金升阶` : state.error,
+      width: 162,
+      height: 42,
+      skin: ready ? 'olive' : 'cream',
+      textColor: ready ? 0xFFF8F0 : 0x8A7358,
+      fontSize: 14,
+      silent: !ready,
+    });
+    if (!ready) btn.alpha = 0.85;
+    btn.position.set(x + width - 176, y + Math.round((height - 42) / 2));
+    btn.on('pointertap', () => {
+      onBuy();
+      this.relayout();
+    });
+    row.addChild(btn);
+    return row;
+  }
+
+  private _houseRow(level: number, x: number, y: number, width: number, height: number): PIXI.Container {
+    const row = new PIXI.Container();
+    const bg = new PIXI.Graphics();
+    drawCraftCard(bg, x, y, width, height, { radius: 16, tone: 'gold' });
+    row.addChild(bg);
+
+    const name = makeLabel(`🏠 ${houseLabel(level)}`, 23, UI_PALETTE.ink, { fontWeight: '700' });
+    name.position.set(x + 18, y + 14);
+    row.addChild(name);
+
+    const sub = makeLabel(`房屋档次 ${level + 1}/${HOUSE_MAX_LEVEL + 1}`, 15, UI_PALETTE.muted, { fontWeight: '600' });
+    sub.position.set(x + 22, y + 46);
+    row.addChild(sub);
+
+    if (level >= HOUSE_MAX_LEVEL) {
+      const done = makeLabel('✓ 已满档', 19, UI_PALETTE.olive, { fontWeight: '700' });
+      done.anchor.set(1, 0.5);
+      done.position.set(x + width - 20, y + height / 2);
+      row.addChild(done);
+      return row;
+    }
+
     const state = houseUpgradeState(KitchenManager.save);
     const ready = state.status === 'ready';
-    const label = state.status === 'blocked' ? state.error : `装修 ${state.status === 'max' ? 0 : state.cost}`;
-    const btn = makeButton(label, 168, 52, ready ? 0xC46A3A : 0x5A5248);
-    btn.alpha = ready ? 1 : 0.45;
-    btn.position.set(x + width - 180, y + 10);
+    const label = state.status === 'blocked' ? state.error : `装修 · ${state.status === 'max' ? 0 : state.cost} 金`;
+    const btn = makeSlicedButton({
+      label,
+      width: 184,
+      height: 48,
+      skin: ready ? 'gold' : 'cream',
+      textColor: ready ? UI_PALETTE.ink : 0x8A7358,
+      silent: !ready,
+    });
+    if (!ready) btn.alpha = 0.8;
+    btn.position.set(x + width - 198, y + Math.round((height - 48) / 2));
     btn.on('pointertap', () => {
       KitchenManager.upgradeHouse();
       this.relayout();
@@ -112,34 +245,52 @@ export class UpgradePanel extends PIXI.Container {
     return row;
   }
 
-  private _row(id: FurnId, level: number, house: number, x: number, y: number, width: number): PIXI.Container {
+  private _row(id: FurnId, level: number, house: number, x: number, y: number, width: number, height: number): PIXI.Container {
     const row = new PIXI.Container();
     const bg = new PIXI.Graphics();
-    fillRect(bg, x, y, width, 60, 0x2C261F, 10);
+    drawCraftCard(bg, x, y, width, height, { radius: 14, tone: 'ivory' });
     row.addChild(bg);
-    const name = makeLabel(`${furnLabel(id, level)}  ${level + 1}/${FURN_MAX_LEVEL + 1}级`, 22, 0xF4EFE6);
-    name.position.set(x + 16, y + 16);
+
+    const name = makeLabel(`${furnLabel(id, level)}`, 20, UI_PALETTE.ink, { fontWeight: '700' });
+    name.position.set(x + 18, y + 11);
     row.addChild(name);
+
+    const lv = makeLabel(`等级 ${level + 1}/${FURN_MAX_LEVEL + 1}`, 14, UI_PALETTE.muted, { fontWeight: '600' });
+    lv.position.set(x + 18, y + 39);
+    row.addChild(lv);
+
     if (level >= FURN_MAX_LEVEL) {
-      const done = makeLabel('满级', 20, 0xC8E6A0);
-      done.position.set(x + width - 90, y + 16);
+      const done = makeLabel('✓ 满级', 18, UI_PALETTE.olive, { fontWeight: '700' });
+      done.anchor.set(1, 0.5);
+      done.position.set(x + width - 20, y + height / 2);
       row.addChild(done);
       return row;
     }
+
     const state = furnUpgradeState(KitchenManager.save, id);
     if (state.status === 'blocked' && level >= houseFurnCap(house, id)) {
       const need = houseLabel(minHouseForFurn(id, level + 1));
-      const locked = makeLabel(`要${need}`, 20, 0xE0A100);
-      locked.alpha = 0.7;
-      locked.position.set(x + width - 140, y + 16);
-      row.addChild(locked);
+      const well = new PIXI.Graphics();
+      drawRecessedWell(well, x + width - 166, y + 14, 152, 40, { radius: 20 });
+      const locked = makeLabel(`需${need}`, 15, UI_PALETTE.muted, { fontWeight: '700' });
+      locked.anchor.set(0.5);
+      locked.position.set(x + width - 90, y + 34);
+      row.addChild(well, locked);
       return row;
     }
+
     const cost = state.status === 'max' ? 0 : state.cost;
     const ready = state.status === 'ready';
-    const btn = makeButton(`${cost}金币`, 150, 44, ready ? 0x5C6B4A : 0x5A5248);
-    btn.alpha = ready ? 1 : 0.45;
-    btn.position.set(x + width - 162, y + 8);
+    const btn = makeSlicedButton({
+      label: `${cost} 金升级`,
+      width: 156,
+      height: 44,
+      skin: ready ? 'olive' : 'cream',
+      textColor: ready ? 0xFFF8F0 : 0x8A7358,
+      silent: !ready,
+    });
+    if (!ready) btn.alpha = 0.8;
+    btn.position.set(x + width - 170, y + Math.round((height - 44) / 2));
     btn.on('pointertap', () => {
       KitchenManager.upgrade(id);
       this.relayout();

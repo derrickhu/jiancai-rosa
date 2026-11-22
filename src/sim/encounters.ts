@@ -24,7 +24,8 @@ export type Encounter =
   | { type: 'favor' }
   | { type: 'deadend' }
   | { type: 'recipe' }
-  | { type: 'freebie' };
+  | { type: 'freebie' }
+  | { type: 'mystery_sack' };
 
 export function encounterFromKind(node: MapNode): Encounter {
   if (node.stall) return { type: 'rummage', stall: node.stall };
@@ -104,6 +105,14 @@ export function applyEncounter(ctx: EncounterCtx): EncounterResult {
       return { state, enter: 'rummage', resolved: enc };
     case 'freebie':
       return { state };
+    case 'mystery_sack':
+      return {
+        state: {
+          ...state,
+          note: '巷角摆着三只封口麻袋，挑一袋解开看看！',
+        },
+        resolved: enc,
+      };
     case 'deadend':
       return {
         state: {

@@ -26,13 +26,22 @@ import {
   DEX_ENTRY_GOLD,
   DEX_MILESTONE_GOLD,
   DEX_MILESTONE_TICKETS,
+  DEX_STAMP_SETS,
+  dexActiveBonuses,
   dexEntryKey,
   dexMilestoneStatus,
+  dexStampSetStatus,
   isDishUnlocked,
   isFoodUnlocked,
   unclaimedDexKeys,
-  type DexTab,
+  unclaimedDexStampSets,
+  type DexEntryKind,
+  type DexStampSetId,
 } from './dex';
+import { mulberry32, rngWeighted } from './rng';
+import { MARKETS } from './destinations';
+import { rarityRank } from './rarity';
+import { PICKLE_ITEM_IDS, marketFoodIds } from './items';
 import {
   RECIPE_GACHA_COST,
   gachaRng,
@@ -134,16 +143,19 @@ export const SHARE_IMAGE_URLS = [
   'boot/share_market_k.jpg',
 ];
 export const STAMINA_REGEN_MS = 30 * 60 * 1000;
-/** 游戏圈每日发帖领金币。 */
+/** 游戏圈每日发帖赠菜谱券数（另赠今日 2 份精选鲜货食材）。 */
+export const GAME_CLUB_DAILY_TICKETS = 1;
+/** @deprecated 兼容旧引用 */
 export const GAME_CLUB_DAILY_COINS = 50;
 
-/** 体力只跟到厨艺 15。16–25 不再加体力。 */
+/** 体力只跟到厨艺 15。16–25 不再加体力（图鉴集章加成额外叠上）。 */
 export const STAMINA_LEVEL_CAP = 15;
-/** 当前厨艺对应的体力上限。1 级 10 点，到 15 级为止每级 +1。 */
-export function staminaMax(save: Pick<KitchenSave, 'level'> | number): number {
+/** 当前厨艺对应的体力上限。1 级 10 点，到 15 级为止每级 +1，再叠集章加成。 */
+export function staminaMax(save: Pick<KitchenSave, 'level' | 'dexStampsClaimed'> | number): number {
   const level = typeof save === 'number' ? clampCookLevel(save) : clampCookLevel(save.level);
   const staminaLevel = Math.min(level, STAMINA_LEVEL_CAP);
-  return STAMINA_MAX + STAMINA_PER_LEVEL * (staminaLevel - 1);
+  const bonus = typeof save === 'number' ? 0 : dexActiveBonuses(save).staminaBonus;
+  return STAMINA_MAX + STAMINA_PER_LEVEL * (staminaLevel - 1) + bonus;
 }
 export const FRIDGE_BASE = 18;
 /** 冰箱内部 0–14 级的格数。0–9 每级 +6，10–14 每级 +4。 */
@@ -215,15 +227,25 @@ export function fridgeStackKey(it: FridgeDraft): string {
   return `${kind}|${it.defId}`;
 }
 
-export function fridgeItemUnitPrice(it: FridgeItem, save?: Pick<KitchenSave, 'kitchenBuffs'>, now = Date.now()): number {
-  const base = fridgeKind(it) === 'dish'
+export function fridgeItemUnitPrice(
+  it: FridgeItem,
+  save?: Pick<KitchenSave, 'kitchenBuffs' | 'dexStampsClaimed'>,
+  now = Date.now(),
+): number {
+  const isDish = fridgeKind(it) === 'dish';
+  const base = isDish
     ? Math.max(0, it.value ?? 0)
     : sellPrice(it.defId, it.quality, it.inspected, it.freshness);
   if (!save || base <= 0) return base;
-  return Math.round(base * kitchenSellMul(save, now));
+  const stampMul = isDish ? dexActiveBonuses(save).dishSellMul : 1;
+  return Math.round(base * kitchenSellMul(save, now) * stampMul);
 }
 
-export function fridgeItemPrice(it: FridgeItem, save?: Pick<KitchenSave, 'kitchenBuffs'>, now = Date.now()): number {
+export function fridgeItemPrice(
+  it: FridgeItem,
+  save?: Pick<KitchenSave, 'kitchenBuffs' | 'dexStampsClaimed'>,
+  now = Date.now(),
+): number {
   return fridgeItemUnitPrice(it, save, now) * fridgeItemQty(it);
 }
 
@@ -300,6 +322,8 @@ export interface KitchenSave {
   dexClaimed?: string[];
   /** 已领取的图鉴集章里程碑档数（每 6 条 1 档）。 */
   dexMilestones?: number;
+  /** 已盖章激活的「地域烟火集章册」主题套组 ID。 */
+  dexStampsClaimed?: string[];
   /** 各道菜累计下锅次数（用于铜/银/金三勺熟练度）。 */
   recipeCookCounts?: Partial<Record<RecipeId, number>>;
   /** 已发过 3 勺招牌菜谱券奖励的菜谱。 */
@@ -308,8 +332,12 @@ export interface KitchenSave {
   pickleJars?: Array<PickleJarSlot | null>;
   /** P2 是否已花费金币添置二号老坛。 */
   secondJarUnlocked?: boolean;
+  /** 老坛器物升级档位：0 粗陶老坛 / 1 青釉双耳坛 / 2 青花御瓷坛。 */
+  pickleTier?: 0 | 1 | 2;
   /** P2 菜场流浪小橘猫「阿橘」状态。 */
   strayCat?: StrayCatState;
+  /** 小橘猫小窝升级档位：0 蒲草软垫 / 1 柿红碎花棉窝 / 2 花梨雕花猫榻。 */
+  catBedTier?: 0 | 1 | 2;
   /** 新手指引步骤。新号 0；老档缺字段时 normalize 写成 99，不重播。 */
   tutorialStep: number;
   /** 新手礼金是否已点领取。 */
@@ -324,7 +352,8 @@ export type DailyAdLimitKey =
   | 'order_refresh'
   | 'daily_extra'
   | 'pickle_boost'
-  | 'cat_treat';
+  | 'cat_treat'
+  | 'unpack_vip';
 
 export const DAILY_AD_LIMITS: Record<DailyAdLimitKey, number> = {
   gacha_free: 1,
@@ -335,6 +364,7 @@ export const DAILY_AD_LIMITS: Record<DailyAdLimitKey, number> = {
   daily_extra: 1,
   pickle_boost: 3,
   cat_treat: 2,
+  unpack_vip: 3,
 };
 
 export const RECIPE_MASTERY_NEEDS = [1, 5, 15] as const;
@@ -499,6 +529,64 @@ export function sameDayKey(a?: string, b?: string): boolean {
   return !!a && !!b && normalizeDayKey(a) === normalizeDayKey(b);
 }
 
+function hashDaySeed(day: string, salt = 0): number {
+  let h = (0x811C9DC5 ^ salt) >>> 0;
+  for (let i = 0; i < day.length; i++) {
+    h = Math.imul(h ^ day.charCodeAt(i), 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+
+export interface GameClubDailyPack {
+  foods: Array<{ defId: string; name: string; qty: number }>;
+  tickets: number;
+}
+
+/** 游戏圈每日鲜货补给包：按今日与厨艺等级确定性挑选 2 份良品/上品稀罕好菜 + 1 张菜谱券。 */
+export function dailyGameClubPack(save: Pick<KitchenSave, 'level' | 'dexSeen' | 'dexInspected'>, now = Date.now()): GameClubDailyPack {
+  const day = todayKey(now);
+  const lv = clampCookLevel(save.level);
+  const sortedMarkets = [...MARKETS].sort((a, b) => a.unlockLevel - b.unlockLevel);
+  const allowed = sortedMarkets.filter((m) => m.unlockLevel <= lv + 2);
+  const poolSet = new Set<string>();
+  for (const m of (allowed.length ? allowed : sortedMarkets.slice(0, 2))) {
+    for (const id of marketFoodIds(m.id)) {
+      if (id !== GOD_PICK.id && !PICKLE_ITEM_IDS.has(id)) poolSet.add(id);
+    }
+  }
+  poolSet.add('chicken_wing');
+  const seen = new Set([...(save.dexSeen ?? []), ...(save.dexInspected ?? [])]);
+  const weighted: Array<[string, number]> = [];
+  for (const id of poolSet) {
+    const r = rarityRank(getItem(id).rarity);
+    if (r === 0) continue; // 只挑良品/上品/珍品好食材，绝不发白菜土豆充数
+    let w = r === 1 ? 5 : r === 2 ? 7 : 3;
+    if (!seen.has(id)) w *= 1.5;
+    weighted.push([id, w]);
+  }
+  const fallback: Array<[string, number]> = [
+    ['shrimp', 6],
+    ['chicken_wing', 6],
+    ['mushroom', 5],
+    ['ribs', 5],
+  ];
+  const activePool = weighted.length >= 2 ? weighted : fallback;
+  const rng = mulberry32(hashDaySeed(day, 0x6C0B));
+  const first = rngWeighted(rng, activePool);
+  const secondPool = activePool.filter(([id]) => id !== first);
+  const second = rngWeighted(rng, secondPool.length ? secondPool : activePool);
+  const foods = first === second
+    ? [{ defId: first, name: getItem(first).name, qty: 2 }]
+    : [
+      { defId: first, name: getItem(first).name, qty: 1 },
+      { defId: second, name: getItem(second).name, qty: 1 },
+    ];
+  return {
+    foods,
+    tickets: GAME_CLUB_DAILY_TICKETS,
+  };
+}
+
 export function hasClaimedGameClubToday(save: KitchenSave, now = Date.now()): boolean {
   return sameDayKey(save.gameClubRewardDate, todayKey(now));
 }
@@ -511,16 +599,37 @@ export function claimGameClubReward(
   save: KitchenSave,
   postCount: number,
   now = Date.now(),
-): { save: KitchenSave; coins: number; error?: string } {
-  if (postCount < 1) return { save, coins: 0, error: '请先在游戏圈发帖' };
-  if (hasClaimedGameClubToday(save, now)) return { save, coins: 0, error: '今日奖励已领取' };
+): {
+  save: KitchenSave;
+  foods: Array<{ defId: string; name: string; qty: number; folded: boolean }>;
+  tickets: number;
+  foldGold: number;
+  coins: number;
+  error?: string;
+} {
+  const empty = { foods: [], tickets: 0, foldGold: 0, coins: 0 };
+  if (postCount < 1) return { save, ...empty, error: '请先在游戏圈发帖' };
+  if (hasClaimedGameClubToday(save, now)) return { save, ...empty, error: '今日奖励已领取' };
+  const pack = dailyGameClubPack(save, now);
+  let nextSave: KitchenSave = {
+    ...save,
+    recipeTickets: save.recipeTickets + pack.tickets,
+    gameClubRewardDate: todayKey(now),
+  };
+  let foldGold = 0;
+  const foodsOut: Array<{ defId: string; name: string; qty: number; folded: boolean }> = [];
+  for (const f of pack.foods) {
+    const granted = applyNeighborReward(nextSave, { gold: 0, food: { defId: f.defId, qty: f.qty } });
+    nextSave = granted.save;
+    foldGold += granted.foldGold;
+    foodsOut.push({ ...f, folded: granted.foodFolded });
+  }
   return {
-    save: {
-      ...save,
-      money: save.money + GAME_CLUB_DAILY_COINS,
-      gameClubRewardDate: todayKey(now),
-    },
-    coins: GAME_CLUB_DAILY_COINS,
+    save: nextSave,
+    foods: foodsOut,
+    tickets: pack.tickets,
+    foldGold,
+    coins: foldGold,
   };
 }
 
@@ -569,11 +678,14 @@ export function defaultSave(now = Date.now()): KitchenSave {
     chefFireUntil: 0,
     dexClaimed: [],
     dexMilestones: 0,
+    dexStampsClaimed: [],
     recipeCookCounts: {},
     recipeMasteryClaimed: [],
     pickleJars: defaultPickleJars(),
     secondJarUnlocked: false,
+    pickleTier: 0,
     strayCat: defaultStrayCat(),
+    catBedTier: 0,
     tutorialStep: 0,
     tutorialGiftClaimed: false,
   };
@@ -664,6 +776,11 @@ export function normalizeSave(raw: Partial<KitchenSave> | null, now = Date.now()
       && Number.isFinite((raw as KitchenSave).dexMilestones)
       ? Math.max(0, Math.floor((raw as KitchenSave).dexMilestones!))
       : 0,
+    dexStampsClaimed: Array.isArray((raw as KitchenSave).dexStampsClaimed)
+      ? (raw as KitchenSave).dexStampsClaimed!.filter(
+        (s): s is string => typeof s === 'string' && DEX_STAMP_SETS.some((d) => d.id === s),
+      )
+      : [],
     recipeCookCounts: migrateCookCounts(
       (raw as KitchenSave).recipeCookCounts,
       migrateRecipeIds(raw.recipesCooked),
@@ -671,7 +788,9 @@ export function normalizeSave(raw: Partial<KitchenSave> | null, now = Date.now()
     recipeMasteryClaimed: migrateRecipeIds((raw as KitchenSave).recipeMasteryClaimed),
     pickleJars: migratePickleJars((raw as KitchenSave).pickleJars),
     secondJarUnlocked: !!(raw as KitchenSave).secondJarUnlocked,
+    pickleTier: ((raw as KitchenSave).pickleTier === 2 ? 2 : (raw as KitchenSave).pickleTier === 1 ? 1 : 0),
     strayCat: migrateStrayCat((raw as KitchenSave).strayCat),
+    catBedTier: ((raw as KitchenSave).catBedTier === 2 ? 2 : (raw as KitchenSave).catBedTier === 1 ? 1 : 0),
     tutorialStep: typeof (raw as KitchenSave).tutorialStep === 'number'
       && Number.isFinite((raw as KitchenSave).tutorialStep)
       ? Math.floor((raw as KitchenSave).tutorialStep)
@@ -681,6 +800,20 @@ export function normalizeSave(raw: Partial<KitchenSave> | null, now = Date.now()
   next.basketLevel = next.furnLevels.basket;
   next.fridgeExtra = next.furnLevels.fridge > 0 || next.furnLevels.foam > 0;
   next.houseLevel = migrateHouseLevel(raw);
+  // 追溯同步冰箱里已有食材进图鉴，避免旧档腌菜/阿橘谢礼漏亮图鉴
+  const seenSet = new Set(next.dexSeen);
+  for (const it of next.fridge) {
+    if (fridgeKind(it) === 'food' && it.quality !== 'rotten' && it.defId) {
+      seenSet.add(it.defId === GOD_PICK.id && !it.inspected ? 'smallfish' : it.defId);
+    }
+  }
+  next.dexSeen = [...seenSet];
+  if (
+    (next.dexInspected.includes(GOD_PICK.id) || next.dexSeen.includes(GOD_PICK.id))
+    && !next.recipesFound.includes('wild_fish_soup')
+  ) {
+    next.recipesFound = [...next.recipesFound, 'wild_fish_soup'];
+  }
   return next;
 }
 
@@ -880,6 +1013,60 @@ export function settleFridgeUnpack(
   };
 }
 
+/** 回家爆仓一键解围（激励视频）：街坊按 1.5 倍高价顺路包圆最低价的溢出格，好货全部入柜。 */
+export function vipSettleFridgeUnpack(
+  save: KitchenSave,
+  haul: ExtractedItem[],
+  now = Date.now(),
+): {
+  save: KitchenSave;
+  error?: string;
+  gained: number;
+  soldCount: number;
+  kept: number;
+} {
+  if (!canUseDailyAd(save, 'unpack_vip', now)) {
+    return { save, error: '今日街坊顺路包圆次数已用完', gained: 0, soldCount: 0, kept: 0 };
+  }
+  const cap = fridgeCap(save);
+  const preview = previewFridgeAfterHaul(save, haul);
+  const need = Math.max(0, preview.length - cap);
+  if (need <= 0) {
+    const next = markDailyAdUsed(ingestExtract(save, haul, now), 'unpack_vip', now);
+    return { save: next, gained: 0, soldCount: 0, kept: next.fridge.length };
+  }
+  // 优先挑非野生黄鱼、非熟菜、单格总价最低的格子卖给街坊，保住珍贵食材与熟菜
+  const ranked = [...preview].sort((a, b) => {
+    const aGod = a.defId === GOD_PICK.id ? 1 : 0;
+    const bGod = b.defId === GOD_PICK.id ? 1 : 0;
+    if (aGod !== bGod) return aGod - bGod;
+    const aDish = fridgeKind(a) === 'dish' ? 1 : 0;
+    const bDish = fridgeKind(b) === 'dish' ? 1 : 0;
+    if (aDish !== bDish) return aDish - bDish;
+    const aPrice = fridgeItemPrice(a, save, now);
+    const bPrice = fridgeItemPrice(b, save, now);
+    return aPrice - bPrice;
+  });
+  const sellSet = new Set(ranked.slice(0, need).map((it) => it.uid));
+  const sold = preview.filter((it) => sellSet.has(it.uid));
+  const keep = preview.filter((it) => !sellSet.has(it.uid));
+  const baseGold = sold.reduce((sum, it) => sum + fridgeItemPrice(it, save, now), 0);
+  const gained = Math.max(need * 3, Math.ceil(baseGold * 1.5));
+  const noted = noteDex(save, haul);
+  const marked = markDailyAdUsed({
+    ...noted,
+    fridge: compactFridge(keep),
+    money: noted.money + gained,
+    dailyGodPickDate: keep.some((it) => it.defId === 'wild_yellowfish') ? todayKey(now) : save.dailyGodPickDate,
+  }, 'unpack_vip', now);
+  return {
+    save: marked,
+    gained,
+    soldCount: sold.length,
+    kept: keep.length,
+  };
+}
+
 function consumeFridgeQty(fridge: FridgeItem[], used: Map<string, number>): FridgeItem[] {
   const next: FridgeItem[] = [];
   const left = new Map<string, number>();
@@ -988,7 +1175,7 @@ export function applyNeighborReward(save: KitchenSave, reward: NeighborReward): 
       next = discoverFood({ ...next, fridge }, food.defId).save;
     } else {
       foldGold = sellPrice(food.defId, 'common', true) * qty;
-      next = { ...next, money: next.money + foldGold };
+      next = discoverFood({ ...next, money: next.money + foldGold }, food.defId).save;
       foodFolded = true;
     }
   }
@@ -1024,7 +1211,12 @@ export function noteDex(save: KitchenSave, items: ExtractedItem[]): KitchenSave 
     dexSeen.add(it.inspected ? it.defId : (it.defId === 'wild_yellowfish' ? 'smallfish' : it.defId));
     if (it.inspected) dexInspected.add(it.defId);
   }
-  return { ...save, dexSeen: [...dexSeen], dexInspected: [...dexInspected] };
+  const unlockedWildFish = (dexInspected.has(GOD_PICK.id) || dexSeen.has(GOD_PICK.id))
+    && !save.recipesFound.includes('wild_fish_soup');
+  const recipesFound: RecipeId[] = unlockedWildFish
+    ? [...save.recipesFound, 'wild_fish_soup']
+    : save.recipesFound;
+  return { ...save, dexSeen: [...dexSeen], dexInspected: [...dexInspected], recipesFound };
 }
 
 export function ingestExtract(save: KitchenSave, items: ExtractedItem[], now = Date.now()): KitchenSave {
@@ -1647,8 +1839,9 @@ export function submitNeighborOrder(
   if (taken.error) return { save, error: taken.error, ...empty };
   const baseReward = match.reward ?? { gold: neighborOrderBonus(match.recipeId) };
   const mul = opts?.doubled ? 2 : 1;
+  const stampSellMul = dexActiveBonuses(save).dishSellMul;
   const reward: NeighborReward = {
-    gold: baseReward.gold * mul,
+    gold: Math.round(baseReward.gold * stampSellMul) * mul,
     food: baseReward.food
       ? { ...baseReward.food, qty: Math.max(1, Math.floor(baseReward.food.qty || 1)) * mul }
       : undefined,
@@ -1833,7 +2026,7 @@ export function drawRecipeGacha(
 
 export function claimDexEntryReward(
   save: KitchenSave,
-  kind: DexTab,
+  kind: DexEntryKind,
   id: string,
 ): { save: KitchenSave; gold: number; claimed: boolean } {
   const unlocked = kind === 'food'
@@ -1855,29 +2048,75 @@ export function claimDexEntryReward(
   };
 }
 
+export function claimDexStampSet(
+  save: KitchenSave,
+  setId: DexStampSetId,
+): { save: KitchenSave; gold: number; tickets: number; claimed: boolean; buffLabel: string } {
+  const def = DEX_STAMP_SETS.find((d) => d.id === setId);
+  if (!def) return { save, gold: 0, tickets: 0, claimed: false, buffLabel: '' };
+  const st = dexStampSetStatus(save, def);
+  if (!st.readyToClaim) return { save, gold: 0, tickets: 0, claimed: false, buffLabel: def.buffLabel };
+  const claimedStamps = [...new Set([...(save.dexStampsClaimed ?? []), def.id])];
+  let nextSave: KitchenSave = {
+    ...save,
+    money: save.money + def.rewardGold,
+    recipeTickets: save.recipeTickets + def.rewardTickets,
+    dexStampsClaimed: claimedStamps,
+  };
+  if (def.bonus.staminaBonus && def.bonus.staminaBonus > 0) {
+    nextSave = addStamina(nextSave, def.bonus.staminaBonus);
+  }
+  return {
+    save: nextSave,
+    gold: def.rewardGold,
+    tickets: def.rewardTickets,
+    claimed: true,
+    buffLabel: def.buffLabel,
+  };
+}
+
 export function claimAllDexRewards(
   save: KitchenSave,
-): { save: KitchenSave; gold: number; tickets: number; entriesCount: number; milestonesCount: number } {
+): {
+  save: KitchenSave;
+  gold: number;
+  tickets: number;
+  entriesCount: number;
+  milestonesCount: number;
+  stampSetsCount: number;
+} {
   const keys = unclaimedDexKeys(save);
   const ms = dexMilestoneStatus(save);
-  if (!keys.length && ms.readySteps <= 0) {
-    return { save, gold: 0, tickets: 0, entriesCount: 0, milestonesCount: 0 };
+  const readyStamps = unclaimedDexStampSets(save);
+  if (!keys.length && ms.readySteps <= 0 && !readyStamps.length) {
+    return { save, gold: 0, tickets: 0, entriesCount: 0, milestonesCount: 0, stampSetsCount: 0 };
   }
   const claimedSet = new Set([...(save.dexClaimed ?? []), ...keys]);
+  const stampSet = new Set([...(save.dexStampsClaimed ?? []), ...readyStamps.map((d) => d.id)]);
   const entryGold = keys.length * DEX_ENTRY_GOLD;
   const msGold = ms.readySteps * DEX_MILESTONE_GOLD;
-  const tickets = ms.readySteps * DEX_MILESTONE_TICKETS;
+  const stampGold = readyStamps.reduce((sum, d) => sum + d.rewardGold, 0);
+  const stampTickets = readyStamps.reduce((sum, d) => sum + d.rewardTickets, 0);
+  const staminaGain = readyStamps.reduce((sum, d) => sum + (d.bonus.staminaBonus ?? 0), 0);
+  const totalGold = entryGold + msGold + stampGold;
+  const totalTickets = ms.readySteps * DEX_MILESTONE_TICKETS + stampTickets;
+  let nextSave: KitchenSave = {
+    ...save,
+    money: save.money + totalGold,
+    recipeTickets: save.recipeTickets + totalTickets,
+    dexClaimed: [...claimedSet],
+    dexMilestones: ms.claimedSteps + ms.readySteps,
+    dexStampsClaimed: [...stampSet],
+  };
+  if (staminaGain > 0) {
+    nextSave = addStamina(nextSave, staminaGain);
+  }
   return {
-    save: {
-      ...save,
-      money: save.money + entryGold + msGold,
-      recipeTickets: save.recipeTickets + tickets,
-      dexClaimed: [...claimedSet],
-      dexMilestones: ms.claimedSteps + ms.readySteps,
-    },
-    gold: entryGold + msGold,
-    tickets,
+    save: nextSave,
+    gold: totalGold,
+    tickets: totalTickets,
     entriesCount: keys.length,
     milestonesCount: ms.readySteps,
+    stampSetsCount: readyStamps.length,
   };
 }

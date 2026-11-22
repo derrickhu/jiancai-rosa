@@ -29,9 +29,13 @@ import {
   stallRummageArt,
   liveHudBuffs,
   urgentTaskFoodIds,
+  cardName,
+  marketWeatherById,
 } from '@/sim';
 import { ensureHudBuffPanel } from '@/gameobjects/ui/HudBuffPanel';
 import { DuskExtendPanel } from '@/gameobjects/ui/DuskExtendPanel';
+import { SteelyardPanel, type SteelyardEnterResult } from '@/gameobjects/ui/SteelyardPanel';
+import { MysterySackPanel } from '@/gameobjects/ui/MysterySackPanel';
 import { layoutRouteMap, type RouteCell, type RouteMapView } from '@/gameobjects/market/MapView';
 import { AudioManager } from '@/core/AudioManager';
 import { FONT, HUD_BUFF, HUD_ICON, bindUiClick, fillRect, makeHudBuffRow, makeLabel, makeNewFoodTag, makeRarityFlare, makeSlicedButton, makeStallNameTag, makeStatPill, makeUrgentFoodTag } from '@/utils/ui';
@@ -62,12 +66,16 @@ export class MarketScene implements Scene {
   private _basket = new BasketPanel();
   private _result = new ResultPanel();
   private _duskExtend = new DuskExtendPanel();
+  private _steelyard = new SteelyardPanel();
+  private _mysterySack = new MysterySackPanel();
   private _duskWaitTimer = 0;
   private _onRun = () => this._sync();
   private _onDuskPrompt = () => this._checkDuskPrompt();
   private _onExtract = (result: ExtractResult) => {
     this._clearDuskWait();
     this._duskExtend.close(true);
+    this._steelyard.close(true);
+    this._mysterySack.close(true);
     this._basket.close(true);
     this._result.open(result);
     TutorialManager.advanceTo(TutorialStep.WAIT_RESULT);
@@ -143,6 +151,8 @@ export class MarketScene implements Scene {
     this._tablePins.clear();
     this._clearDusk();
     this._duskExtend.close(true);
+    this._steelyard.close(true);
+    this._mysterySack.close(true);
     this._basket.close(true);
     this._event.close(true);
     TutorialOverlay.unregister('market');
@@ -274,6 +284,9 @@ export class MarketScene implements Scene {
       else if (run.mode === 'play') this._drawPlay(Game.designWidth, Game.logicHeight);
       else this._drawRummage(Game.designWidth, Game.logicHeight);
     }
+    if (run.pendingMysterySack && !this._walking && !this._mysterySack._isOpen) {
+      this._mysterySack.open();
+    }
     this._checkDuskPrompt();
     TutorialOverlay.refresh();
   }
@@ -292,7 +305,13 @@ export class MarketScene implements Scene {
       if (this._duskExtend._isOpen) this._duskExtend.close(true);
       return;
     }
-    if (this._walking || this._event._isOpen || ensureRecipeUnlockPanel()._isOpen) {
+    if (
+      this._walking
+      || this._event._isOpen
+      || this._steelyard._isOpen
+      || this._mysterySack._isOpen
+      || ensureRecipeUnlockPanel()._isOpen
+    ) {
       if (!this._duskWaitTimer) {
         this._duskWaitTimer = globalThis.setTimeout(() => {
           this._duskWaitTimer = 0;
@@ -320,7 +339,7 @@ export class MarketScene implements Scene {
       const spots = run.play.spots.map((s) => `${s.uid}:${s.taken ? 1 : 0}`).join(',');
       return `play|${run.play.nodeId}|${run.play.picksLeft}|${spots}`;
     }
-    return `map|${run.sceneId}|${run.atNodeId ?? '-'}|${run.stepsLeft}|${run.options.join(',')}|${run.peeked.length}|${run.note}`;
+    return `map|${run.sceneId}|${run.atNodeId ?? '-'}|${run.stepsLeft}|${run.options.join(',')}|${run.peeked.length}|${(run.steelyardDone ?? []).join(',')}|${run.weatherFreePaidLeft ? 1 : 0}|${run.note}`;
   }
 
   private _hudTop(): number {
@@ -429,6 +448,32 @@ export class MarketScene implements Scene {
       back.position.set(16, y);
       this._backBtn = back;
       this._res.addChild(back);
+    } else if (run.weatherId && !TutorialManager.isActive) {
+      const weather = marketWeatherById(run.weatherId);
+      if (weather) {
+        const wChip = new PIXI.Container();
+        wChip.position.set(16, y + 12);
+        const w1 = makeLabel(weather.badge, 15, weather.pillInk, { fontWeight: '700' });
+        const subLine = weather.freeFirstPaidStall && !run.weatherFreePaidLeft
+          ? '首摊免单已享'
+          : weather.shortDesc;
+        const w2 = makeLabel(subLine, 12, 0x5C4632, { fontWeight: '700' });
+        const cw = Math.max(138, Math.ceil(Math.max(w1.width, w2.width)) + 24);
+        const ch = 48;
+        const cbg = new PIXI.Graphics();
+        cbg.beginFill(0x160E08, 0.22);
+        cbg.drawRoundedRect(0, 3, cw, ch, 14);
+        cbg.endFill();
+        cbg.lineStyle(2.2, weather.pillInk, 0.95);
+        cbg.beginFill(weather.pillFill, 0.96);
+        cbg.drawRoundedRect(0, 0, cw, ch, 14);
+        cbg.endFill();
+        w1.position.set(12, 6);
+        w2.position.set(12, 26);
+        wChip.addChild(cbg, w1, w2);
+        wChip.eventMode = 'none';
+        this._res.addChild(wChip);
+      }
     }
     const leave = this._roundIconBtn(HUD_ICON.leave, '回家', () => {
       if (TutorialGuard.block('extract')) return;
@@ -704,8 +749,32 @@ export class MarketScene implements Scene {
       RunManager.enterNode(nodeId);
       return;
     }
+    const opt = picked.option;
+    if (
+      !TutorialManager.isActive
+      && isRummageNode(opt.node)
+      && opt.fee > 0
+      && !opt.steelyardDone
+    ) {
+      this._steelyard.open({
+        nodeId,
+        stallTitle: cardName(opt.node, true, run.marketId),
+        fee: opt.fee,
+        onEnter: (res) => this._executeWalkTo(nodeId, picked, res),
+        onCancel: () => this._sync(true),
+      });
+      return;
+    }
+    this._executeWalkTo(nodeId, picked);
+  }
+
+  private _executeWalkTo(
+    nodeId: string,
+    picked: RouteCell,
+    steelyardRes?: SteelyardEnterResult,
+  ): void {
     this._walkForward(picked.option.node.next, picked, () => {
-      RunManager.enterNode(nodeId);
+      RunManager.enterNode(nodeId, steelyardRes);
       this._onTutorialEntered(nodeId);
       this._afterStep();
     });
@@ -810,6 +879,10 @@ export class MarketScene implements Scene {
   /** 走完一步：对话弹窗，白捡直接把菜弹出来飞进顶栏篮子。 */
   private _afterStep(): void {
     const run = RunManager.run;
+    if (run?.pendingMysterySack) {
+      this._mysterySack.open();
+      return;
+    }
     const ev = run?.lastEvent;
     if (!run || run.ended || !ev) return;
     if (run.mode === 'rummage' || run.mode === 'play') return;

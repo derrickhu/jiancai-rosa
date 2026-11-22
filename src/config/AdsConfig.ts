@@ -32,6 +32,8 @@ export const REWARDED_AD_UNITS_BY_PLATFORM = {
     daily_extra: WX_DAILY_MENU,
     pickle_boost: WX_PICKLE_BOOST,
     cat_treat: WX_CAT_TREAT,
+    stall_favor: WX_BASKET,
+    unpack_vip: WX_BASKET,
   },
   douyin: {
     basket: DY_BASKET,
@@ -46,6 +48,8 @@ export const REWARDED_AD_UNITS_BY_PLATFORM = {
     daily_extra: DY_SPECIAL,
     pickle_boost: DY_STAMINA,
     cat_treat: DY_SPECIAL,
+    stall_favor: DY_BASKET,
+    unpack_vip: DY_BASKET,
   },
 } as const;
 

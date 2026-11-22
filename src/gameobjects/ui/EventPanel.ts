@@ -3,12 +3,21 @@ import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { eventVoice, neighborRewardChips, type RunEventLog } from '@/sim';
-import { fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from '@/utils/assets';
-import { fillRect, makeLabel, makePaperChip, makeRewardStrip, makeSlicedButton } from '@/utils/ui';
+import { fitSpriteInBox, gameTexture, isTextureReady, watchTextures, whenTextureReady } from '@/utils/assets';
+import {
+  UI_KIT,
+  UI_PALETTE,
+  drawRecessedWell,
+  fillRect,
+  makeArtisanShell,
+  makeHeaderRibbon,
+  makeLabel,
+  makeRewardStrip,
+  makeSlicedButton,
+} from '@/utils/ui';
 
 /**
- * 走过事件卡之后的那一下：半身像 + 一句人话。
- * 白捡不走这里，场景里直接把菜弹出来飞进篮子。
+ * 走过事件卡之后的那一下：半身像 + 暖宣纸木框对话卡。
  * talk 带选项时必须点一项，点暗幕不关。
  */
 export class EventPanel extends PIXI.Container {
@@ -49,34 +58,41 @@ export class EventPanel extends PIXI.Container {
     this._root.removeChildren();
     const log = this._log;
     if (!log) return;
+
+    watchTextures([UI_KIT.headerRibbon, UI_KIT.btnOlive], () => {
+      if (this._isOpen) this.relayout();
+    });
+
     const w = Game.designWidth;
     const h = Game.logicHeight;
     const voice = eventVoice(log.marketId, log.kind);
     const speaker = log.speaker ?? voice?.speaker ?? null;
     const portrait = log.portrait ?? voice?.portrait ?? null;
     const choices = log.choices ?? [];
-    const x = 24;
-    const boxW = w - 48;
+    const x = 22;
+    const boxW = w - 44;
 
     const dim = new PIXI.Graphics();
-    fillRect(dim, 0, 0, w, h, 0x000000);
-    dim.alpha = 0.48;
+    fillRect(dim, 0, 0, w, h, 0x160E08);
+    dim.alpha = 0.54;
     dim.eventMode = 'static';
     if (!choices.length) dim.on('pointertap', () => this.close());
     this._root.addChild(dim);
 
-    const text = makeLabel(log.text, 25, 0xF4EFE6, {
+    const text = makeLabel(log.text, 23, UI_PALETTE.ink, {
+      fontWeight: '600',
       wordWrap: true,
       breakWords: true,
-      wordWrapWidth: boxW - 76,
-      lineHeight: 38,
+      wordWrapWidth: boxW - 92,
+      lineHeight: 36,
     });
-    const textPad = speaker ? 46 : 40;
-    const choiceH = choices.length ? choices.length * 64 + 8 : 56;
+    const textTop = speaker ? 54 : 34;
+    const wellH = Math.ceil(text.height) + 32;
+    const choiceH = choices.length ? choices.length * 64 + 8 : 60;
     const rewardChips = rewardChipsOf(log);
-    const rewardH = rewardChips.length ? 56 : 0;
-    const boxH = textPad + Math.ceil(text.height) + 28 + rewardH + choiceH + 20;
-    const y = Math.round(h - boxH - 150);
+    const rewardH = rewardChips.length ? 54 : 0;
+    const boxH = textTop + wellH + 16 + rewardH + choiceH + 26;
+    const y = Math.round(h - boxH - 132);
 
     if (portrait) {
       whenTextureReady(portrait, () => {
@@ -86,77 +102,95 @@ export class EventPanel extends PIXI.Container {
       if (isTextureReady(tex)) {
         const sp = new PIXI.Sprite(tex);
         sp.anchor.set(0.5, 1);
-        fitSpriteInBox(sp, 480, Math.min(580, y - Game.safeTop - 16));
-        sp.position.set(Math.round(w * 0.38), y + 34);
+        fitSpriteInBox(sp, 480, Math.min(580, y - Game.safeTop - 12));
+        sp.position.set(Math.round(w * 0.38), y + 32);
         this._root.addChild(sp);
       }
     }
 
-    const panel = new PIXI.Graphics();
-    fillRect(panel, x, y, boxW, boxH, 0x3A3228, 20);
-    panel.eventMode = 'static';
-    this._root.addChild(panel);
-    const inner = new PIXI.Graphics();
-    fillRect(inner, x + 12, y + 12, boxW - 24, boxH - 24, 0x2C261F, 14);
-    inner.alpha = 0.8;
-    this._root.addChild(inner);
+    const { shell } = makeArtisanShell({
+      width: boxW,
+      height: boxH,
+      onReady: () => {
+        if (this._isOpen) this.relayout();
+      },
+    });
+    shell.position.set(x, y);
+    this._root.addChild(shell);
 
     if (speaker) {
-      const chip = makePaperChip(speaker, { size: 22 });
-      chip.position.set(x + 26, y - 20);
-      this._root.addChild(chip);
+      const nameW = Math.max(188, speaker.length * 32 + 96);
+      const nameplate = makeHeaderRibbon({
+        title: speaker,
+        width: nameW,
+        height: 54,
+        fontSize: 23,
+        onReady: () => {
+          if (this._isOpen) this.relayout();
+        },
+      });
+      nameplate.position.set(24, -18);
+      shell.addChild(nameplate);
     }
 
-    text.position.set(x + 38, y + textPad);
-    this._root.addChild(text);
+    const well = new PIXI.Graphics();
+    drawRecessedWell(well, 26, textTop, boxW - 52, wellH, { radius: 16 });
+    text.position.set(46, textTop + 16);
+    shell.addChild(well, text);
 
     if (rewardChips.length) {
-      const strip = makeRewardStrip(rewardChips, () => {
-        if (this._isOpen) this.relayout();
-      }, '做成给');
-      strip.position.set(x + 38, y + textPad + Math.ceil(text.height) + 12);
-      this._root.addChild(strip);
+      const strip = makeRewardStrip(
+        rewardChips,
+        () => {
+          if (this._isOpen) this.relayout();
+        },
+        '做成给',
+        'paper',
+      );
+      strip.position.set(30, textTop + wellH + 10);
+      shell.addChild(strip);
     }
 
     if (choices.length) {
       choices.forEach((choice, i) => {
         const cost = choice.steps ? ` · 天色-${choice.steps}` : '';
+        const isLast = i === choices.length - 1;
         const btn = makeSlicedButton({
           label: `${choice.label}${cost}`,
           width: boxW - 52,
-          height: 56,
-          skin: i === choices.length - 1 ? 'cream' : 'terracotta',
-          textColor: i === choices.length - 1 ? 0x3A3228 : 0xFFF8F0,
+          height: 54,
+          skin: isLast ? 'cream' : 'terracotta',
+          textColor: isLast ? UI_PALETTE.ink : 0xFFF8F0,
           onReady: () => {
             if (this._isOpen) this.relayout();
           },
         });
-        btn.position.set(x + 26, y + boxH - 20 - (choices.length - i) * 64);
+        btn.position.set(26, boxH - 22 - (choices.length - i) * 64);
         btn.on('pointertap', () => {
           const pick = this._onChoice;
           const ok = pick?.(i);
           if (ok === false) return;
           this.close();
         });
-        this._root.addChild(btn);
+        shell.addChild(btn);
       });
       return;
     }
 
-    const btnW = 200;
+    const btnW = 208;
     const btn = makeSlicedButton({
       label: '知道了',
       width: btnW,
-      height: 56,
-      skin: 'cream',
-      textColor: 0x3A3228,
+      height: 52,
+      skin: 'olive',
+      textColor: 0xFFF8F0,
       onReady: () => {
         if (this._isOpen) this.relayout();
       },
     });
-    btn.position.set(x + boxW - btnW - 26, y + boxH - 76);
+    btn.position.set(boxW - btnW - 26, boxH - 76);
     btn.on('pointertap', () => this.close());
-    this._root.addChild(btn);
+    shell.addChild(btn);
   }
 }
 

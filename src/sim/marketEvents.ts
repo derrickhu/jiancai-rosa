@@ -737,7 +737,7 @@ export const EVENT_VOICE: Record<MarketId, Partial<Record<CardKind, EventVoice>>
   guoyuan: {
     favor: {
       speaker: '阿桃',
-      portrait: 'subpkg_images/npc_guoyuan_tao.png',
+      portrait: 'subpkg_kitchen/npc_guoyuan_tao.png',
       lines: [
         '前头那筐果我打过招呼了。进去翻，不用给钱。',
         '苦瓜还带着露。后面那摊账记我头上。',
@@ -746,7 +746,7 @@ export const EVENT_VOICE: Record<MarketId, Partial<Record<CardKind, EventVoice>>
     },
     empty: {
       speaker: '收摊的果农',
-      portrait: 'subpkg_images/npc_guoyuan_tao.png',
+      portrait: 'subpkg_kitchen/npc_guoyuan_tao.png',
       lines: [
         '这筐空了。温室棚里还有。',
         '早市快散。往果林那边走走，灯还亮着。',
@@ -764,7 +764,7 @@ export const EVENT_VOICE: Record<MarketId, Partial<Record<CardKind, EventVoice>>
     },
     recipe: {
       speaker: '阿桃',
-      portrait: 'subpkg_images/npc_guoyuan_tao.png',
+      portrait: 'subpkg_kitchen/npc_guoyuan_tao.png',
       lines: [
         '这张油纸是果园里传下来的。你拿去。',
         '上头那两味，早市才有。别放潮了。',
@@ -775,7 +775,7 @@ export const EVENT_VOICE: Record<MarketId, Partial<Record<CardKind, EventVoice>>
   tiantou: {
     favor: {
       speaker: '老周',
-      portrait: 'subpkg_images/npc_tiantou_zhou.png',
+      portrait: 'subpkg_kitchen/npc_tiantou_zhou.png',
       lines: [
         '前头田菜摊我说过了。进去白翻。',
         '羊肉案还亮着灯。这摊账记我头上。',
@@ -784,7 +784,7 @@ export const EVENT_VOICE: Record<MarketId, Partial<Record<CardKind, EventVoice>>
     },
     empty: {
       speaker: '收摊的菜农',
-      portrait: 'subpkg_images/npc_tiantou_zhou.png',
+      portrait: 'subpkg_kitchen/npc_tiantou_zhou.png',
       lines: [
         '这垄收光了。羊圈边还有一案。',
         '晚了，筐先空。往田埂走，灯还在。',
@@ -802,7 +802,7 @@ export const EVENT_VOICE: Record<MarketId, Partial<Record<CardKind, EventVoice>>
     },
     recipe: {
       speaker: '老周',
-      portrait: 'subpkg_images/npc_tiantou_zhou.png',
+      portrait: 'subpkg_kitchen/npc_tiantou_zhou.png',
       lines: [
         '晚集传下来的油纸。你收好。',
         '羊肉和田菜，别的场没有这搭配。',
@@ -813,7 +813,7 @@ export const EVENT_VOICE: Record<MarketId, Partial<Record<CardKind, EventVoice>>
   futou: {
     favor: {
       speaker: '阿海',
-      portrait: 'subpkg_images/npc_futou_hai.png',
+      portrait: 'subpkg_kitchen/npc_futou_hai.png',
       lines: [
         '前头鱼摊我打过招呼。进去翻，不用给钱。',
         '南果那筐还开着。账记我头上。',
@@ -822,7 +822,7 @@ export const EVENT_VOICE: Record<MarketId, Partial<Record<CardKind, EventVoice>>
     },
     empty: {
       speaker: '收摊的鱼贩',
-      portrait: 'subpkg_images/npc_futou_hai.png',
+      portrait: 'subpkg_kitchen/npc_futou_hai.png',
       lines: [
         '冰化完了，这摊空了。果仓还开着。',
         '潮要上来。往栈桥走，灯还亮。',
@@ -840,7 +840,7 @@ export const EVENT_VOICE: Record<MarketId, Partial<Record<CardKind, EventVoice>>
     },
     recipe: {
       speaker: '阿海',
-      portrait: 'subpkg_images/npc_futou_hai.png',
+      portrait: 'subpkg_kitchen/npc_futou_hai.png',
       lines: [
         '埠头的油纸，鱼和果写在一张上。你拿去。',
         '别沾水。上头那两味，这边才配得齐。',

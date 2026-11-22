@@ -68,12 +68,17 @@ function feeBroke(opt: RouteOption): boolean {
   return opt.fee > 0 && !!opt.blocked && opt.blocked.includes('金币');
 }
 
+function canChallengeSteelyard(opt: RouteOption): boolean {
+  return isRummageOption(opt) && opt.fee > 0 && !opt.steelyardDone;
+}
+
 /** 卡面下沿：收费摊的价写在图上方空白处，这里只留件数或进不去的理由。 */
 function infoLine(opt: RouteOption): string {
   if (!opt.revealed) return cardHint(opt.node, false);
   if (isRummageOption(opt)) {
     const stock = `剩 ${opt.left} 件`;
-    if (opt.waived) return `人情白翻 · ${stock}`;
+    if (opt.waived) return `免单白翻 · ${stock}`;
+    if (opt.fee > 0 && !opt.steelyardDone) return `老杆秤减免 · ${stock}`;
     return opt.fee > 0 ? stock : `免费 · ${stock}`;
   }
   return cardHint(opt.node, true);
@@ -189,7 +194,8 @@ export function makeRouteCard(opts: {
   const atlas = opts.atlas ?? CARD_ATLAS;
   const mode = opts.mode ?? 'full';
   const height = Math.round(width * FRAME_RATIO);
-  const locked = !!option.blocked;
+  const brokeSteelyard = mode === 'full' && feeBroke(option) && canChallengeSteelyard(option);
+  const locked = !!option.blocked && !brokeSteelyard;
   const root = new PIXI.Container();
   const artPath = option.revealed && option.node.cardArt
     ? option.node.cardArt
@@ -206,11 +212,30 @@ export function makeRouteCard(opts: {
   const winW = Math.round(width * WIN.w);
   const winH = Math.round(height * WIN.h);
 
+  const isCutoutProp = !!artPath && artPath.startsWith('subpkg_kitchen/');
   const artTex = artPath ? gameTexture(artPath) : null;
   const thumb = artTex && isTextureReady(artTex)
     ? artTex
     : slotTexture(atlas, slotForNode(option.node, option.revealed));
-  if (thumb) {
+  if (thumb && isCutoutProp && artTex && isTextureReady(artTex)) {
+    const hole = new PIXI.Graphics();
+    hole.beginFill(0xF6EAD3, 1);
+    hole.drawRect(winX, winY, winW, winH);
+    hole.endFill();
+    hole.beginFill(0xFCE4AA, 0.72);
+    hole.drawCircle(winX + winW / 2, winY + winH * 0.48, Math.min(winW, winH) * 0.36);
+    hole.endFill();
+    hole.eventMode = 'none';
+    root.addChild(hole);
+
+    const sp = new PIXI.Sprite(artTex);
+    fitSpriteInBox(sp, winW * 0.84, winH * 0.76);
+    sp.anchor.set(0.5);
+    sp.position.set(winX + winW / 2, winY + winH * 0.47);
+    sp.eventMode = 'none';
+    if (locked) sp.tint = 0x8A8073;
+    root.addChild(sp);
+  } else if (thumb) {
     const sp = new PIXI.Sprite(thumb);
     sp.position.set(winX, winY);
     sp.width = winW;
