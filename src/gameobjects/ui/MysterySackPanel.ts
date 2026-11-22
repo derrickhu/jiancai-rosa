@@ -147,8 +147,8 @@ export class MysterySackPanel extends PIXI.Container {
       height: boxH,
       title: '压 箱 尾 货 篓',
       subtitle: revealed
-        ? '三只麻袋全揭晓啦 · 已挑好货入菜篮'
-        : '老摊主收摊留下的三只封口麻袋 · 免费任挑一袋！',
+        ? '三只麻袋全揭晓 · 好货已入菜篮'
+        : '老摊主留下的三只麻袋 · 免费任挑一袋！',
       closeSilent: true,
       onReady: this._scheduleRelayout,
       onClose: () => {
@@ -164,7 +164,7 @@ export class MysterySackPanel extends PIXI.Container {
     this._root.addChild(shell);
 
     const trayY = 96;
-    const trayH = 292;
+    const trayH = 294;
     const tray = new PIXI.Graphics();
     drawSectionTray(tray, padX, trayY, cw, trayH, { radius: 18, tone: 'sand' });
     shell.addChild(tray);
@@ -187,30 +187,30 @@ export class MysterySackPanel extends PIXI.Container {
 
       const cbg = new PIXI.Graphics();
       if (!revealed) {
-        drawCraftCard(cbg, 0, 0, cardW, cardH, { radius: 16, tone: 'ivory', headerH: 34 });
+        drawCraftCard(cbg, 0, 0, cardW, cardH, { radius: 16, tone: 'ivory', headerH: 38 });
       } else {
         drawItemSlotBox(cbg, 0, 0, cardW, cardH, {
           radius: 16,
           rarity: meta.rarity,
           selected: isTaken,
           dimmed: !isTaken,
-          footerH: 42,
+          footerH: 44,
         });
       }
       card.addChild(cbg);
 
       if (!revealed) {
-        const hdr = makeLabel(titles[i], 15, INK, { fontWeight: '700' });
+        const hdr = makeLabel(titles[i], 17, INK, { fontWeight: '700' });
         hdr.anchor.set(0.5);
-        hdr.position.set(cardW / 2, 18);
+        hdr.position.set(cardW / 2, 20);
         card.addChild(hdr);
 
         const sackTex = gameTexture(MARKET_PROP_ART.mysterySack);
         if (isTextureReady(sackTex)) {
           const spr = new PIXI.Sprite(sackTex);
-          fitSpriteInBox(spr, cardW - 22, 152);
+          fitSpriteInBox(spr, cardW - 22, 148);
           spr.anchor.set(0.5);
-          spr.position.set(cardW / 2, 124);
+          spr.position.set(cardW / 2, 126);
           card.addChild(spr);
           TweenManager.to({
             target: spr.scale,
@@ -221,15 +221,15 @@ export class MysterySackPanel extends PIXI.Container {
         }
 
         const pickBtn = makeSlicedButton({
-          label: '免费拆这袋',
+          label: '免费拆开',
           width: cardW - 20,
-          height: 40,
+          height: 42,
           skin: 'gold',
           textColor: INK,
-          fontSize: 15,
+          fontSize: 17,
           onReady: this._scheduleRelayout,
         });
-        pickBtn.position.set(10, cardH - 52);
+        pickBtn.position.set(10, cardH - 54);
         card.addChild(pickBtn);
 
         card.eventMode = 'static';
@@ -254,9 +254,9 @@ export class MysterySackPanel extends PIXI.Container {
           : itemTexture((prize as Extract<MysterySackPrize, { kind: 'food' }>).defId);
         if (isTextureReady(iconTex)) {
           const spr = new PIXI.Sprite(iconTex);
-          fitSpriteInBox(spr, cardW - 34, 126);
+          fitSpriteInBox(spr, cardW - 34, 124);
           spr.anchor.set(0.5);
-          spr.position.set(cardW / 2, 114);
+          spr.position.set(cardW / 2, 116);
           if (!isTaken) spr.alpha = 0.78;
           card.addChild(spr);
         }
@@ -264,14 +264,14 @@ export class MysterySackPanel extends PIXI.Container {
         const tag = makeSlotBadge(
           isTaken ? '✓ 已收入' : '未拿走',
           isTaken ? 'olive' : 'ink',
-          12,
+          14,
         );
-        tag.node.position.set(Math.round((cardW - tag.w) / 2), 12);
+        tag.node.position.set(Math.round((cardW - tag.w) / 2), 11);
         card.addChild(tag.node);
 
-        const nameLbl = makeLabel(meta.name, 16, INK, { fontWeight: '700' });
+        const nameLbl = makeLabel(meta.name, 18, INK, { fontWeight: '700' });
         nameLbl.anchor.set(0.5);
-        nameLbl.position.set(cardW / 2, cardH - 21);
+        nameLbl.position.set(cardW / 2, cardH - 22);
         card.addChild(nameLbl);
       }
 
@@ -279,7 +279,7 @@ export class MysterySackPanel extends PIXI.Container {
     });
 
     if (!revealed) {
-      const tip = makeLabel('袋里必出跨场良品/上品鲜货、老坛腌菜或菜谱券！', 15, OLIVE, { fontWeight: '700' });
+      const tip = makeLabel('袋里必出跨场鲜货、老坛腌菜或菜谱券！', 17, OLIVE, { fontWeight: '700' });
       tip.anchor.set(0.5);
       tip.position.set(boxW / 2, trayY + trayH + 46);
       shell.addChild(tip);
@@ -292,7 +292,7 @@ export class MysterySackPanel extends PIXI.Container {
       const adW = Math.round(cw * 0.60);
       const goW = cw - adW - 12;
       const adBtn = makeAdButton({
-        label: '搭把手全收下(领剩2袋)',
+        label: '全收下(领剩2袋)',
         width: adW,
         height: 54,
         skin: 'gold',

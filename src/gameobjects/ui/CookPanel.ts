@@ -30,11 +30,9 @@ import {
   type RecipeId,
 } from '@/sim';
 import {
-  FONT,
   P0_ART,
   bindUiClick,
   drawItemSlotBox,
-  drawRecessedWell,
   drawSectionTray,
   fillRect,
   makeLabel,
@@ -318,8 +316,8 @@ export class CookPanel extends PIXI.Container {
     const left = dailyAdLeft(save, 'chef_buff', now);
     const canAd = canUseDailyAd(save, 'chef_buff', now);
 
-    const pillW = Math.min(226, Math.round(bw * 0.315));
-    const pillH = 50;
+    const pillW = Math.min(232, Math.round(bw * 0.325));
+    const pillH = 54;
     const root = new PIXI.Container();
     root.position.set(Math.round(bw * 0.862 - pillW), Math.round(bh * (PAGE.y + 0.045) - pillH / 2));
 
@@ -335,7 +333,7 @@ export class CookPanel extends PIXI.Container {
       const wok = new PIXI.Sprite(wokTex);
       fitSpriteInBox(wok, 46, 46);
       wok.anchor.set(0.5);
-      wok.position.set(26, pillH / 2 - 1);
+      wok.position.set(28, pillH / 2 - 1);
       wok.eventMode = 'none';
       if (!active && !canAd) wok.alpha = 0.55;
       root.addChild(wok);
@@ -344,18 +342,18 @@ export class CookPanel extends PIXI.Container {
     const line1Text = active
       ? `旺火 ${formatChefFireRemain(remain)}`
       : canAd
-        ? '点旺火 15分'
-        : '今日旺火已满';
+        ? '点旺火'
+        : '旺火已满';
     const line2Text = active
-      ? '经验+30% · 概率双份'
+      ? '经验+30%·双份'
       : canAd
-        ? `经验+30%·双份 (${left}/${DAILY_AD_LIMITS.chef_buff})`
-        : '明天再来升旺火';
+        ? `经验+30% (${left}/${DAILY_AD_LIMITS.chef_buff})`
+        : '明日再来';
 
-    const t1 = makeLabel(line1Text, 17, active ? TERRACOTTA : (canAd ? PAPER : MUTED), { fontWeight: '700' });
-    t1.position.set(50, 6);
-    const t2 = makeLabel(line2Text, 13, active ? INK : (canAd ? 0xFFEAD2 : MUTED), { fontWeight: '600' });
-    t2.position.set(50, 27);
+    const t1 = makeLabel(line1Text, 19, active ? TERRACOTTA : (canAd ? PAPER : MUTED), { fontWeight: '700' });
+    t1.position.set(52, 6);
+    const t2 = makeLabel(line2Text, 15, active ? INK : (canAd ? 0xFFEAD2 : MUTED), { fontWeight: '700' });
+    t2.position.set(52, 29);
     root.addChild(t1, t2);
 
     if (!active && canAd) {
@@ -427,16 +425,16 @@ export class CookPanel extends PIXI.Container {
     const rowW = width - 12;
     const addRow = (recipe: (typeof known)[number]) => {
       const on = this._pick === recipe.id;
-      const row = this._chip(recipe.name, rowW, 44, on ? 'on' : 'off');
+      const row = this._chip(recipe.name, rowW, 48, on ? 'on' : 'off');
       const tab = new PIXI.Graphics();
       tab.beginFill(RARITY_STYLE[recipe.rarity].frame, 1);
-      tab.drawRoundedRect(7, 11, 6, 22, 3);
+      tab.drawRoundedRect(7, 12, 6, 24, 3);
       tab.endFill();
       tab.eventMode = 'none';
       row.addChild(tab);
       const can = recipeCookCount(view, recipe.id);
       const waiting = KitchenManager.wantedNeighborRecipeIds().has(recipe.id);
-      row.alpha = can > 0 || on ? 1 : 0.75;
+      row.alpha = can > 0 || on ? 1 : 0.78;
       if (can > 0) row.addChild(this._readyBadge(rowW, can));
       if (waiting) row.addChild(this._waitBadge(can > 0 ? rowW - 62 : rowW - 30));
       row.position.set(x + 6, cy);
@@ -451,21 +449,21 @@ export class CookPanel extends PIXI.Container {
         this.relayout();
       });
       list.addChild(row);
-      cy += 52;
+      cy += 56;
     };
     if (pinned.length) {
-      const div = makeOrnamentalDivider(rowW, '先做', { fontSize: 15, color: TERRACOTTA });
-      div.position.set(x + 6, cy + 12);
+      const div = makeOrnamentalDivider(rowW, '先做', { fontSize: 17, color: TERRACOTTA });
+      div.position.set(x + 6, cy + 14);
       list.addChild(div);
-      cy += 28;
+      cy += 30;
       for (const recipe of pinned) addRow(recipe);
       cy += 10;
     }
     for (const group of groups) {
-      const div = makeOrnamentalDivider(rowW, group, { fontSize: 15, color: 0x6E5038 });
-      div.position.set(x + 6, cy + 12);
+      const div = makeOrnamentalDivider(rowW, group, { fontSize: 17, color: 0x6E5038 });
+      div.position.set(x + 6, cy + 14);
       list.addChild(div);
-      cy += 28;
+      cy += 30;
       for (const recipe of rest.filter((r) => r.group === group)) addRow(recipe);
       cy += 10;
     }
@@ -504,12 +502,12 @@ export class CookPanel extends PIXI.Container {
 
     const pad = bw * 0.02;
     const dx = bw * (INSET.x + INSET.w * LEFT_W) + pad;
-    const dy = bh * INSET.y + 4;
+    const dy = bh * INSET.y + 8;
     const dw = bw * INSET.w * (1 - LEFT_W) - pad;
-    const dishSize = Math.min(Math.round(dw * 0.68), Math.round(bh * INSET.h * 0.22));
+    const dishSize = Math.min(Math.round(dw * 0.74), Math.round(bh * INSET.h * 0.27), 184);
     const dishX = dx + (dw - dishSize) / 2;
     const frame = new PIXI.Graphics();
-    drawItemSlotBox(frame, dishX, dy, dishSize, dishSize, { radius: 14, rarity: recipe.rarity });
+    drawItemSlotBox(frame, dishX, dy, dishSize, dishSize, { radius: 16, rarity: recipe.rarity });
     frame.eventMode = 'none';
     root.addChild(frame);
 
@@ -518,10 +516,17 @@ export class CookPanel extends PIXI.Container {
       const dish = new PIXI.Sprite(dishTex);
       fitSpriteInBox(dish, dishSize * 0.78, dishSize * 0.78);
       dish.anchor.set(0.5);
-      dish.position.set(dishX + dishSize / 2, dy + dishSize / 2 - 1);
+      dish.position.set(dishX + dishSize / 2, dy + dishSize / 2 - 2);
       dish.eventMode = 'none';
       root.addChild(dish);
     }
+    const waiting = KitchenManager.wantedNeighborRecipeIds().has(recipe.id);
+    if (waiting) {
+      const wBadge = makeSlotBadge('街坊在等', 'lack', 14);
+      wBadge.node.position.set(dishX + dishSize - wBadge.w + 8, dy - 8);
+      root.addChild(wBadge.node);
+    }
+
     const dishHit = new PIXI.Container();
     dishHit.eventMode = 'static';
     dishHit.cursor = 'pointer';
@@ -548,17 +553,17 @@ export class CookPanel extends PIXI.Container {
         : mastery.stars === 2
           ? '+10%'
           : `${mastery.cooked}锅`;
-      const mLbl = makeLabel(subTxt, 14, mastery.stars >= 2 ? TERRACOTTA : MUTED, { fontWeight: '700' });
-      const pillW = 3 * 24 + 2 * 2 + 8 + Math.ceil(mLbl.width) + 16;
-      const pillH = 28;
+      const mLbl = makeLabel(subTxt, 15, mastery.stars >= 2 ? TERRACOTTA : MUTED, { fontWeight: '700' });
+      const pillW = 3 * 24 + 2 * 2 + 8 + Math.ceil(mLbl.width) + 18;
+      const pillH = 30;
       const pillBg = new PIXI.Graphics();
       pillBg.lineStyle(2, mastery.stars >= 3 ? 0xD49B28 : 0x8B5A2B, 1);
       pillBg.beginFill(0xFFF8F0, 0.96);
       pillBg.drawRoundedRect(0, 0, pillW, pillH, pillH / 2);
       pillBg.endFill();
-      spoons.position.set(8, 2);
+      spoons.position.set(9, 3);
       mLbl.anchor.set(0, 0.5);
-      mLbl.position.set(8 + 3 * 24 + 4 + 4, pillH / 2 + 0.5);
+      mLbl.position.set(9 + 3 * 24 + 4 + 4, pillH / 2 + 0.5);
       mChip.addChild(pillBg, spoons, mLbl);
       mChip.position.set(Math.round(dishX + (dishSize - pillW) / 2), dy + dishSize - 22);
       mChip.eventMode = 'static';
@@ -573,31 +578,26 @@ export class CookPanel extends PIXI.Container {
     }
 
     const cx = dx + dw / 2;
-    const nameY = dy + dishSize + 24;
-    const name = makeLabel(recipe.name, 28, INK, { fontWeight: '700' });
+    const nameY = dy + dishSize + 28;
+    const name = makeLabel(recipe.name, 30, INK, { fontWeight: '700' });
     name.anchor.set(0.5);
     name.position.set(cx, nameY);
     root.addChild(name);
-    const waiting = KitchenManager.wantedNeighborRecipeIds().has(recipe.id);
-    if (waiting) {
-      const wait = makeLabel('街坊在等', 18, TERRACOTTA, { fontWeight: '700' });
-      wait.anchor.set(0.5);
-      wait.position.set(cx, nameY + 28);
-      root.addChild(wait);
-    }
+
     const baseXp = recipeXp(save, recipe.id);
     const fireOn = isChefFireActive(save);
     const shownXp = fireOn ? Math.round(baseXp * CHEF_FIRE_XP_MUL) : baseXp;
     const xpLabel = makeLabel(
       `${rarityLabel(recipe.rarity)}  ·  +${shownXp} 经验${fireOn ? ' (旺火)' : ''}`,
-      18,
+      19,
       fireOn ? TERRACOTTA : RARITY_STYLE[recipe.rarity].ink,
       { fontWeight: '700' },
     );
     xpLabel.anchor.set(0.5);
-    xpLabel.position.set(cx, nameY + (waiting ? 50 : 30));
+    xpLabel.position.set(cx, nameY + 34);
     root.addChild(xpLabel);
-    const eatY = nameY + (waiting ? 72 : 52);
+
+    const eatY = nameY + 62;
     const eat = makeLabel(recipeEatLabel(recipe.id), 18, 0x3D6A82, { fontWeight: '700' });
     eat.anchor.set(0.5);
     eat.position.set(cx, eatY);
@@ -605,34 +605,27 @@ export class CookPanel extends PIXI.Container {
 
     const tx = dx;
     const tw = dw;
-    const blurb = new PIXI.Text(recipe.blurb, {
-      fontFamily: FONT,
-      fontSize: 16,
-      fill: 0x5C442E,
-      fontWeight: '600',
-      wordWrap: true,
-      breakWords: true,
-      wordWrapWidth: Math.max(80, tw - 28),
-      lineHeight: 23,
-    });
-    blurb.eventMode = 'none';
-    const blurbBoxY = eatY + 18;
-    const blurbBoxH = Math.max(44, Math.ceil(blurb.height) + 16);
-    const blurbBg = new PIXI.Graphics();
-    drawRecessedWell(blurbBg, tx + 2, blurbBoxY, tw - 4, blurbBoxH, { radius: 11 });
-    blurb.position.set(tx + 14, blurbBoxY + 8);
-    root.addChild(blurbBg, blurb);
+    const btnH = 64;
+    const stageBottom = bh * (INSET.y + INSET.h);
+    const btnY = stageBottom - btnH - 6;
+    const stepperSpace = max > 0 ? 48 : 0;
 
-    const gap = 8;
-    const trayPad = 8;
-    const slotW = Math.min(82, Math.floor((tw - 4 - trayPad * 2 - (needs.length - 1) * gap) / Math.max(2, needs.length)));
-    const slotH = slotW + 22;
+    const gap = 10;
+    const trayPad = 10;
+    const maxSlotCap = needs.length <= 2 ? 104 : 86;
+    const slotW = Math.min(maxSlotCap, Math.floor((tw - 4 - trayPad * 2 - (needs.length - 1) * gap) / Math.max(2, needs.length)));
+    const slotH = slotW + 28;
+    const trayH = slotH + trayPad * 2;
     const rowW = needs.length * slotW + (needs.length - 1) * gap;
-    const trayW = Math.min(tw - 4, Math.max(rowW + trayPad * 2, Math.round(tw * 0.82)));
+    const trayW = Math.min(tw - 4, Math.max(rowW + trayPad * 2, Math.round(tw * 0.84)));
     const trayX = tx + Math.round((tw - trayW) / 2);
-    const slotY = blurbBoxY + blurbBoxH + 10;
+
+    const availTop = eatY + 22;
+    const availBot = btnY - stepperSpace - 10;
+    const slotY = Math.max(availTop, Math.round(availTop + (availBot - availTop - trayH) * 0.42));
+
     const trayBg = new PIXI.Graphics();
-    drawSectionTray(trayBg, trayX, slotY, trayW, slotH + trayPad * 2, { radius: 13, tone: 'sand' });
+    drawSectionTray(trayBg, trayX, slotY, trayW, trayH, { radius: 14, tone: 'sand' });
     root.addChild(trayBg);
 
     let sx = trayX + Math.round((trayW - rowW) / 2);
@@ -641,11 +634,8 @@ export class CookPanel extends PIXI.Container {
       sx += slotW + gap;
     });
 
-    const btnH = 62;
-    const stageBottom = bh * (INSET.y + INSET.h);
-    const btnY = stageBottom - btnH - 4;
     if (max > 0) {
-      root.addChild(makeQtyStepper(cx, btnY - 36, qty, max, (n) => {
+      root.addChild(makeQtyStepper(cx, btnY - 38, qty, max, (n) => {
         this._cookQty = n;
         this.relayout();
       }));
@@ -736,12 +726,12 @@ export class CookPanel extends PIXI.Container {
     need: number,
   ): PIXI.Container {
     const ok = have >= need;
-    const footerH = 22;
+    const footerH = 26;
     const iconAreaH = h - footerH;
     const root = new PIXI.Container();
     const bg = new PIXI.Graphics();
     drawItemSlotBox(bg, x, y, w, h, {
-      radius: 10,
+      radius: 12,
       rarity: itemRarity(iconId),
       dimmed: !ok,
       footerH,
@@ -751,7 +741,7 @@ export class CookPanel extends PIXI.Container {
     const iconTex = itemTexture(iconId);
     if (isTextureReady(iconTex)) {
       const icon = new PIXI.Sprite(iconTex);
-      fitSpriteInBox(icon, w - 16, iconAreaH - 14);
+      fitSpriteInBox(icon, w - 18, iconAreaH - 14);
       icon.anchor.set(0.5);
       icon.position.set(x + w / 2, y + iconAreaH / 2 - 1);
       icon.eventMode = 'none';
@@ -759,11 +749,11 @@ export class CookPanel extends PIXI.Container {
       root.addChild(icon);
     }
 
-    const badge = makeSlotBadge(`${have}/${need}`, ok ? 'olive' : 'lack', 11);
-    badge.node.position.set(x + w - badge.w - 3, y + iconAreaH - badge.h - 2);
+    const badge = makeSlotBadge(`${have}/${need}`, ok ? 'olive' : 'lack', 14);
+    badge.node.position.set(x + w - badge.w - 4, y + iconAreaH - badge.h - 3);
     root.addChild(badge.node);
 
-    const name = makeLabel(label, 13, ok ? INK : 0x7A6652, { fontWeight: '700' });
+    const name = makeLabel(label, 16, ok ? INK : 0x7A6652, { fontWeight: '700' });
     name.anchor.set(0.5);
     name.position.set(x + w / 2, y + h - footerH / 2 - 1);
     root.addChild(name);
@@ -800,14 +790,14 @@ export class CookPanel extends PIXI.Container {
     const root = new PIXI.Container();
     const text = count > 99 ? '99+' : `${count}`;
     const wide = text.length > 1;
-    const w = wide ? 28 : 22;
-    const h = 22;
+    const w = wide ? 30 : 24;
+    const h = 24;
     const g = new PIXI.Graphics();
     g.beginFill(0xD94A3A, 1);
     g.drawRoundedRect(0, 0, w, h, h / 2);
     g.endFill();
     g.eventMode = 'none';
-    const n = makeLabel(text, 13, PAPER, { fontWeight: '700' });
+    const n = makeLabel(text, 14, PAPER, { fontWeight: '700' });
     n.anchor.set(0.5);
     n.position.set(w / 2, h / 2 + 0.5);
     root.addChild(g, n);

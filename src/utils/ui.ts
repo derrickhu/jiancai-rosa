@@ -755,7 +755,7 @@ export function makeSlicedButton(opts: {
       : 0xFFF8F0;
   const finalCol = opts.textColor ?? defaultTextCol;
   const lightText = finalCol >= 0xD00000;
-  const fSize = opts.fontSize ?? Math.min(24, Math.round(height * 0.42));
+  const fSize = opts.fontSize ?? Math.min(24, Math.max(17, Math.round(height * 0.43)));
   const text = makeLabel(opts.label, fSize, finalCol, {
     fontWeight: '700',
     ...(lightText
@@ -768,8 +768,13 @@ export function makeSlicedButton(opts: {
         ? { stroke: 0xFFF3CE, strokeThickness: 2.5, lineJoin: 'round' }
         : {}),
   });
+  const offsetX = opts.labelOffsetX ?? 0;
+  const maxTextW = Math.max(36, opts.width - Math.abs(offsetX) * 2 - 26);
+  if (text.width > maxTextW) {
+    text.scale.set(maxTextW / text.width);
+  }
   text.anchor.set(0.5);
-  text.position.set(opts.width / 2 + (opts.labelOffsetX ?? 0), height / 2 - 1);
+  text.position.set(opts.width / 2 + offsetX, height / 2 - 1);
   face.addChild(text);
 
   root.eventMode = 'static';
@@ -1002,7 +1007,7 @@ export function makeOrnamentalDivider(
   root.eventMode = 'none';
   const inkColor = opts.color ?? UI_PALETTE.inkSoft;
   const sprigColor = 0x8B6D4E;
-  const txt = makeLabel(label, opts.fontSize ?? 17, inkColor, { fontWeight: '700' });
+  const txt = makeLabel(label, opts.fontSize ?? 18, inkColor, { fontWeight: '700' });
   txt.anchor.set(0.5);
   txt.position.set(width / 2, 0);
   const halfText = Math.ceil(txt.width / 2) + 12;
@@ -1117,10 +1122,10 @@ export function makeArtisanShell(opts: {
   }
 
   if (opts.subtitle) {
-    const subDiv = makeOrnamentalDivider(iw - 24, opts.subtitle, { fontSize: 15, color: UI_PALETTE.muted });
+    const subDiv = makeOrnamentalDivider(iw - 24, opts.subtitle, { fontSize: 16, color: UI_PALETTE.muted });
     subDiv.position.set(ix + 12, bodyTop + 10);
     shell.addChild(subDiv);
-    bodyTop += 28;
+    bodyTop += 30;
   }
 
   if (opts.onClose) {
@@ -1339,8 +1344,9 @@ export function drawItemSlotBox(
 export function makeSlotBadge(
   text: string,
   tone: 'olive' | 'lack' | 'gold' | 'ink' = 'ink',
-  fontSize = 13,
+  fontSize = 14,
 ): { node: PIXI.Container; w: number; h: number } {
+  const effSize = Math.max(13, fontSize);
   const palette = {
     olive: { fill: 0x689A4B, border: 0x3F6629, text: 0xFFFDF8 },
     lack: { fill: 0xC85A42, border: 0x7D2E1D, text: 0xFFFDF8 },
@@ -1350,9 +1356,9 @@ export function makeSlotBadge(
 
   const node = new PIXI.Container();
   node.eventMode = 'none';
-  const lbl = makeLabel(text, fontSize, palette.text, { fontWeight: '700' });
-  const w = Math.max(22, Math.ceil(lbl.width) + 10);
-  const h = Math.max(18, fontSize + 6);
+  const lbl = makeLabel(text, effSize, palette.text, { fontWeight: '700' });
+  const w = Math.max(24, Math.ceil(lbl.width) + 11);
+  const h = Math.max(20, effSize + 6);
   const g = new PIXI.Graphics();
   g.lineStyle(1.5, palette.border, 1);
   g.beginFill(palette.fill, 1);
@@ -1452,7 +1458,7 @@ export function makeCraftProgressBar(opts: {
   root.addChild(g);
 
   if (opts.text) {
-    const txt = makeLabel(opts.text, opts.fontSize ?? Math.min(14, h - 4), UI_PALETTE.ink, {
+    const txt = makeLabel(opts.text, opts.fontSize ?? Math.min(16, Math.max(14, h - 3)), UI_PALETTE.ink, {
       fontWeight: '700',
       stroke: 0xFFFDF8,
       strokeThickness: 3,
@@ -1542,9 +1548,9 @@ export function makeSidebarIconBtn(opts: {
   }
 
   // Integrated roasted-walnut bottom nameplate ribbon
-  const plateW = size + 4;
-  const plateH = 22;
-  const plateX = -2;
+  const plateW = size + 6;
+  const plateH = 24;
+  const plateX = -3;
   const plateY = size - 10;
   const plate = new PIXI.Graphics();
   plate.lineStyle(2, UI_PALETTE.ink, 1);
@@ -1555,7 +1561,7 @@ export function makeSidebarIconBtn(opts: {
   plate.drawRoundedRect(plateX + 2, plateY + 2, plateW - 4, plateH - 4, (plateH - 4) / 2);
   face.addChild(plate);
 
-  const nameTxt = makeLabel(opts.label, 13, 0xFFF8EC, { fontWeight: '700' });
+  const nameTxt = makeLabel(opts.label, 15, 0xFFF8EC, { fontWeight: '700' });
   nameTxt.anchor.set(0.5);
   nameTxt.position.set(size / 2, plateY + plateH / 2);
   face.addChild(nameTxt);
@@ -1777,20 +1783,20 @@ export function makeRewardStrip(
 ): PIXI.Container {
   const root = new PIXI.Container();
   let x = 0;
-  const h = 36;
+  const h = 40;
   const ink = tone === 'paper'
     ? { lead: 0x6B4E37, gold: 0x8F5808, item: UI_PALETTE.ink }
     : { lead: 0xC9B8A4, gold: 0xF2C14D, item: 0xF4EFE6 };
   if (lead) {
     if (tone === 'paper') {
       const leadPill = new PIXI.Graphics();
-      const tag = makeLabel(lead, 13, 0xFFFDF8, { fontWeight: '700' });
-      const lw = Math.ceil(tag.width) + 14;
+      const tag = makeLabel(lead, 15, 0xFFFDF8, { fontWeight: '700' });
+      const lw = Math.ceil(tag.width) + 16;
       leadPill.beginFill(0x7A5B40, 1);
-      leadPill.drawRoundedRect(0, 6, lw, 24, 6);
+      leadPill.drawRoundedRect(0, 6, lw, 28, 8);
       leadPill.endFill();
       tag.anchor.set(0.5);
-      tag.position.set(lw / 2, 18);
+      tag.position.set(lw / 2, 20);
       root.addChild(leadPill, tag);
       x = lw + 8;
     } else {
@@ -1803,8 +1809,8 @@ export function makeRewardStrip(
   }
   for (const chip of chips) {
     const gold = Boolean(chip.icon);
-    const label = makeLabel(chip.label, tone === 'paper' ? 16 : 20, gold ? ink.gold : ink.item, { fontWeight: '700' });
-    const iconSize = tone === 'paper' ? 24 : (gold ? 34 : 36);
+    const label = makeLabel(chip.label, tone === 'paper' ? 18 : 20, gold ? ink.gold : ink.item, { fontWeight: '700' });
+    const iconSize = tone === 'paper' ? 28 : (gold ? 34 : 36);
     const hasIcon = Boolean(chip.icon || chip.itemId);
     const cell = new PIXI.Container();
     let cx = 0;
@@ -2042,15 +2048,17 @@ export function makeAdButton(opts: {
     silent: opts.disabled,
   });
   const face = ((btn as any)._face as PIXI.Container | undefined) ?? btn;
+  const labelNode = (btn as any)._label as PIXI.Text | undefined;
   whenTextureReady(P0_ART.adClapper, () => opts.onReady?.());
   const tex = gameTexture(P0_ART.adClapper);
   if (isTextureReady(tex)) {
     const spr = new PIXI.Sprite(tex);
     fitSpriteInBox(spr, iconSize, iconSize);
     spr.anchor.set(0.5);
-    const approxTextW = opts.label.length * Math.min(21, height * 0.38);
-    const groupW = iconSize + 6 + approxTextW;
-    const leftX = Math.max(14 + iconSize / 2, (opts.width - groupW) / 2 + iconSize / 2);
+    const actualTextW = labelNode ? labelNode.width : opts.label.length * Math.min(21, height * 0.38);
+    const leftX = labelNode
+      ? Math.max(12 + iconSize / 2, labelNode.x - actualTextW / 2 - iconSize / 2 - 5)
+      : Math.max(12 + iconSize / 2, (opts.width - (iconSize + 6 + actualTextW)) / 2 + iconSize / 2);
     spr.position.set(leftX, height / 2 - 1);
     spr.eventMode = 'none';
     if (opts.disabled) spr.alpha = 0.5;
@@ -2058,9 +2066,9 @@ export function makeAdButton(opts: {
   }
   if (opts.badge) {
     const tag = new PIXI.Container();
-    const txt = makeLabel(opts.badge, 13, UI_PALETTE.ink, { fontWeight: '700' });
-    const tw = Math.max(38, Math.ceil(txt.width) + 14);
-    const th = 22;
+    const txt = makeLabel(opts.badge, 14, UI_PALETTE.ink, { fontWeight: '700' });
+    const tw = Math.max(42, Math.ceil(txt.width) + 14);
+    const th = 24;
     const pill = new PIXI.Graphics();
     pill.lineStyle(2, UI_PALETTE.ink, 1);
     pill.beginFill(opts.disabled ? 0xD8CABA : 0xF7C948, 1);

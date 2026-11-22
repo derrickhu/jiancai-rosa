@@ -376,13 +376,14 @@ export class DestinationScene implements Scene {
 
     if (unlocked && !TutorialManager.isActive) {
       const weather = dailyMarketWeather(market.id);
-      const tagTxt = makeLabel(`${weather.name} · ${weather.shortDesc}`, 13, weather.pillInk, {
+      const shortTag = weather.shortDesc.split('·')[0].trim();
+      const tagTxt = makeLabel(`${weather.name}·${shortTag}`, 15, weather.pillInk, {
         fontWeight: '700',
       });
-      const tw = Math.ceil(tagTxt.width) + 18;
-      const th = 24;
+      const tw = Math.ceil(tagTxt.width) + 20;
+      const th = 28;
       const tx = x + width - pad - tw;
-      const ty = y + pad;
+      const ty = y + pad - 1;
       const tagBg = new PIXI.Graphics();
       tagBg.lineStyle(1.8, weather.pillInk, 0.85);
       tagBg.beginFill(weather.pillFill, 1);

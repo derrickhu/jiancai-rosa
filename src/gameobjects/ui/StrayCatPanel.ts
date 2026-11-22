@@ -16,6 +16,7 @@ import {
   catEffectiveOutingMinutes,
   catFeedOptions,
   catStateView,
+  cookLevel,
   dailyAdLeft,
   formatTimerShort,
   itemRarity,
@@ -157,7 +158,7 @@ export class StrayCatPanel extends PIXI.Container {
       'subpkg_images/hud_coin.png',
       'subpkg_images/ui_menu_ticket.png',
     ];
-    for (const opt of options.slice(0, 6)) {
+    for (const opt of options.slice(0, 8)) {
       paths.push(resolveItemAssetPath(opt.defId));
     }
     watchTextures(paths, this._scheduleRelayout);
@@ -192,24 +193,23 @@ export class StrayCatPanel extends PIXI.Container {
     const boxW = Math.min(w - 30, 698);
     const padX = 24;
     const cw = boxW - padX * 2;
-    const contentTop = 84;
-    const tierBarH = 48;
-    const stageTop = contentTop + tierBarH + 8;
-    const heroH = 330;
-    const canH = 92;
+    const contentTop = 64;
+    const tierBarH = 54;
+    const stageTop = contentTop + tierBarH + 10;
+    const heroH = 314;
+    const canH = 94;
     const showFeeder = view.effectiveStatus === 'idle';
-    const feederH = showFeeder ? 258 : 88;
+    const feederH = showFeeder ? 298 : 80;
     const boxH = stageTop + heroH + 10 + canH + 10 + feederH + 24;
     const bx = Math.round((w - boxW) / 2);
     const by = Math.round(Math.max(Game.safeTop + 14, (h - boxH) / 2 + 4));
 
-    this._catStagePos = { x: bx + boxW / 2, y: by + stageTop + 162 };
+    this._catStagePos = { x: bx + boxW / 2, y: by + stageTop + 154 };
 
     const { shell } = makeArtisanShell({
       width: boxW,
       height: boxH,
       title: `橘 猫 ${CAT_NAME} 的 小 窝`,
-      subtitle: '喂余菜去后巷寻好货 · 亲密越高回来得越快越丰厚',
       onReady: this._scheduleRelayout,
       closeSilent: true,
       onClose: () => {
@@ -229,34 +229,44 @@ export class StrayCatPanel extends PIXI.Container {
     const bar = new PIXI.Container();
     bar.position.set(x, y);
     const bg = new PIXI.Graphics();
-    drawSectionTray(bg, 0, 0, w, h, { radius: 12, tone: 'sand' });
+    drawSectionTray(bg, 0, 0, w, h, { radius: 13, tone: 'sand' });
     bar.addChild(bg);
 
     const curDef = CAT_BED_TIER_DEFS[catBedTier(save)];
     const st = catBedUpgradeState(save);
-    const leftText = st.status === 'max'
-      ? `猫窝品阶：${curDef.name}（${curDef.desc}）`
-      : `当前：${curDef.name}  →  下一阶「${st.nextName}」（${st.nextDesc.split('·')[0].trim()}）`;
-    const lbl = makeLabel(leftText, 13, INK, { fontWeight: '700' });
+    const lbl = makeLabel(`猫窝：${curDef.name}`, 18, INK, { fontWeight: '700' });
     lbl.anchor.set(0, 0.5);
-    lbl.position.set(12, h / 2);
+    lbl.position.set(14, h / 2);
     bar.addChild(lbl);
 
+    const perkChip = makeSlotBadge(
+      st.status === 'max' ? '巡街-16% · 券率+8%' : `焕新：${st.nextDesc.split('·')[0].trim()}`,
+      st.status === 'max' ? 'gold' : 'olive',
+      14,
+    );
+    perkChip.node.position.set(14 + Math.ceil(lbl.width) + 10, Math.round((h - perkChip.h) / 2));
+    bar.addChild(perkChip.node);
+
     if (st.status === 'max') {
-      const done = makeSlotBadge('✓ 雕榻满阶', 'gold', 12);
-      done.node.position.set(w - done.w - 10, Math.round((h - done.h) / 2));
+      const done = makeSlotBadge('✓ 雕榻满阶', 'gold', 15);
+      done.node.position.set(w - done.w - 12, Math.round((h - done.h) / 2));
       bar.addChild(done.node);
     } else {
       const ready = st.status === 'ready';
-      const btnW = 148;
-      const btnH = 34;
+      const btnText = ready
+        ? `${st.cost}金 焕新`
+        : cookLevel(save) < st.cookNeed
+          ? `Lv.${st.cookNeed} 解锁`
+          : `${st.cost}金 焕新`;
+      const btnW = 144;
+      const btnH = 40;
       const btn = makeSlicedButton({
-        label: ready ? `${st.cost}金焕新` : st.error,
+        label: btnText,
         width: btnW,
         height: btnH,
         skin: ready ? 'gold' : 'cream',
         textColor: ready ? INK : 0x8A7358,
-        fontSize: 13,
+        fontSize: 17,
         silent: !ready,
         onReady: this._scheduleRelayout,
       });
@@ -291,46 +301,46 @@ export class StrayCatPanel extends PIXI.Container {
     drawCraftCard(bg, 0, 0, w, h, {
       radius: 20,
       tone: isGift ? 'gold' : 'ivory',
-      headerH: 48,
+      headerH: 50,
     });
     stage.addChild(bg);
 
     const bond = view.bond;
-    const bondTitle = makeLabel(`♥ 亲密 Lv.${bond.level} · ${bond.title}`, 16, TERRACOTTA, {
+    const bondTitle = makeLabel(`♥ Lv.${bond.level} · ${bond.title}`, 18, TERRACOTTA, {
       fontWeight: '700',
     });
     bondTitle.anchor.set(0, 0.5);
-    bondTitle.position.set(18, 25);
+    bondTitle.position.set(18, 26);
     stage.addChild(bondTitle);
 
-    const barX = 212;
-    const barW = 166;
+    const barX = 198;
+    const barW = 160;
     const xpBar = makeCraftProgressBar({
       width: barW,
-      height: 18,
+      height: 22,
       ratio: Math.max(0.08, bond.fill),
       scheme: 'terracotta',
       text: bond.nextCeil !== null ? `${bond.xp}/${bond.nextCeil}` : 'MAX',
-      fontSize: 12,
+      fontSize: 14,
     });
-    xpBar.position.set(barX, 16);
+    xpBar.position.set(barX, 15);
     stage.addChild(xpBar);
 
     const save = KitchenManager.save;
     const effMins = catEffectiveOutingMinutes(save, bond.outingMinutes);
     const bedBonus = CAT_BED_TIER_DEFS[catBedTier(save)].ticketBonus;
     const perkLbl = makeLabel(
-      `巡街${effMins}分 · 谢礼券率${Math.round((bond.ticketChance + bedBonus) * 100)}%`,
-      13,
+      `巡街${effMins}分 · 券率${Math.round((bond.ticketChance + bedBonus) * 100)}%`,
+      16,
       MUTED,
       { fontWeight: '700' },
     );
     perkLbl.anchor.set(1, 0.5);
-    perkLbl.position.set(w - 18, 25);
+    perkLbl.position.set(w - 18, 26);
     stage.addChild(perkLbl);
 
     // Warm sunlit halo behind 阿橘
-    const centerY = view.effectiveStatus === 'away' ? 144 : 158;
+    const centerY = view.effectiveStatus === 'away' ? 140 : 152;
     const halo = new PIXI.Graphics();
     halo.beginFill(isGift ? 0xFBE9B2 : 0xF6EAD4, 0.72);
     halo.drawCircle(w / 2, centerY + 6, 72);
@@ -398,11 +408,11 @@ export class StrayCatPanel extends PIXI.Container {
 
     if (view.effectiveStatus === 'away') {
       const saveCat = KitchenManager.save.strayCat;
-      const tText = makeLabel(`后巷寻宝中 · 剩 ${formatTimerShort(view.remainMs)}`, 15, TERRACOTTA, {
+      const tText = makeLabel(`后巷寻宝中 · 剩 ${formatTimerShort(view.remainMs)}`, 17, TERRACOTTA, {
         fontWeight: '700',
       });
       tText.anchor.set(0.5);
-      tText.position.set(w / 2, 236);
+      tText.position.set(w / 2, 224);
       stage.addChild(tText);
 
       const abW = 280;
@@ -411,12 +421,12 @@ export class StrayCatPanel extends PIXI.Container {
       const abBg = new PIXI.Graphics();
       abBg.lineStyle(1.6, 0x8F6D47, 1);
       abBg.beginFill(0xE6D6BE, 1);
-      abBg.drawRoundedRect(abX, 252, abW, abH, abH / 2);
+      abBg.drawRoundedRect(abX, 241, abW, abH, abH / 2);
       abBg.endFill();
       stage.addChild(abBg);
 
       const abFill = new PIXI.Graphics();
-      abFill.position.set(abX, 252);
+      abFill.position.set(abX, 241);
       this._paintBar(abFill, abW, abH, Math.max(0.06, view.progress));
       stage.addChild(abFill);
 
@@ -433,19 +443,19 @@ export class StrayCatPanel extends PIXI.Container {
     }
 
     // Recessed warm linen speech quote bubble with upward pointer
-    const bubY = h - 62;
+    const bubY = h - 56;
     const bub = new PIXI.Graphics();
-    drawRecessedWell(bub, 16, bubY, w - 32, 48, { radius: 14, pointerTopX: w / 2 });
+    drawRecessedWell(bub, 16, bubY, w - 32, 44, { radius: 14, pointerTopX: w / 2 });
     stage.addChild(bub);
 
-    const mood = makeLabel(view.moodLine, 14, INK, {
-      fontWeight: '600',
+    const mood = makeLabel(view.moodLine, 16, INK, {
+      fontWeight: '700',
       align: 'center',
       wordWrap: true,
-      wordWrapWidth: w - 56,
+      wordWrapWidth: w - 52,
     });
     mood.anchor.set(0.5);
-    mood.position.set(w / 2, bubY + 24);
+    mood.position.set(w / 2, bubY + 22);
     stage.addChild(mood);
 
     return stage;
@@ -467,20 +477,21 @@ export class StrayCatPanel extends PIXI.Container {
     const save = KitchenManager.save;
 
     if (isUnadopted) {
-      const txt = makeLabel('给阿橘在阳光下留块草垫，每天帮你去菜场捡漏！', 16, INK, { fontWeight: '700' });
+      const txt = makeLabel('给阿橘留块草垫，每天去菜场帮你寻好货！', 18, INK, { fontWeight: '700' });
       txt.anchor.set(0, 0.5);
       txt.position.set(20, h / 2 - 1);
       wrap.addChild(txt);
 
       const adoptBtn = makeSlicedButton({
-        label: '免费收留阿橘',
-        width: 196,
+        label: '免费收留',
+        width: 186,
         height: 52,
         skin: 'olive',
         textColor: PAPER,
+        fontSize: 20,
         onReady: this._scheduleRelayout,
       });
-      adoptBtn.position.set(w - 212, Math.round((h - 52) / 2));
+      adoptBtn.position.set(w - 202, Math.round((h - 52) / 2));
       adoptBtn.on('pointertap', () => {
         if (KitchenManager.adoptCat() && this._isOpen) this.relayout();
       });
@@ -491,26 +502,27 @@ export class StrayCatPanel extends PIXI.Container {
     if (isGift) {
       const gift = view.pendingGift;
       const previewText = gift?.deluxe
-        ? '豪华红格包袱已就位（含3件稀有好食材 + 赏金）！'
-        : '阿橘带回了沉甸甸的小包袱，快拆开看看有什么好货！';
-      const txt = makeLabel(previewText, 16, INK, {
+        ? '豪华红格包袱就位（3件稀有好货+赏金）！'
+        : '阿橘带回了沉甸甸的小包袱，快拆开看看！';
+      const txt = makeLabel(previewText, 18, INK, {
         fontWeight: '700',
         wordWrap: true,
-        wordWrapWidth: w - 240,
+        wordWrapWidth: w - 232,
       });
       txt.anchor.set(0, 0.5);
       txt.position.set(20, h / 2 - 1);
       wrap.addChild(txt);
 
       const claimBtn = makeSlicedButton({
-        label: '拆开小包袱',
-        width: 202,
+        label: '拆开包袱',
+        width: 192,
         height: 54,
         skin: 'olive',
         textColor: PAPER,
+        fontSize: 20,
         onReady: this._scheduleRelayout,
       });
-      claimBtn.position.set(w - 218, Math.round((h - 54) / 2));
+      claimBtn.position.set(w - 208, Math.round((h - 54) / 2));
       claimBtn.on('pointertap', () => {
         const from = this._catStagePos;
         const res = KitchenManager.claimCatGiftBundle();
@@ -549,29 +561,29 @@ export class StrayCatPanel extends PIXI.Container {
     }
 
     const isAway = view.effectiveStatus === 'away';
-    const titleStr = isAway ? '鲜鱼罐头 · 摇环立即唤回' : '鲜鱼猫罐头 · 零消耗立拿豪华礼袋';
+    const titleStr = isAway ? '鲜鱼罐头 · 摇环唤回' : '鲜鱼猫罐头';
     const subStr = isAway
-      ? '免等待当场回屋，包袱里再多顺 1 件稀有好货 + 6 金'
-      : '免耗冰箱食材 · 亲密+2 · 立即叼回 3 件稀有以上好货';
+      ? '当场回屋 · 多带 1 件稀有好货 + 6金'
+      : '免食材 · 亲密+2 · 立拿 3 件稀有好货';
 
-    const t1 = makeLabel(titleStr, 17, INK, { fontWeight: '700' });
-    t1.position.set(94, 19);
-    const t2 = makeLabel(subStr, 13, MUTED, { fontWeight: '600' });
-    t2.position.set(94, 49);
+    const t1 = makeLabel(titleStr, 20, INK, { fontWeight: '700' });
+    t1.position.set(94, 18);
+    const t2 = makeLabel(subStr, 16, MUTED, { fontWeight: '700' });
+    t2.position.set(94, 52);
     wrap.addChild(t1, t2);
 
     const adLeft = dailyAdLeft(save, 'cat_treat');
     const canTreat = canUseDailyAd(save, 'cat_treat');
     const canBtn = makeAdButton({
-      label: isAway ? '摇罐头唤回' : '喂鲜鱼罐头',
-      width: 198,
+      label: isAway ? '摇铃唤回' : '喂罐头',
+      width: 188,
       height: 52,
       skin: 'gold',
       badge: `剩${adLeft}/${DAILY_AD_LIMITS.cat_treat}`,
       disabled: !canTreat,
       onReady: this._scheduleRelayout,
     });
-    canBtn.position.set(w - 212, Math.round((h - 52) / 2));
+    canBtn.position.set(w - 202, Math.round((h - 52) / 2));
     canBtn.on('pointertap', () => {
       if (this._adBusy) return;
       if (!canTreat) {
@@ -612,12 +624,12 @@ export class StrayCatPanel extends PIXI.Container {
       area.addChild(tipBox);
 
       const msg = view.effectiveStatus === 'unadopted'
-        ? '收留阿橘后，平时多余的小杂鱼、肉片或青菜都能喂它换回惊喜食材与菜谱券！'
+        ? '收留阿橘后，余菜小鱼都能喂它换惊喜谢礼！'
         : view.effectiveStatus === 'away'
-          ? '阿橘正在菜场摊位底下钻来钻去，等它回来就能拆红格小包袱啦！'
-          : '拆开小包袱收下谢礼后，就能继续给阿橘投喂下一顿啦！';
-      const lbl = makeLabel(msg, 14, MUTED, {
-        fontWeight: '600',
+          ? '阿橘正在菜场寻宝，回来就能拆红格包袱啦！'
+          : '先拆开上面的小包袱收下谢礼，再投喂下一顿吧！';
+      const lbl = makeLabel(msg, 17, MUTED, {
+        fontWeight: '700',
         align: 'center',
         wordWrap: true,
         wordWrapWidth: w - 48,
@@ -628,16 +640,16 @@ export class StrayCatPanel extends PIXI.Container {
       return area;
     }
 
-    // Idle feeder section
-    const div = makeOrnamentalDivider(w, '冰箱余菜投喂 · 鱼肉最爱+2 / 余菜+1', { fontSize: 15 });
-    div.position.set(0, 12);
+    // Idle feeder section — clean 4-column × 2-row item slot grid
+    const div = makeOrnamentalDivider(w, '投喂余菜 · 鱼肉♥+2 / 素菜♥+1', { fontSize: 17 });
+    div.position.set(0, 13);
     area.addChild(div);
 
-    const topOpts = options.slice(0, 6);
+    const topOpts = options.slice(0, 8);
     if (!topOpts.length) {
       const emptyBg = new PIXI.Graphics();
       drawRecessedWell(emptyBg, 0, 34, w, h - 34, { radius: 16 });
-      const etxt = makeLabel('冰箱里还没有生鲜食材，出门去菜场捡一篮回来喂阿橘吧！', 15, MUTED, {
+      const etxt = makeLabel('冰箱还没有生鲜食材，出门去菜场捡一篮回来吧！', 18, MUTED, {
         fontWeight: '700',
       });
       etxt.anchor.set(0.5);
@@ -646,11 +658,11 @@ export class StrayCatPanel extends PIXI.Container {
       return area;
     }
 
-    const trayY = 30;
-    const trayPad = 8;
-    const cols = 3;
-    const gapX = 8;
-    const gapY = 8;
+    const trayY = 32;
+    const trayPad = 10;
+    const cols = 4;
+    const gapX = 10;
+    const gapY = 10;
     const innerW = w - trayPad * 2;
     const cardW = Math.floor((innerW - gapX * (cols - 1)) / cols);
     const cardH = Math.floor((h - trayY - trayPad * 2 - gapY) / 2);
@@ -659,7 +671,7 @@ export class StrayCatPanel extends PIXI.Container {
     drawSectionTray(trayBg, 0, trayY, w, h - trayY, { radius: 14, tone: 'sand' });
     area.addChild(trayBg);
 
-    for (let idx = 0; idx < 6; idx++) {
+    for (let idx = 0; idx < 8; idx++) {
       const col = idx % cols;
       const row = Math.floor(idx / cols);
       const cx = trayPad + col * (cardW + gapX);
@@ -669,7 +681,7 @@ export class StrayCatPanel extends PIXI.Container {
         area.addChild(this._buildFoodCard(opt, cx, cy, cardW, cardH));
       } else {
         const emptySlot = new PIXI.Graphics();
-        drawItemSlotBox(emptySlot, cx, cy, cardW, cardH, { radius: 11, empty: true });
+        drawItemSlotBox(emptySlot, cx, cy, cardW, cardH, { radius: 12, empty: true });
         area.addChild(emptySlot);
       }
     }
@@ -681,60 +693,42 @@ export class StrayCatPanel extends PIXI.Container {
     const card = new PIXI.Container();
     card.position.set(x, y);
 
-    const footerH = 28;
+    const footerH = 30;
     const bodyH = h - footerH;
     const bg = new PIXI.Graphics();
     drawItemSlotBox(bg, 0, 0, w, h, {
-      radius: 11,
+      radius: 12,
       rarity: itemRarity(opt.defId),
       dimmed: !opt.canFeed,
-      medallion: false,
       footerH,
     });
     card.addChild(bg);
 
-    // Left circular dish plate inside upper well
-    const plate = new PIXI.Graphics();
-    plate.beginFill(opt.fav ? 0xF9E6CD : 0xEEE1C8, 0.85);
-    plate.drawCircle(36, bodyH / 2, 24);
-    plate.endFill();
-    card.addChild(plate);
-
     const tex = itemTexture(opt.defId);
     if (isTextureReady(tex)) {
       const sp = new PIXI.Sprite(tex);
-      fitSpriteInBox(sp, 46, 46);
+      fitSpriteInBox(sp, Math.min(w - 26, 62), Math.min(bodyH - 12, 62));
       sp.anchor.set(0.5);
-      sp.position.set(36, bodyH / 2);
+      sp.position.set(w / 2, bodyH / 2 + 1);
       if (!opt.canFeed) sp.alpha = 0.55;
       card.addChild(sp);
     }
 
-    const nameLbl = makeLabel(opt.name, 16, opt.canFeed ? INK : 0x7A6652, { fontWeight: '700' });
-    nameLbl.position.set(70, 12);
-    card.addChild(nameLbl);
+    const bondBadge = makeSlotBadge(opt.fav ? '♥+2' : '♥+1', opt.fav ? 'gold' : 'ink', 13);
+    bondBadge.node.position.set(5, 5);
+    card.addChild(bondBadge.node);
 
-    const tagText = opt.fav ? '♥最爱+2' : '亲密+1';
-    const tagLbl = makeLabel(tagText, 12, opt.fav ? TERRACOTTA : OLIVE, { fontWeight: '700' });
-    tagLbl.position.set(70, 36);
-    card.addChild(tagLbl);
-
-    const qtyBadge = makeSlotBadge(`${opt.have}/${opt.need}`, opt.canFeed ? 'olive' : 'lack', 11);
-    qtyBadge.node.position.set(w - qtyBadge.w - 6, bodyH - qtyBadge.h - 5);
+    const qtyBadge = makeSlotBadge(`${opt.have}/${opt.need}`, opt.canFeed ? 'olive' : 'lack', 14);
+    qtyBadge.node.position.set(w - qtyBadge.w - 5, bodyH - qtyBadge.h - 4);
     card.addChild(qtyBadge.node);
 
-    const footLbl = makeLabel(
-      opt.canFeed ? '点此投喂 ▶' : `还差 ${Math.max(1, opt.need - opt.have)} 份`,
-      12,
-      opt.canFeed ? TERRACOTTA : 0x8A7660,
-      { fontWeight: '700' },
-    );
+    const footLbl = makeLabel(opt.name, 16, opt.canFeed ? INK : 0x7A6652, { fontWeight: '700' });
     footLbl.anchor.set(0.5);
     footLbl.position.set(w / 2, h - footerH / 2 - 1);
     card.addChild(footLbl);
 
     card.eventMode = 'static';
-    card.cursor = opt.canFeed ? 'pointer' : 'default';
+    card.cursor = 'pointer';
     card.hitArea = new PIXI.Rectangle(0, 0, w, h);
     card.on('pointertap', () => {
       if (KitchenManager.feedCat(opt.defId) && this._isOpen) {

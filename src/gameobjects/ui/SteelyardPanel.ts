@@ -174,7 +174,7 @@ export class SteelyardPanel extends PIXI.Container {
       width: boxW,
       height: boxH,
       title: '老 杆 秤 稳 准 星',
-      subtitle: `${this._stallTitle} · 原报名费 ${this._fee} 金（失手零惩罚）`,
+      subtitle: `${this._stallTitle} · 原费 ${this._fee} 金（失手零惩罚）`,
       closeSilent: true,
       onReady: this._scheduleRelayout,
       onClose: () => {
@@ -190,7 +190,7 @@ export class SteelyardPanel extends PIXI.Container {
 
     // Top rules banner with steelyard illustration
     const infoCard = new PIXI.Graphics();
-    drawCraftCard(infoCard, padX, 92, cw, 118, { radius: 16, tone: 'ivory' });
+    drawCraftCard(infoCard, padX, 92, cw, 120, { radius: 16, tone: 'ivory' });
     shell.addChild(infoCard);
 
     const iconTex = gameTexture(MARKET_PROP_ART.steelyardIcon);
@@ -198,22 +198,22 @@ export class SteelyardPanel extends PIXI.Container {
       const sp = new PIXI.Sprite(iconTex);
       fitSpriteInBox(sp, 94, 94);
       sp.anchor.set(0.5);
-      sp.position.set(padX + 58, 151);
+      sp.position.set(padX + 58, 152);
       shell.addChild(sp);
     }
 
-    const r1 = makeLabel('摊主递来老杆秤：「手稳准星正，这筐剩菜算你便宜！」', 15, INK, {
+    const r1 = makeLabel('手稳准星正，这筐好菜算你便宜！', 17, INK, {
       fontWeight: '700',
       wordWrap: true,
       wordWrapWidth: cw - 126,
     });
-    r1.position.set(padX + 114, 108);
+    r1.position.set(padX + 114, 105);
     shell.addChild(r1);
 
-    const zGold = makeSlotBadge('金心准星：免单 + 多塞2件好货', 'gold', 12);
-    zGold.node.position.set(padX + 114, 146);
-    const zGreen = makeSlotBadge(`绿区稳平：半价(${Math.max(1, Math.floor(this._fee * 0.5))}金) + 多塞1件`, 'olive', 12);
-    zGreen.node.position.set(padX + 114, 174);
+    const zGold = makeSlotBadge('金心：免单 + 多塞 2 件好货', 'gold', 14);
+    zGold.node.position.set(padX + 114, 139);
+    const zGreen = makeSlotBadge(`绿区：半价(${Math.max(1, Math.floor(this._fee * 0.5))}金) + 多塞 1 件`, 'olive', 14);
+    zGreen.node.position.set(padX + 114, 171);
     shell.addChild(zGold.node, zGreen.node);
 
     // Interactive wooden steelyard beam tray
@@ -304,9 +304,9 @@ export class SteelyardPanel extends PIXI.Container {
       hitTray.on('pointertap', () => this._stopPoise());
       shell.addChild(hitTray);
 
-      const hint = makeLabel('看准秤砣滑到正中金心，点「定秤」立享免单加菜！', 14, MUTED, { fontWeight: '700' });
+      const hint = makeLabel('看准秤砣滑到金心，点「定秤」免单加菜！', 16, MUTED, { fontWeight: '700' });
       hint.anchor.set(0.5);
-      hint.position.set(boxW / 2, trayY + trayH + 18);
+      hint.position.set(boxW / 2, trayY + trayH + 19);
       shell.addChild(hint);
 
       const canPay = KitchenManager.save.money >= this._fee;
@@ -369,21 +369,21 @@ export class SteelyardPanel extends PIXI.Container {
     let resMsg = '';
     let resColor: number = INK;
     if (this._phase === 'bullseye') {
-      resMsg = '🎯 一秤定音！全额免单 + 摊主多塞 2 件新鲜好货！';
+      resMsg = '🎯 一秤定音！免单 + 多塞 2 件好货！';
       resColor = OLIVE;
     } else if (this._phase === 'steady') {
       resMsg = canAffordHalf
-        ? `✨ 秤杆稳平！半价仅需 ${halfFee} 金 + 多塞 1 件鲜货！`
-        : `✨ 秤杆稳平（半价 ${halfFee} 金），身上金币差一点，可帮收筐免单！`;
+        ? `✨ 秤杆稳平！半价 ${halfFee} 金 + 多塞 1 件鲜货！`
+        : `✨ 秤杆稳平（半价 ${halfFee} 金），可帮收筐免单！`;
       resColor = OLIVE;
     } else {
-      resMsg = '秤砣偏了一点点（零惩罚！可帮摊主收筐免单进摊）';
+      resMsg = '秤砣偏了一点点（零惩罚 · 可帮收筐免单进摊）';
       resColor = TERRACOTTA;
     }
 
-    const resLbl = makeLabel(resMsg, 15, resColor, { fontWeight: '700' });
+    const resLbl = makeLabel(resMsg, 16, resColor, { fontWeight: '700' });
     resLbl.anchor.set(0.5);
-    resLbl.position.set(boxW / 2, trayY + trayH + 18);
+    resLbl.position.set(boxW / 2, trayY + trayH + 19);
     shell.addChild(resLbl);
 
     const btnY = boxH - 82;

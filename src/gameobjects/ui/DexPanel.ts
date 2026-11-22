@@ -67,7 +67,7 @@ const BG = 'subpkg_kitchen/ui_dex_panel.png';
 const INK = 0x2A2018;
 const MUTED = 0x8A6A40;
 const TITLE_FONT = 'Songti SC, STSong, PingFang SC, serif';
-const PAGE = { x: 0.155, y: 0.152, w: 0.725, h: 0.688 };
+const PAGE = { x: 0.155, y: 0.172, w: 0.725, h: 0.668 };
 const TITLE_Y = 0.052;
 
 type View =
@@ -219,9 +219,9 @@ export class DexPanel extends PIXI.Container {
     const ms = dexMilestoneStatus(save);
     const claimable = dexRedDotCount(save) > 0;
 
-    const barH = 54;
+    const barH = 56;
     const bar = new PIXI.Container();
-    bar.position.set(page.x, page.y + 4);
+    bar.position.set(page.x, page.y);
     const barBg = new PIXI.Graphics();
     barBg.lineStyle(2.5, 0x8B5A2B, 1);
     barBg.beginFill(0xFFF6E8, 0.96);
@@ -232,38 +232,36 @@ export class DexPanel extends PIXI.Container {
     const stampTex = gameTexture(P0_ART.dexStamp);
     if (isTextureReady(stampTex)) {
       const sp = new PIXI.Sprite(stampTex);
-      fitSpriteInBox(sp, 42, 42);
+      fitSpriteInBox(sp, 40, 40);
       sp.anchor.set(0.5);
       sp.position.set(28, barH / 2);
       sp.eventMode = 'none';
       bar.addChild(sp);
     }
 
-    const line1 = makeLabel(
-      `已收集 ${have}/${total}  ·  集章 ${ms.stepProgress}/${ms.stepNeed}`,
-      17,
-      INK,
-      { fontWeight: '700' },
+    const line1 = makeLabel(`已收集 ${have}/${total}`, 20, INK, { fontWeight: '700' });
+    line1.anchor.set(0, 0.5);
+    line1.position.set(54, barH / 2);
+    bar.addChild(line1);
+
+    const msBadge = makeSlotBadge(
+      ms.readySteps > 0 ? `可领券×${ms.readySteps}` : `满${ms.stepProgress}/${ms.stepNeed}送券`,
+      ms.readySteps > 0 ? 'lack' : 'gold',
+      14,
     );
-    line1.position.set(52, 7);
-    const line2 = makeLabel(
-      ms.readySteps > 0 ? `集章满档！可领菜谱券 ×${ms.readySteps}` : '每集满 6 项送菜谱券×1 + 12金',
-      13,
-      ms.readySteps > 0 ? 0xC46A3A : MUTED,
-      { fontWeight: '600' },
-    );
-    line2.position.set(52, 30);
-    bar.addChild(line1, line2);
+    msBadge.node.position.set(54 + Math.ceil(line1.width) + 10, Math.round((barH - msBadge.h) / 2));
+    bar.addChild(msBadge.node);
 
     if (claimable) {
-      const btnW = 122;
-      const btnH = 38;
+      const btnW = 126;
+      const btnH = 42;
       const claimBtn = makeSlicedButton({
         label: '盖章领赏',
         width: btnW,
         height: btnH,
         skin: 'terracotta',
         textColor: 0xFFF8F0,
+        fontSize: 18,
         onReady: redraw,
       });
       claimBtn.position.set(page.w - btnW - 8, Math.round((barH - btnH) / 2));
@@ -295,16 +293,16 @@ export class DexPanel extends PIXI.Container {
         const btn = makeSlicedButton({
           label,
           width: tw,
-          height: 46,
+          height: 48,
           skin: on ? 'terracotta' : 'cream',
           textColor: on ? 0xFFF8F0 : INK,
-          fontSize: 20,
+          fontSize: 21,
           onReady: redraw,
         });
         btn.position.set(page.x + i * (tw + gap), tabY);
         if (tab === 'stamp' && stampReady > 0) {
-          const dot = makeSlotBadge(`可盖${stampReady}`, 'lack', 12);
-          dot.node.position.set(tw - dot.w + 4, -8);
+          const dot = makeSlotBadge(`可盖${stampReady}`, 'lack', 14);
+          dot.node.position.set(tw - dot.w + 4, -9);
           btn.addChild(dot.node);
         }
         btn.on('pointertap', () => {
@@ -355,8 +353,8 @@ export class DexPanel extends PIXI.Container {
     page: { x: number; y: number; w: number; h: number },
     redraw: () => void,
   ): void {
-    const top = this._view.kind === 'home' ? page.y + 122 : page.y + 66;
-    const bottom = page.y + page.h - (this._inspect ? 88 : 8);
+    const top = this._view.kind === 'home' ? page.y + 124 : page.y + 66;
+    const bottom = page.y + page.h - (this._inspect ? 92 : 6);
     const area = { x: page.x, y: top, w: page.w, h: Math.max(80, bottom - top) };
     const list = new PIXI.Container();
     let contentH = 0;
@@ -367,7 +365,7 @@ export class DexPanel extends PIXI.Container {
     } else {
       contentH = this._paintGrid(list, area.w, redraw);
     }
-    contentH += 28;
+    contentH += 24;
 
     const mask = new PIXI.Graphics();
     mask.beginFill(0xffffff);
@@ -389,13 +387,13 @@ export class DexPanel extends PIXI.Container {
 
     if (this._inspect) {
       const card = new PIXI.Graphics();
-      fillRect(card, page.x, page.y + page.h - 80, page.w, 76, 0xEFE6D6, 12);
+      fillRect(card, page.x, page.y + page.h - 86, page.w, 82, 0xEFE6D6, 12);
       shell.addChild(card);
       const name = makeDexName(this._inspect.title, 22, true);
-      name.position.set(page.x + 12, page.y + page.h - 72);
+      name.position.set(page.x + 12, page.y + page.h - 78);
       shell.addChild(name);
-      const blurb = makeLabel(this._inspect.blurb, 16, MUTED, { wordWrap: true, wordWrapWidth: page.w - 24 });
-      blurb.position.set(page.x + 12, page.y + page.h - 44);
+      const blurb = makeLabel(this._inspect.blurb, 17, MUTED, { wordWrap: true, wordWrapWidth: page.w - 24 });
+      blurb.position.set(page.x + 12, page.y + page.h - 48);
       shell.addChild(blurb);
     }
   }
@@ -464,10 +462,10 @@ export class DexPanel extends PIXI.Container {
     redraw: () => void,
   ): number {
     const cols = 2;
-    const gap = 14;
+    const gap = 12;
     const cardW = (width - gap) / cols;
-    const icon = Math.round(cardW * 0.9);
-    const cardH = icon + 8;
+    const icon = Math.round(cardW * 0.72);
+    const cardH = icon + 6;
     cats.forEach((cat, i) => {
       const col = i % cols;
       const row = Math.floor(i / cols);
@@ -498,7 +496,7 @@ export class DexPanel extends PIXI.Container {
     const path = imgPath(`${cat.icon}.png`);
     const tex = gameTexture(path);
     const cx = width / 2;
-    const cy = 4 + iconSize / 2;
+    const cy = 3 + iconSize / 2;
     if (isTextureReady(tex)) {
       const spr = new PIXI.Sprite(tex);
       spr.anchor.set(0.5);
@@ -514,15 +512,15 @@ export class DexPanel extends PIXI.Container {
       spr.mask = clip;
       root.addChild(spr, clip);
     }
-    const name = makeStrokeLabel(cat.label, 26, 0xFFF8F0, cat.ink, 6, { fontFamily: TITLE_FONT });
+    const name = makeStrokeLabel(cat.label, 28, 0xFFF8F0, cat.ink, 6, { fontFamily: TITLE_FONT });
     name.anchor.set(0.5);
-    name.position.set(cx, 4 + iconSize * 0.66);
+    name.position.set(cx, 3 + iconSize * 0.64);
     root.addChild(name);
 
-    const barW = iconSize * 0.68;
-    const barH = 24;
+    const barW = iconSize * 0.74;
+    const barH = 26;
     const bx = cx - barW / 2;
-    const by = 4 + iconSize * 0.78;
+    const by = 3 + iconSize * 0.78;
     const bar = new PIXI.Graphics();
     bar.lineStyle(3.5, cat.ink, 1);
     bar.beginFill(0x1A1410, 0.42);
@@ -535,16 +533,16 @@ export class DexPanel extends PIXI.Container {
       bar.endFill();
     }
     root.addChild(bar);
-    const count = makeStrokeLabel(`${cat.have}/${cat.total}`, 15, 0xFFF8F0, cat.ink, 3.5);
+    const count = makeStrokeLabel(`${cat.have}/${cat.total}`, 17, 0xFFF8F0, cat.ink, 3.5);
     count.anchor.set(0.5);
     count.position.set(cx, by + barH / 2);
     root.addChild(count);
 
     if (cat.unclaimed > 0) {
       const badge = new PIXI.Container();
-      const txt = makeLabel(`新 ${cat.unclaimed}`, 14, 0xFFF8F0, { fontWeight: '700' });
-      const bw = Math.max(44, Math.ceil(txt.width) + 16);
-      const bh = 24;
+      const txt = makeLabel(`新 ${cat.unclaimed}`, 15, 0xFFF8F0, { fontWeight: '700' });
+      const bw = Math.max(48, Math.ceil(txt.width) + 18);
+      const bh = 26;
       const g = new PIXI.Graphics();
       g.lineStyle(2, INK, 1);
       g.beginFill(0xD94A3A, 1);
@@ -553,7 +551,7 @@ export class DexPanel extends PIXI.Container {
       txt.anchor.set(0.5);
       txt.position.set(bw / 2, bh / 2 + 0.5);
       badge.addChild(g, txt);
-      badge.position.set(width - bw - 8, 8);
+      badge.position.set(width - bw - 14, 6);
       badge.eventMode = 'none';
       root.addChild(badge);
     }
@@ -574,7 +572,7 @@ export class DexPanel extends PIXI.Container {
     const gap = 12;
     for (const def of DEX_STAMP_SETS) {
       const st = dexStampSetStatus(save, def);
-      const cardH = 196;
+      const cardH = 184;
       const card = new PIXI.Container();
       card.position.set(0, y);
 
@@ -590,37 +588,33 @@ export class DexPanel extends PIXI.Container {
       bg.endFill();
       card.addChild(bg);
 
-      const title = makeLabel(`《${def.title}》`, 20, INK, {
+      const title = makeLabel(`《${def.title}》`, 22, INK, {
         fontFamily: TITLE_FONT,
         fontWeight: '700',
       });
-      title.position.set(16, 10);
+      title.position.set(16, 11);
       card.addChild(title);
 
       const progBadge = makeSlotBadge(
-        st.claimed ? '已盖章生效' : `${st.have}/${st.total}`,
+        st.claimed ? '✓ 已生效' : `${st.have}/${st.total}`,
         st.claimed ? 'gold' : st.readyToClaim ? 'lack' : 'ink',
-        12,
+        14,
       );
-      progBadge.node.position.set(width - progBadge.w - 12, 10);
+      progBadge.node.position.set(width - progBadge.w - 12, 12);
       card.addChild(progBadge.node);
-
-      const sub = makeLabel(def.subtitle, 13, MUTED);
-      sub.position.set(18, 36);
-      card.addChild(sub);
 
       // Recessed tray holding the 6-7 member slots
       const trayX = 16;
-      const trayY = 58;
+      const trayY = 46;
       const trayW = width - 32;
-      const trayH = 74;
+      const trayH = 76;
       const tray = new PIXI.Graphics();
       drawSectionTray(tray, trayX, trayY, trayW, trayH, { radius: 12, tone: 'sand' });
       card.addChild(tray);
 
       const count = def.members.length;
       const slotGap = 6;
-      const slotSize = Math.min(58, Math.floor((trayW - 14 - slotGap * (count - 1)) / count));
+      const slotSize = Math.min(60, Math.floor((trayW - 14 - slotGap * (count - 1)) / count));
       const rowW = count * slotSize + (count - 1) * slotGap;
       const startX = trayX + Math.round((trayW - rowW) / 2);
       const slotY = trayY + Math.round((trayH - slotSize) / 2);
@@ -665,31 +659,32 @@ export class DexPanel extends PIXI.Container {
       });
 
       // Bottom buff + reward / claim button
-      const buffTxt = makeLabel(def.buffLabel, 14, st.claimed ? 0x3D7A32 : 0x6A4A24, {
+      const buffShort = def.buffLabel.replace(/^永久加成：/, '加成：');
+      const buffTxt = makeLabel(buffShort, 17, st.claimed ? 0x3D7A32 : 0x6A4A24, {
         fontWeight: '700',
       });
-      buffTxt.position.set(18, 140);
+      buffTxt.position.set(18, 130);
       card.addChild(buffTxt);
 
       const rewParts = [`+${def.rewardGold}金`];
       if (def.rewardTickets > 0) rewParts.push(`菜谱券×${def.rewardTickets}`);
-      const rewTxt = makeLabel(`集齐礼：${rewParts.join(' · ')}`, 13, MUTED, { fontWeight: '600' });
-      rewTxt.position.set(18, 163);
+      const rewTxt = makeLabel(`集齐礼：${rewParts.join(' · ')}`, 15, MUTED, { fontWeight: '700' });
+      rewTxt.position.set(18, 155);
       card.addChild(rewTxt);
 
       if (st.readyToClaim) {
-        const btnW = 118;
-        const btnH = 38;
+        const btnW = 126;
+        const btnH = 42;
         const claimBtn = makeSlicedButton({
           label: '盖章激活',
           width: btnW,
           height: btnH,
           skin: 'terracotta',
           textColor: 0xFFF8F0,
-          fontSize: 16,
+          fontSize: 18,
           onReady: redraw,
         });
-        claimBtn.position.set(width - btnW - 14, 144);
+        claimBtn.position.set(width - btnW - 14, 132);
         claimBtn.on('pointertap', (e) => {
           e.stopPropagation();
           if (this._dragMoved) return;
@@ -710,7 +705,7 @@ export class DexPanel extends PIXI.Container {
           seal.anchor.set(0.5);
           seal.rotation = -0.18;
           seal.alpha = 0.9;
-          seal.position.set(width - 42, 162);
+          seal.position.set(width - 42, 152);
           seal.eventMode = 'none';
           card.addChild(seal);
         }
@@ -763,7 +758,7 @@ export class DexPanel extends PIXI.Container {
       const row = Math.floor(i / cols);
       const card = new PIXI.Container();
       card.position.set(col * (cellW + gap), row * (cellH + gap));
-      const footerH = dish ? 40 : 36;
+      const footerH = dish ? 42 : 38;
       const g = new PIXI.Graphics();
       drawItemSlotBox(g, 0, 0, cellW, cellH, {
         radius: 13,
@@ -776,12 +771,12 @@ export class DexPanel extends PIXI.Container {
       if (isTextureReady(tex)) {
         const spr = new PIXI.Sprite(tex);
         spr.anchor.set(0.5);
-        spr.position.set(cellW / 2, dish ? 54 : 52);
+        spr.position.set(cellW / 2, dish ? 52 : 50);
         fitSpriteInBox(spr, cellW - (dish ? 14 : 22), iconH - 6);
         if (!it.unlocked) applyGray(spr);
         card.addChild(spr);
       }
-      const label = makeDexName(it.unlocked ? it.name : '未解锁', dish ? 17 : 16, it.unlocked, cellW - 10);
+      const label = makeDexName(it.unlocked ? it.name : '未解锁', dish ? 18 : 17, it.unlocked, cellW - 8);
       label.anchor.set(0.5);
       label.position.set(cellW / 2, cellH - footerH / 2 - 1);
       card.addChild(label);
@@ -796,14 +791,14 @@ export class DexPanel extends PIXI.Container {
           gap: 2,
           onReady: redraw,
         });
-        spoons.position.set(Math.round((cellW - (20 * 3 + 4)) / 2), 116);
+        spoons.position.set(Math.round((cellW - (20 * 3 + 4)) / 2), 114);
         card.addChild(spoons);
       }
       if (unclaimed) {
         const tag = new PIXI.Container();
-        const txt = makeLabel(`新 +${DEX_ENTRY_GOLD}金`, 13, 0xFFF8F0, { fontWeight: '700' });
-        const tw = Math.ceil(txt.width) + 14;
-        const th = 22;
+        const txt = makeLabel(`新 +${DEX_ENTRY_GOLD}金`, 14, 0xFFF8F0, { fontWeight: '700' });
+        const tw = Math.ceil(txt.width) + 16;
+        const th = 24;
         const bg = new PIXI.Graphics();
         bg.lineStyle(1.8, INK, 1);
         bg.beginFill(0xD94A3A, 1);

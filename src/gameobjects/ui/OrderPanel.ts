@@ -153,12 +153,12 @@ export class OrderPanel extends PIXI.Container {
     });
     this._root.addChild(dim);
 
-    const rowH = 258;
+    const rowH = 260;
     const rowGap = 12;
     const boxW = Math.min(w - 30, 710);
     const padX = 24;
-    const contentTop = 90;
-    const boxH = contentTop + orders.length * rowH + (orders.length - 1) * rowGap + 28;
+    const contentTop = 66;
+    const boxH = contentTop + orders.length * rowH + (orders.length - 1) * rowGap + 26;
     const bx = Math.round((w - boxW) / 2);
     const by = Math.round(Math.max(Game.safeTop + 22, (h - boxH) / 2 + 6));
 
@@ -166,7 +166,6 @@ export class OrderPanel extends PIXI.Container {
       width: boxW,
       height: boxH,
       title: '街 坊 点 菜',
-      subtitle: '做好了点交菜 · 街坊给赏钱与余菜谢礼',
       onReady: this._scheduleRelayout,
       closeSilent: true,
       onClose: () => {
@@ -211,7 +210,7 @@ export class OrderPanel extends PIXI.Container {
     const view = recipeUnlockView(save);
     const have = fridgeDishQty(save.fridge, order.recipeId);
 
-    const headerH = 40;
+    const headerH = 44;
     const bg = new PIXI.Graphics();
     drawCraftCard(bg, x, y, width, height, {
       radius: 16,
@@ -226,34 +225,34 @@ export class OrderPanel extends PIXI.Container {
     const doubleLeft = dailyAdLeft(save, 'order_double', now);
 
     // Structured top header bar: Dish order title on left + Timer tag & Abandon link on right
-    const name = makeLabel(`${npc.name}点：${recipe?.name ?? '家常菜'}`, 19, INK, { fontWeight: '700' });
+    const name = makeLabel(`${npc.name}点：${recipe?.name ?? '家常菜'}`, 21, INK, { fontWeight: '700' });
     name.anchor.set(0, 0.5);
     name.position.set(x + 16, y + headerH / 2 + 1);
     root.addChild(name);
 
     const remainTxt = `⏱ ${formatOrderRemain(order.expiresAt - now)}`;
-    const remainLbl = makeLabel(remainTxt, 13, 0xFFFDF8, { fontWeight: '700' });
-    const rPillW = Math.ceil(remainLbl.width) + 16;
-    const rPillH = 22;
+    const remainLbl = makeLabel(remainTxt, 15, 0xFFFDF8, { fontWeight: '700' });
+    const rPillW = Math.ceil(remainLbl.width) + 18;
+    const rPillH = 26;
     const rPill = new PIXI.Graphics();
     rPill.beginFill(0x7A5B40, 1);
     rPill.drawRoundedRect(0, 0, rPillW, rPillH, rPillH / 2);
     rPill.endFill();
     remainLbl.anchor.set(0.5);
-    remainLbl.position.set(rPillW / 2, rPillH / 2 - 0.5);
+    remainLbl.position.set(rPillW / 2, rPillH / 2);
     const rWrap = new PIXI.Container();
     rWrap.addChild(rPill, remainLbl);
-    const rightMetaX = x + width - (canRefresh ? rPillW + 84 : rPillW + 14);
+    const rightMetaX = x + width - (canRefresh ? rPillW + 94 : rPillW + 14);
     rWrap.position.set(rightMetaX, y + Math.round((headerH - rPillH) / 2) + 1);
     root.addChild(rWrap);
 
     if (canRefresh) {
-      const dropLink = makeLabel('放弃此单', 13, MUTED, { fontWeight: '700' });
+      const dropLink = makeLabel('放弃此单', 15, MUTED, { fontWeight: '700' });
       dropLink.anchor.set(0, 0.5);
       dropLink.position.set(rightMetaX + rPillW + 10, y + headerH / 2 + 1);
       dropLink.eventMode = 'static';
       dropLink.cursor = 'pointer';
-      dropLink.hitArea = new PIXI.Rectangle(-6, -13, dropLink.width + 12, 26);
+      dropLink.hitArea = new PIXI.Rectangle(-6, -14, dropLink.width + 12, 28);
       dropLink.on('pointertap', (e) => {
         e.stopPropagation();
         KitchenManager.abandonNeighborOrder(order.id);
@@ -355,37 +354,38 @@ export class OrderPanel extends PIXI.Container {
     const innerX = colX + 8 + dishSize + 10;
     const missing = recipeNeeds(view, order.recipeId).filter((row) => row.have < row.need);
     if (have > 0) {
-      const readyTitle = makeLabel('✓ 菜已备好', 17, OLIVE, { fontWeight: '700' });
-      readyTitle.position.set(innerX, trayY + 18);
-      const readySub = makeLabel(canDouble ? '可双倍领街坊谢礼' : '点右侧交菜立领赏金', 13, 0x55734A, { fontWeight: '700' });
-      readySub.position.set(innerX, trayY + 44);
+      const readyTitle = makeLabel('✓ 菜已备好', 18, OLIVE, { fontWeight: '700' });
+      readyTitle.position.set(innerX, trayY + 16);
+      const readySub = makeLabel(canDouble ? '可双倍领谢礼' : '点交菜立领赏金', 15, 0x55734A, { fontWeight: '700' });
+      readySub.position.set(innerX, trayY + 45);
       root.addChild(readyTitle, readySub);
     } else if (missing.length) {
-      const lackTag = makeLabel('缺料', 13, 0x7A5B40, { fontWeight: '700' });
+      const lackTag = makeLabel('缺料', 16, 0x7A5B40, { fontWeight: '700' });
       lackTag.anchor.set(0.5);
-      lackTag.position.set(innerX + 16, trayY + trayH / 2);
+      lackTag.position.set(innerX + 18, trayY + trayH / 2);
       root.addChild(lackTag);
-      let usedX = innerX + 36;
-      const slotS = 58;
+      let usedX = innerX + 42;
+      const slotS = 62;
       for (const row of missing) {
         if (usedX + slotS > colX + trayW - 6) break;
         root.addChild(this._needTile(usedX, trayY + Math.round((trayH - slotS) / 2), slotS, row.iconId, row.have, row.need));
         usedX += slotS + 6;
       }
     } else {
-      const ready = makeLabel('食材齐备', 16, OLIVE, { fontWeight: '700' });
+      const ready = makeLabel('食材齐备', 18, OLIVE, { fontWeight: '700' });
       ready.anchor.set(0, 0.5);
       ready.position.set(innerX, trayY + trayH / 2);
       root.addChild(ready);
       const cook = makeSlicedButton({
         label: '去做菜',
-        width: 102,
-        height: 40,
+        width: 106,
+        height: 42,
         skin: 'terracotta',
         textColor: 0xFFF8F0,
+        fontSize: 18,
         onReady: this._scheduleRelayout,
       });
-      cook.position.set(innerX + Math.ceil(ready.width) + 8, trayY + Math.round((trayH - 40) / 2));
+      cook.position.set(innerX + Math.ceil(ready.width) + 10, trayY + Math.round((trayH - 42) / 2));
       cook.on('pointertap', () => {
         this.onCook?.(order.recipeId);
       });
@@ -396,7 +396,7 @@ export class OrderPanel extends PIXI.Container {
     const chips = neighborRewardChips(neighborOrderReward(order));
     if (chips.length) {
       const strip = makeRewardStrip(chips, this._scheduleRelayout, '谢礼', 'paper');
-      strip.position.set(colX, bodyTop + trayH + 22);
+      strip.position.set(colX, bodyTop + trayH + 18);
       root.addChild(strip);
     }
 
@@ -502,7 +502,7 @@ export class OrderPanel extends PIXI.Container {
       root.addChild(icon);
     }
 
-    const badge = makeSlotBadge(`${have}/${need}`, have >= need ? 'olive' : 'lack', 11);
+    const badge = makeSlotBadge(`${have}/${need}`, have >= need ? 'olive' : 'lack', 13);
     badge.node.position.set(x + size - badge.w - 2, y + size - badge.h - 2);
     root.addChild(badge.node);
 

@@ -1725,9 +1725,9 @@ export class KitchenScene implements Scene {
     tag.eventMode = 'none';
     const textColor = tone === 'cream' || tone === 'gold' ? UI_PALETTE.ink : 0xFFF8F0;
     const fillColor = tone === 'gold' ? 0xF7CD5C : tone === 'warm' ? 0xCC6B3B : 0xFFFBF3;
-    const lbl = makeLabel(text, 13, textColor, { fontWeight: '700' });
-    const pw = Math.ceil(lbl.width) + 22;
-    const ph = 26;
+    const lbl = makeLabel(text, 15, textColor, { fontWeight: '700' });
+    const pw = Math.ceil(lbl.width) + 24;
+    const ph = 28;
     const bg = new PIXI.Graphics();
     bg.beginFill(0x180F07, 0.24);
     bg.drawRoundedRect(-pw / 2, -ph / 2 + 2.5, pw, ph, ph / 2);
@@ -1780,8 +1780,8 @@ export class KitchenScene implements Scene {
 
     // 1. Tab to glide right to Sunlit Window Bay (老坛 & 阿橘)
     const toWin = new PIXI.Container();
-    const winW = 136;
-    const winH = 68;
+    const winW = 148;
+    const winH = 72;
     const wBg = new PIXI.Graphics();
     wBg.beginFill(0x160E08, 0.28);
     wBg.drawRoundedRect(0, 4, winW + 16, winH, 20);
@@ -1807,15 +1807,15 @@ export class KitchenScene implements Scene {
     const itex = gameTexture(iconPath);
     if (isTextureReady(itex)) {
       const sp = new PIXI.Sprite(itex);
-      fitSpriteInBox(sp, 44, 44);
+      fitSpriteInBox(sp, 46, 46);
       sp.anchor.set(0.5);
       sp.position.set(30, winH / 2 - 1);
       sp.eventMode = 'none';
       toWin.addChild(sp);
     }
 
-    const t1 = makeLabel('窗边角 ▶', 15, UI_PALETTE.ink, { fontWeight: '700' });
-    t1.position.set(54, 12);
+    const t1 = makeLabel('窗边角 ▶', 17, UI_PALETTE.ink, { fontWeight: '700' });
+    t1.position.set(55, 11);
     const subText = readyCount > 0
       ? '老坛可开！'
       : catGift
@@ -1823,8 +1823,8 @@ export class KitchenScene implements Scene {
         : catNew
           ? '橘猫上门！'
           : '老坛·阿橘';
-    const t2 = makeLabel(subText, 12, hasAlert ? UI_PALETTE.terracotta : UI_PALETTE.muted, { fontWeight: '700' });
-    t2.position.set(54, 34);
+    const t2 = makeLabel(subText, 14, hasAlert ? UI_PALETTE.terracotta : UI_PALETTE.muted, { fontWeight: '700' });
+    t2.position.set(55, 36);
     toWin.addChild(t1, t2);
 
     if (hasAlert) {
@@ -1851,8 +1851,8 @@ export class KitchenScene implements Scene {
 
     // 2. Tab to glide back left to Door & Stove when viewing Window Bay
     const toDoor = new PIXI.Container();
-    const doorW = 118;
-    const doorH = 58;
+    const doorW = 128;
+    const doorH = 64;
     const dBg = new PIXI.Graphics();
     dBg.beginFill(0x160E08, 0.26);
     dBg.drawRoundedRect(0, 4, doorW + 16, doorH, 18);
@@ -1867,10 +1867,10 @@ export class KitchenScene implements Scene {
     dBg.endFill();
     toDoor.addChild(dBg);
 
-    const dt1 = makeLabel('◀ 回门口', 15, UI_PALETTE.ink, { fontWeight: '700' });
+    const dt1 = makeLabel('◀ 回门口', 17, UI_PALETTE.ink, { fontWeight: '700' });
     dt1.position.set(16, 10);
-    const dt2 = makeLabel('出门·主灶', 12, UI_PALETTE.muted, { fontWeight: '700' });
-    dt2.position.set(18, 31);
+    const dt2 = makeLabel('出门·主灶', 14, UI_PALETTE.muted, { fontWeight: '700' });
+    dt2.position.set(18, 34);
     toDoor.addChild(dt1, dt2);
 
     toDoor.position.set(w - doorW, tabY);

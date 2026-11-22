@@ -251,8 +251,8 @@ export class GameClubPanel extends PIXI.Container {
         slot.addChild(spr);
       }
       if (f.qty > 1) {
-        const b = makeSlotBadge(`×${f.qty}`, 'olive', 10);
-        b.node.position.set(slotSize - b.w + 2, slotSize - b.h + 2);
+        const b = makeSlotBadge(`×${f.qty}`, 'olive', 13);
+        b.node.position.set(slotSize - b.w + 3, slotSize - b.h + 3);
         slot.addChild(b.node);
       }
       reward.addChild(slot);
@@ -276,8 +276,8 @@ export class GameClubPanel extends PIXI.Container {
       tspr.position.set(slotSize / 2, slotSize / 2);
       tSlot.addChild(tspr);
     }
-    const tb = makeSlotBadge(`×${pack.tickets}`, 'gold', 10);
-    tb.node.position.set(slotSize - tb.w + 2, slotSize - tb.h + 2);
+    const tb = makeSlotBadge(`×${pack.tickets}`, 'gold', 13);
+    tb.node.position.set(slotSize - tb.w + 3, slotSize - tb.h + 3);
     tSlot.addChild(tb.node);
     reward.addChild(tSlot);
     sx += slotSize;

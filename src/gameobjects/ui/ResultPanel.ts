@@ -583,9 +583,9 @@ export class ResultPanel extends PIXI.Container {
       status.position.set(midX, btnY - 26);
       shell.addChild(status);
     } else if (!ready) {
-      const status = makeLabel(`再卖 ${need - picked} 格（或让街坊 1.5 倍顺路包圆溢出菜）`, 15, TERRACOTTA, { fontWeight: '700' });
+      const status = makeLabel(`再卖 ${need - picked} 格（或街坊 1.5 倍包圆）`, 17, TERRACOTTA, { fontWeight: '700' });
       status.anchor.set(0.5, 0);
-      status.position.set(midX, btnY - 26);
+      status.position.set(midX, btnY - 28);
       shell.addChild(status);
     }
 
@@ -737,7 +737,7 @@ export class ResultPanel extends PIXI.Container {
 
     const qty = fridgeItemQty(it);
     if (qty > 1 && !on) {
-      const badge = makeSlotBadge(`${qty}`, 'olive', 11);
+      const badge = makeSlotBadge(`${qty}`, 'olive', 14);
       badge.node.position.set(x + size - badge.w - 2, y + size - badge.h - 2);
       root.addChild(badge.node);
     }

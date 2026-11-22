@@ -123,16 +123,16 @@ export class RecipeBookPanel extends PIXI.Container {
         card.addChild(sp);
       }
 
-      const name = makeLabel(`${done ? '✓ ' : ''}${r.name}`, 21, UI_PALETTE.ink, { fontWeight: '700' });
-      name.position.set(104, 12);
+      const name = makeLabel(`${done ? '✓ ' : ''}${r.name}`, 22, UI_PALETTE.ink, { fontWeight: '700' });
+      name.position.set(104, 11);
       card.addChild(name);
 
-      const desc = makeLabel(r.desc, 15, UI_PALETTE.muted);
-      desc.position.set(104, 43);
+      const desc = makeLabel(r.desc, 16, UI_PALETTE.muted, { fontWeight: '600' });
+      desc.position.set(104, 42);
       card.addChild(desc);
 
-      const eat = makeLabel(`✦ ${recipeEatLabel(r.id)}`, 14, UI_PALETTE.olive, { fontWeight: '700' });
-      eat.position.set(104, 69);
+      const eat = makeLabel(`✦ ${recipeEatLabel(r.id)}`, 16, UI_PALETTE.olive, { fontWeight: '700' });
+      eat.position.set(104, 68);
       card.addChild(eat);
 
       list.addChild(card);

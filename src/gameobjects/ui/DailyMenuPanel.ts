@@ -303,11 +303,11 @@ export class DailyMenuPanel extends PIXI.Container {
     const hint = claimed
       ? '✓ 本桌三道已齐 · 菜谱券已发放'
       : need > 0
-        ? `上菜进度 ${done}/${need} · 三道交齐赠菜谱券`
+        ? `上菜进度 ${done}/${need} · 满桌送菜谱券`
         : '全部完成后可获得奖励';
-    const count = makeLabel(hint, 16, claimed ? OLIVE : INK, { fontWeight: '700' });
+    const count = makeLabel(hint, 17, claimed ? OLIVE : INK, { fontWeight: '700' });
     count.anchor.set(0.5, 0);
-    count.position.set(barX + barW / 2, y + 12);
+    count.position.set(barX + barW / 2, y + 11);
     root.addChild(count);
 
     const bar = makeCraftProgressBar({
@@ -329,7 +329,7 @@ export class DailyMenuPanel extends PIXI.Container {
       spr.eventMode = 'none';
       hit.addChild(spr);
     }
-    const tag = makeLabel(claimed ? '已发' : `×${tickets}`, 15, claimed ? OLIVE : TERRACOTTA, {
+    const tag = makeLabel(claimed ? '已发' : `×${tickets}`, 16, claimed ? OLIVE : TERRACOTTA, {
       fontWeight: '700',
     });
     tag.anchor.set(0.5, 0);
@@ -373,7 +373,7 @@ export class DailyMenuPanel extends PIXI.Container {
     const have = fridgeDishQty(KitchenManager.save.fridge, line.recipeId);
     const done = line.done >= line.need;
 
-    const headerH = 40;
+    const headerH = 44;
     const bg = new PIXI.Graphics();
     drawCraftCard(bg, x, y, width, height, {
       radius: 16,
@@ -382,29 +382,29 @@ export class DailyMenuPanel extends PIXI.Container {
     });
     root.addChild(bg);
 
-    const name = makeLabel(recipe?.name ?? '菜', 20, INK, { fontWeight: '700' });
+    const name = makeLabel(recipe?.name ?? '菜', 21, INK, { fontWeight: '700' });
     name.anchor.set(0, 0.5);
     name.position.set(x + 16, y + headerH / 2 + 1);
     root.addChild(name);
 
     const progStr = done ? '✓ 已上齐' : `要交 ${line.done}/${line.need} · 冰箱 ${have} 盘`;
-    const progLbl = makeLabel(progStr, 13, 0xFFFDF8, { fontWeight: '700' });
-    const pW = Math.ceil(progLbl.width) + 18;
-    const pH = 22;
+    const progLbl = makeLabel(progStr, 15, 0xFFFDF8, { fontWeight: '700' });
+    const pW = Math.ceil(progLbl.width) + 20;
+    const pH = 26;
     const pBg = new PIXI.Graphics();
     pBg.beginFill(done ? OLIVE : have > 0 ? 0xB87910 : 0x7A5B40, 1);
     pBg.drawRoundedRect(0, 0, pW, pH, pH / 2);
     pBg.endFill();
     progLbl.anchor.set(0.5);
-    progLbl.position.set(pW / 2, pH / 2 - 0.5);
+    progLbl.position.set(pW / 2, pH / 2);
     const pWrap = new PIXI.Container();
     pWrap.addChild(pBg, progLbl);
     pWrap.position.set(x + width - pW - 14, y + Math.round((headerH - pH) / 2) + 1);
     root.addChild(pWrap);
 
-    const bodyY = y + headerH + 10;
+    const bodyY = y + headerH + 8;
     const pad = 14;
-    const actW = 122;
+    const actW = 124;
     const trayW = width - pad * 2 - actW - 14;
     const trayH = 82;
     const tray = new PIXI.Graphics();
@@ -420,41 +420,42 @@ export class DailyMenuPanel extends PIXI.Container {
     const innerX = x + pad + 8 + dishSize + 12;
     const missing = recipeNeeds(view, line.recipeId).filter((row) => row.have < row.need);
     if (done) {
-      const ready = makeLabel('这道菜街坊已经美美吃上啦！', 16, OLIVE, { fontWeight: '700' });
+      const ready = makeLabel('✓ 街坊已经美美吃上啦！', 18, OLIVE, { fontWeight: '700' });
       ready.anchor.set(0, 0.5);
       ready.position.set(innerX, bodyY + trayH / 2);
       root.addChild(ready);
     } else if (have > 0) {
-      const ready = makeLabel('✓ 冰箱里有现成的，点右侧交菜即上桌！', 16, OLIVE, { fontWeight: '700' });
+      const ready = makeLabel('✓ 冰箱有现成，点交菜上桌！', 18, OLIVE, { fontWeight: '700' });
       ready.anchor.set(0, 0.5);
       ready.position.set(innerX, bodyY + trayH / 2);
       root.addChild(ready);
     } else if (missing.length) {
-      const lack = makeLabel('缺料', 13, 0x7A5B40, { fontWeight: '700' });
+      const lack = makeLabel('缺料', 16, 0x7A5B40, { fontWeight: '700' });
       lack.anchor.set(0.5);
-      lack.position.set(innerX + 16, bodyY + trayH / 2);
+      lack.position.set(innerX + 18, bodyY + trayH / 2);
       root.addChild(lack);
-      let usedX = innerX + 36;
-      const slotS = 58;
+      let usedX = innerX + 42;
+      const slotS = 62;
       for (const row of missing) {
         if (usedX + slotS > x + pad + trayW - 6) break;
         root.addChild(this._needTile(usedX, bodyY + Math.round((trayH - slotS) / 2), slotS, row.iconId, row.have, row.need));
         usedX += slotS + 6;
       }
     } else {
-      const ready = makeLabel('食材齐备', 16, OLIVE, { fontWeight: '700' });
+      const ready = makeLabel('食材齐备', 18, OLIVE, { fontWeight: '700' });
       ready.anchor.set(0, 0.5);
       ready.position.set(innerX, bodyY + trayH / 2);
       root.addChild(ready);
       const cook = makeSlicedButton({
         label: '去做菜',
-        width: 108,
-        height: 40,
+        width: 110,
+        height: 42,
         skin: 'terracotta',
         textColor: 0xFFF8F0,
+        fontSize: 18,
         onReady: this._scheduleRelayout,
       });
-      cook.position.set(innerX + Math.ceil(ready.width) + 10, bodyY + Math.round((trayH - 40) / 2));
+      cook.position.set(innerX + Math.ceil(ready.width) + 10, bodyY + Math.round((trayH - 42) / 2));
       cook.on('pointertap', () => {
         this.onCook?.(line.recipeId);
       });
@@ -464,7 +465,7 @@ export class DailyMenuPanel extends PIXI.Container {
     const chips = dailyMenuRewardChips(line);
     if (chips.length) {
       const strip = makeRewardStrip(chips, this._scheduleRelayout, done ? '已发' : '赏金', 'paper');
-      strip.position.set(x + pad, y + height - 46);
+      strip.position.set(x + pad, y + height - 50);
       root.addChild(strip);
     }
 
@@ -583,7 +584,7 @@ export class DailyMenuPanel extends PIXI.Container {
       root.addChild(icon);
     }
 
-    const badge = makeSlotBadge(`${have}/${need}`, have >= need ? 'olive' : 'lack', 11);
+    const badge = makeSlotBadge(`${have}/${need}`, have >= need ? 'olive' : 'lack', 13);
     badge.node.position.set(x + size - badge.w - 2, y + size - badge.h - 2);
     root.addChild(badge.node);
 

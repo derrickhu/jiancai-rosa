@@ -521,7 +521,7 @@ export class FridgePanel extends PIXI.Container {
     }
     const qty = fridgeItemQty(it);
     if (qty > 1) {
-      const badge = makeSlotBadge(`${qty}`, 'olive', 12);
+      const badge = makeSlotBadge(`${qty}`, 'olive', 14);
       badge.node.position.set(x + size - badge.w - 3, y + size - badge.h - 3);
       root.addChild(badge.node);
     }

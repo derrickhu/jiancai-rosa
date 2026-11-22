@@ -452,24 +452,24 @@ export class MarketScene implements Scene {
       const weather = marketWeatherById(run.weatherId);
       if (weather) {
         const wChip = new PIXI.Container();
-        wChip.position.set(16, y + 12);
-        const w1 = makeLabel(weather.badge, 15, weather.pillInk, { fontWeight: '700' });
+        wChip.position.set(16, y + 10);
+        const w1 = makeLabel(weather.badge, 17, weather.pillInk, { fontWeight: '700' });
         const subLine = weather.freeFirstPaidStall && !run.weatherFreePaidLeft
           ? '首摊免单已享'
           : weather.shortDesc;
-        const w2 = makeLabel(subLine, 12, 0x5C4632, { fontWeight: '700' });
-        const cw = Math.max(138, Math.ceil(Math.max(w1.width, w2.width)) + 24);
-        const ch = 48;
+        const w2 = makeLabel(subLine, 14, 0x5C4632, { fontWeight: '700' });
+        const cw = Math.max(146, Math.ceil(Math.max(w1.width, w2.width)) + 26);
+        const ch = 54;
         const cbg = new PIXI.Graphics();
         cbg.beginFill(0x160E08, 0.22);
-        cbg.drawRoundedRect(0, 3, cw, ch, 14);
+        cbg.drawRoundedRect(0, 3, cw, ch, 15);
         cbg.endFill();
         cbg.lineStyle(2.2, weather.pillInk, 0.95);
         cbg.beginFill(weather.pillFill, 0.96);
-        cbg.drawRoundedRect(0, 0, cw, ch, 14);
+        cbg.drawRoundedRect(0, 0, cw, ch, 15);
         cbg.endFill();
-        w1.position.set(12, 6);
-        w2.position.set(12, 26);
+        w1.position.set(13, 6);
+        w2.position.set(13, 29);
         wChip.addChild(cbg, w1, w2);
         wChip.eventMode = 'none';
         this._res.addChild(wChip);
