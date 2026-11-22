@@ -8,6 +8,7 @@ import { KitchenManager } from '@/managers/KitchenManager';
 import { recipeById, recipeEatLabel } from '@/sim';
 import { FONT, fillRect, makeLabel, makeSlicedButton } from '@/utils/ui';
 import { dishTexture, fitSpriteInBox, gameTexture, isTextureReady, resolveDishAssetPath, whenTextureReady } from '@/utils/assets';
+import { TutorialOverlay } from './TutorialOverlay';
 
 const PAPER = 'subpkg_kitchen/ui_recipe_paper.png';
 const TITLE_FONT = 'Songti SC, STSong, PingFang SC, serif';
@@ -35,12 +36,14 @@ export class RecipeUnlockPanel extends PIXI.Container {
     this.visible = true;
     this.relayout();
     OverlayManager.bringToFront();
+    TutorialOverlay.refresh();
   }
 
   close(): void {
     this._isOpen = false;
     this.visible = false;
     this._root.removeChildren();
+    TutorialOverlay.refresh();
   }
 
   relayout(): void {

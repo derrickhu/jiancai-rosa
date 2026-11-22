@@ -5,6 +5,8 @@ import {
   applyEatEffects,
   consumeCookDoubleBuff,
   consumeCookXpBuff,
+  grantDirectKitchenBuff,
+  grantDirectOutingBuff,
   kitchenCookXpMul,
   kitchenHasCookDouble,
   kitchenSellMul,
@@ -338,6 +340,10 @@ export interface KitchenSave {
   strayCat?: StrayCatState;
   /** 小橘猫小窝升级档位：0 蒲草软垫 / 1 柿红碎花棉窝 / 2 花梨雕花猫榻。 */
   catBedTier?: 0 | 1 | 2;
+  /** 抽谱箱连续未出新菜谱次数（满 3 次后下一抽必出新菜谱）。 */
+  gachaPity?: number;
+  /** 已展示过的渐进式首次轻引导标记（每项只提示 1 次）。 */
+  seenGuides?: string[];
   /** 新手指引步骤。新号 0；老档缺字段时 normalize 写成 99，不重播。 */
   tutorialStep: number;
   /** 新手礼金是否已点领取。 */
@@ -686,6 +692,8 @@ export function defaultSave(now = Date.now()): KitchenSave {
     pickleTier: 0,
     strayCat: defaultStrayCat(),
     catBedTier: 0,
+    gachaPity: 0,
+    seenGuides: [],
     tutorialStep: 0,
     tutorialGiftClaimed: false,
   };
@@ -791,6 +799,13 @@ export function normalizeSave(raw: Partial<KitchenSave> | null, now = Date.now()
     pickleTier: ((raw as KitchenSave).pickleTier === 2 ? 2 : (raw as KitchenSave).pickleTier === 1 ? 1 : 0),
     strayCat: migrateStrayCat((raw as KitchenSave).strayCat),
     catBedTier: ((raw as KitchenSave).catBedTier === 2 ? 2 : (raw as KitchenSave).catBedTier === 1 ? 1 : 0),
+    gachaPity: typeof (raw as KitchenSave).gachaPity === 'number'
+      && Number.isFinite((raw as KitchenSave).gachaPity)
+      ? Math.max(0, Math.floor((raw as KitchenSave).gachaPity!))
+      : 0,
+    seenGuides: Array.isArray((raw as KitchenSave).seenGuides)
+      ? [...new Set((raw as KitchenSave).seenGuides!.filter((s): s is string => typeof s === 'string'))]
+      : [],
     tutorialStep: typeof (raw as KitchenSave).tutorialStep === 'number'
       && Number.isFinite((raw as KitchenSave).tutorialStep)
       ? Math.floor((raw as KitchenSave).tutorialStep)
@@ -1942,6 +1957,9 @@ export function drawRecipeGacha(
   gold: number;
   toast: string;
   recipeUnlock?: RecipeId;
+  specialKind?: 'mastery_note' | 'outing_charm';
+  masteryRecipeId?: RecipeId;
+  bonusTickets?: number;
 } {
   const empty = { foodFolded: false as const, foldGold: 0, duplicate: false, gold: 0, toast: '' };
   let ticketCost = RECIPE_GACHA_COST;
@@ -1972,12 +1990,90 @@ export function drawRecipeGacha(
     ...recipeUnlockView(preSave),
     dexSeen: preSave.dexSeen,
     dexInspected: preSave.dexInspected,
+    gachaPity: preSave.gachaPity ?? 0,
+    recipeCookCounts: preSave.recipeCookCounts,
   };
   const prize = rollGachaPrize(view, gachaRng(now));
   let next: KitchenSave = { ...preSave, recipeTickets: Math.max(0, preSave.recipeTickets - ticketCost) };
+
+  if (prize.kind === 'mastery_note') {
+    if (prize.recipeId) {
+      const prevCooked = recipeTotalCooked(next, prize.recipeId);
+      const afterCooked = prevCooked + prize.pots;
+      const counts = { ...(next.recipeCookCounts ?? {}), [prize.recipeId]: afterCooked };
+      const cookedList = next.recipesCooked.includes(prize.recipeId)
+        ? next.recipesCooked
+        : [...next.recipesCooked, prize.recipeId];
+      const claimed = next.recipeMasteryClaimed ?? [];
+      const hitGold = prevCooked < RECIPE_MASTERY_NEEDS[2]
+        && afterCooked >= RECIPE_MASTERY_NEEDS[2]
+        && !claimed.includes(prize.recipeId);
+      next = {
+        ...next,
+        gachaPity: 0,
+        recipeCookCounts: counts,
+        recipesCooked: cookedList,
+        recipeTickets: next.recipeTickets + (hitGold ? 1 : 0),
+        recipeMasteryClaimed: hitGold ? [...claimed, prize.recipeId] : claimed,
+      };
+      const rName = recipeGachaName(prize.recipeId);
+      const extraMsg = hitGold ? '（晋升金勺招牌，回赠菜谱券×1！）' : `（共 ${afterCooked} 锅）`;
+      return {
+        save: next,
+        specialKind: 'mastery_note',
+        masteryRecipeId: prize.recipeId,
+        bonusTickets: hitGold ? 1 : 0,
+        duplicate: false,
+        gold: 0,
+        toast: `《主厨火候心得》：「${rName}」熟练度 +${prize.pots} 锅${extraMsg}`,
+        foodFolded: false,
+        foldGold: 0,
+      };
+    }
+    const gold = 38;
+    next = grantDirectKitchenBuff(
+      { ...next, gachaPity: 0, money: next.money + gold },
+      'cook_double',
+      'smashed_cucumber',
+      now,
+    );
+    return {
+      save: next,
+      specialKind: 'mastery_note',
+      duplicate: false,
+      gold,
+      toast: `《宗师双锅秘卷》：下一锅出双份 + 赏金 ${gold} 金！`,
+      foodFolded: false,
+      foldGold: 0,
+    };
+  }
+
+  if (prize.kind === 'outing_charm') {
+    next = grantDirectOutingBuff(
+      { ...next, gachaPity: 0, money: next.money + prize.gold },
+      prize.buffKind,
+      'stirfry',
+    );
+    const label = prize.buffKind === 'fee_free' ? '下趟菜场全摊免单' : '下趟菜场天色 +2';
+    return {
+      save: next,
+      specialKind: 'outing_charm',
+      duplicate: false,
+      gold: prize.gold,
+      toast: `《出行鸿运签》：${label} + 盘缠 ${prize.gold} 金！`,
+      foodFolded: false,
+      foldGold: 0,
+    };
+  }
+
   if (prize.kind === 'food') {
-    const granted = applyNeighborReward(next, { gold: 0, food: { defId: prize.defId, qty: prize.qty } });
+    const nextWithPity: KitchenSave = {
+      ...next,
+      gachaPity: prize.masterChest ? 0 : (preSave.gachaPity ?? 0) + 1,
+    };
+    const granted = applyNeighborReward(nextWithPity, { gold: 0, food: { defId: prize.defId, qty: prize.qty } });
     const name = granted.foodName ?? getItem(prize.defId).name;
+    const prefix = prize.masterChest ? '名厨秘匣开出' : '开出了';
     return {
       save: granted.save,
       foodDefId: granted.foodDefId ?? prize.defId,
@@ -1988,14 +2084,14 @@ export function drawRecipeGacha(
       gold: granted.gold,
       toast: granted.foodFolded
         ? `${name}×${prize.qty}冰箱满了，折成 ${granted.foldGold} 金`
-        : `开出了${name}×${prize.qty}`,
+        : `${prefix}${name}×${prize.qty}！`,
     };
   }
   const recipeId = prize.recipeId;
   const name = recipeGachaName(recipeId);
   if (isRecipeUnlocked(view, recipeId)) {
     const gold = recipeGachaDupGold(recipeId);
-    next = { ...next, money: next.money + gold };
+    next = { ...next, gachaPity: 0, money: next.money + gold };
     return {
       save: next,
       recipeId,
@@ -2008,6 +2104,7 @@ export function drawRecipeGacha(
   }
   next = {
     ...next,
+    gachaPity: 0,
     recipesFound: next.recipesFound.includes(recipeId)
       ? next.recipesFound
       : [...next.recipesFound, recipeId],

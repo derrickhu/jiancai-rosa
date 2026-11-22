@@ -112,7 +112,7 @@ import { OutingCurtain } from '@/gameobjects/ui/OutingCurtain';
 import { destinationBootPaths } from '@/utils/outingAssets';
 import { RunManager } from '@/managers/RunManager';
 import { TutorialManager, TutorialStep } from '@/managers/TutorialManager';
-import { TutorialOverlay, worldRectToStage, type SpotlightRect, type TutorialTarget } from '@/gameobjects/ui/TutorialOverlay';
+import { TutorialOverlay, stageRectOf, worldRectToStage, type SpotlightRect, type TutorialTarget } from '@/gameobjects/ui/TutorialOverlay';
 import { TutorialGuard } from '@/systems/TutorialGuard';
 
 type HotspotId = 'door' | 'basket' | 'fridge' | 'foam' | 'board';
@@ -146,12 +146,25 @@ export class KitchenScene implements Scene {
   private _panTween = { x: 0 };
   private _toWindowTab: PIXI.Container | null = null;
   private _toDoorTab: PIXI.Container | null = null;
+  private _gachaBtn: PIXI.Container | null = null;
+  private _picklePropNode: PIXI.Container | null = null;
+  private _catPropNode: PIXI.Container | null = null;
   private _offerTimer = 0;
   private _onChange = () => {
     const fx = KitchenManager.consumeCookFx();
     if (fx) playCookReadyFx(fx);
     if (KitchenManager.consumeNudgeOffer()) this._queueNeighborOffer();
     this._warmPanelArt();
+    this.relayout();
+  };
+  private _onTutorialStep = () => {
+    if (this.container.parent && !this._itemDrag) this.relayout();
+  };
+  private _onTutorialCompleted = () => {
+    if (!this.container.parent) return;
+    KitchenManager.beginKitchenVisit();
+    this._warmPanelArt();
+    this._queueNeighborOffer();
     this.relayout();
   };
   private _worldSize = { w: 750, h: 1334 };
@@ -229,6 +242,8 @@ export class KitchenScene implements Scene {
 
   onEnter(): void {
     EventBus.on(EV.kitchenChanged, this._onChange);
+    EventBus.on(EV.tutorialStepChanged, this._onTutorialStep);
+    EventBus.on(EV.tutorialCompleted, this._onTutorialCompleted);
     this._pan.x = 0;
     this._pan.y = 0;
     this.container.on('pointerdown', this._onDown);
@@ -246,6 +261,7 @@ export class KitchenScene implements Scene {
     TutorialManager.start();
     TutorialOverlay.mount();
     TutorialOverlay.register('kitchen', () => this.tutorialRect());
+    TutorialOverlay.registerContextual('kitchen_ctx', () => this._contextualTip());
     this._bootRetryLeft = 8;
     this.relayout();
     AudioManager.playBgm('kitchen');
@@ -312,6 +328,8 @@ export class KitchenScene implements Scene {
 
   onExit(): void {
     EventBus.off(EV.kitchenChanged, this._onChange);
+    EventBus.off(EV.tutorialStepChanged, this._onTutorialStep);
+    EventBus.off(EV.tutorialCompleted, this._onTutorialCompleted);
     this.container.off('pointerdown', this._onDown);
     this.container.off('globalpointermove', this._onMove);
     this.container.off('pointerup', this._onUp);
@@ -347,6 +365,7 @@ export class KitchenScene implements Scene {
     this._upgradePick = null;
     clearCookReadyFx();
     TutorialOverlay.unregister('kitchen');
+    TutorialOverlay.unregisterContextual('kitchen_ctx');
   }
 
   relayout(): void {
@@ -356,6 +375,9 @@ export class KitchenScene implements Scene {
     this._ui.removeChildren();
     this._toWindowTab = null;
     this._toDoorTab = null;
+    this._gachaBtn = null;
+    this._picklePropNode = null;
+    this._catPropNode = null;
     const w = Game.designWidth;
     const h = Game.logicHeight;
     this.container.hitArea = new PIXI.Rectangle(0, 0, w, h);
@@ -470,6 +492,7 @@ export class KitchenScene implements Scene {
     if (!TutorialManager.isActive) return null;
     const step = TutorialManager.currentStep;
     if (step === TutorialStep.HINT_DOOR) {
+      if (this._overlayBlocking()) return null;
       const save = KitchenManager.save;
       if (furnLevel(save, 'table') === 0 && furnUpgradeState(save, 'table').status === 'ready') {
         if (this._upgradePick === 'table' && this._upgradeConfirmRect) {
@@ -481,7 +504,7 @@ export class KitchenScene implements Scene {
               fingerAt: { x: rect.x + rect.w * 0.5, y: rect.y + rect.h * 0.5 },
               speech: 'bottom',
               title: '点升级学新菜',
-              body: '升到 2 级烹饪台，立刻解锁「清炒土豆丝」！\n做熟菜才能涨厨艺开新菜场。',
+              body: '升到 2 级烹饪台，立刻解锁「清炒土豆丝」！\n左边「抽谱」也已开启，随时能拿券开箱。',
             };
           }
         }
@@ -493,8 +516,8 @@ export class KitchenScene implements Scene {
               holes: [rect],
               fingerAt: { x: rect.x + rect.w * 0.5, y: rect.y + rect.h * 0.5 },
               speech: 'top',
-              title: '升级灶台学新菜',
-              body: '刚挣了菜钱！点灶台上的圆箭头升级，\n解锁新菜谱，做熟菜才能涨厨艺。',
+              title: '升级灶台开新谱',
+              body: '开张礼到手！点灶台上的圆箭头升级学新菜，\n左侧「抽谱」也已解锁，有 2 张券可免费开箱！',
             };
           }
         }
@@ -513,6 +536,96 @@ export class KitchenScene implements Scene {
     if (step === TutorialStep.OPEN_FRIDGE) {
       return worldRectToStage(this._world, this._spotRects.get('fridge') ?? this._furnSpriteRect('fridge'), 8);
     }
+    return null;
+  }
+
+  private _contextualTip(): TutorialTarget | null {
+    if (TutorialManager.isActive || this._gm || this._overlayBlocking() || this._upgradePick) {
+      return null;
+    }
+    const save = KitchenManager.save;
+
+    // 1) 主线刚结业：用开张礼送的 2 张菜谱券引导首次「抽谱箱」+ 小饭桌/图鉴说明
+    if (!KitchenManager.hasSeenGuide('guide_gacha') && save.recipeTickets >= 2 && this._gachaBtn) {
+      const hole = stageRectOf(this._gachaBtn, 8);
+      if (hole) {
+        return {
+          dim: false,
+          holes: [hole],
+          fingerAt: { x: hole.x + hole.w * 0.5, y: hole.y + hole.h * 0.5 },
+          speech: 'bottom',
+          title: '免费开一箱新菜谱',
+          body: '刚拿了 2 张菜谱券！点左侧「抽谱」必出好礼，平时做「小饭桌」和盖「图鉴」章都能稳定攒券！（点气泡收起）',
+          onDismiss: () => KitchenManager.markGuideSeen('guide_gacha'),
+        };
+      }
+    }
+
+    const minX = this._minPanX();
+    const atWindow = minX < -24 && this._pan.x <= minX * 0.45;
+
+    // 2) Lv.2 开启老坛腌制坊：引导点右侧「窗边角 ▶」滑过去看老坛
+    if (!KitchenManager.hasSeenGuide('guide_pickle_bay') && pickleUnlocked(save)) {
+      if (!atWindow && this._toWindowTab && this._toWindowTab.visible) {
+        const hole = stageRectOf(this._toWindowTab, 8);
+        if (hole) {
+          return {
+            dim: false,
+            holes: [hole],
+            fingerAt: { x: hole.x + hole.w * 0.5, y: hole.y + hole.h * 0.5 },
+            speech: 'bottom',
+            title: '窗边老坛开张啦',
+            body: '厨艺升到 2 级开启了「老坛腌制坊」！点右边「窗边角 ▶」滑过去看看吧！（点气泡收起）',
+            onDismiss: () => KitchenManager.markGuideSeen('guide_pickle_bay'),
+          };
+        }
+      } else if (this._picklePropNode) {
+        const hole = stageRectOf(this._picklePropNode, 8);
+        if (hole) {
+          return {
+            dim: false,
+            holes: [hole],
+            fingerAt: { x: hole.x + hole.w * 0.5, y: hole.y + hole.h * 0.5 },
+            speech: 'bottom',
+            title: '余菜发酵送私房菜谱',
+            body: '点老坛打开腌制坊！把黄瓜、大蒜封水入坛，首坛揭盖直接送私房大菜谱！（点气泡收起）',
+            onDismiss: () => KitchenManager.markGuideSeen('guide_pickle_bay'),
+          };
+        }
+      }
+    }
+
+    // 3) Lv.4 小橘猫阿橘闻香上门：引导去窗边免费收留阿橘
+    if (!KitchenManager.hasSeenGuide('guide_cat_bay') && catUnlocked(save) && !save.strayCat?.adopted) {
+      if (!atWindow && this._toWindowTab && this._toWindowTab.visible) {
+        const hole = stageRectOf(this._toWindowTab, 8);
+        if (hole) {
+          return {
+            dim: false,
+            holes: [hole],
+            fingerAt: { x: hole.x + hole.w * 0.5, y: hole.y + hole.h * 0.5 },
+            speech: 'bottom',
+            title: '小橘猫闻香上门啦',
+            body: '流浪小橘猫「阿橘」蹲在窗边等你呢！点右边「窗边角 ▶」去免费收留它吧！（点气泡收起）',
+            onDismiss: () => KitchenManager.markGuideSeen('guide_cat_bay'),
+          };
+        }
+      } else if (this._catPropNode) {
+        const hole = stageRectOf(this._catPropNode, 8);
+        if (hole) {
+          return {
+            dim: false,
+            holes: [hole],
+            fingerAt: { x: hole.x + hole.w * 0.5, y: hole.y + hole.h * 0.5 },
+            speech: 'bottom',
+            title: '免费收留阿橘',
+            body: '点草垫收留阿橘！平时喂它余菜小鱼，它会去菜场帮你叼回稀有好货和菜谱券！（点气泡收起）',
+            onDismiss: () => KitchenManager.markGuideSeen('guide_cat_bay'),
+          };
+        }
+      }
+    }
+
     return null;
   }
 
@@ -608,6 +721,7 @@ export class KitchenScene implements Scene {
     const atWindow = minX < -24 && this._pan.x <= minX * 0.45;
     if (this._toWindowTab) this._toWindowTab.visible = minX < -24 && !atWindow;
     if (this._toDoorTab) this._toDoorTab.visible = minX < -24 && atWindow;
+    if (!TutorialManager.isActive) TutorialOverlay.refresh();
   }
 
   private _furniture(
@@ -808,11 +922,16 @@ export class KitchenScene implements Scene {
       this._drawWelfareHud(redraw, slot);
       slot += STEP;
     }
-    if (!TutorialManager.isActive && KitchenManager.save.dailyMenu) {
+    const gachaUnlocked = !TutorialManager.isActive
+      || TutorialManager.at(TutorialStep.CLAIM_GIFT, TutorialStep.HINT_DOOR)
+      || save.tutorialGiftClaimed
+      || save.recipeTickets > 0;
+    const dailyUnlocked = !TutorialManager.isActive || TutorialManager.isStep(TutorialStep.HINT_DOOR);
+    if (dailyUnlocked && KitchenManager.save.dailyMenu) {
       this._drawDailyMenuHud(redraw, slot);
       slot += STEP;
     }
-    if (!TutorialManager.isActive) {
+    if (gachaUnlocked) {
       this._drawGachaHud(redraw, slot);
       slot += STEP;
     }
@@ -926,12 +1045,17 @@ export class KitchenScene implements Scene {
       highlight: tickets >= 2 || freeBox,
       size,
       onReady: redraw,
-      onTap: () => this._gacha.open(),
+      onTap: () => {
+        if (TutorialManager.isStep(TutorialStep.CLAIM_GIFT)) return;
+        KitchenManager.markGuideSeen('guide_gacha');
+        this._gacha.open();
+      },
     });
     btn.position.set(12, y);
     setKitchenGachaHudPos({ x: 12 + size / 2, y: y + size / 2 });
     btn.on('pointerdown', (e) => e.stopPropagation());
     this._ui.addChild(btn);
+    this._gachaBtn = btn;
   }
 
   private _queueNeighborOffer(): void {
@@ -1986,12 +2110,14 @@ export class KitchenScene implements Scene {
           Platform.showToast(`厨艺升到 ${PICKLE_UNLOCK_LEVEL} 级就能开启老坛腌制坊啦！`);
           return;
         }
+        KitchenManager.markGuideSeen('guide_pickle_bay');
         this._pickle.open();
       });
     } else {
       root.eventMode = 'none';
     }
     this._world.addChild(root);
+    this._picklePropNode = root;
   }
 
   private _drawCatProp(
@@ -2053,12 +2179,14 @@ export class KitchenScene implements Scene {
           Platform.showToast(`厨艺升到 ${CAT_UNLOCK_LEVEL} 级，流浪小橘猫就会闻香找上门啦！`);
           return;
         }
+        KitchenManager.markGuideSeen('guide_cat_bay');
         this._strayCat.open();
       });
     } else {
       root.eventMode = 'none';
     }
     this._world.addChild(root);
+    this._catPropNode = root;
   }
 
   private goMarket(): void {

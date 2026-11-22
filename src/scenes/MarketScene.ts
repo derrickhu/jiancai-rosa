@@ -172,61 +172,103 @@ export class MarketScene implements Scene {
 
     if (step === TutorialStep.CLICK_CARD) return this._aim(this._tutCard, 6, { speech, speechY: top });
     if (step === TutorialStep.CLICK_PILE) return this._aim(this._tutPile, 8, { speech: 'bottom' });
-    if (step === TutorialStep.TAKE_LOOT) return this._aim(this._tutToken, 8, { speech: 'bottom' });
-    if (step === TutorialStep.OPEN_BASKET) return this._aim(this._basketBtn, 6, { speech, speechY: top });
+    if (step === TutorialStep.TAKE_LOOT) {
+      if (this._tutToken) {
+        const firstPick = RunManager.basket.items.length === 0;
+        const copy = firstPick
+          ? { title: '好菜进篮', body: '点桌上的新鲜菜苔，自动收进菜篮。' }
+          : { title: '收下水灵好货', body: '这棵水灵小白菜也是好货！点它收进菜篮。' };
+        const aim = this._aim(this._tutToken, 8, { speech: 'bottom' });
+        return aim ? { ...aim, ...copy } : { speech: 'bottom', ...copy };
+      }
+      if (RunManager.crateLeft().length > 0) {
+        const hasRottenOnTable = RunManager.currentPile().some((it) => it.quality === 'rotten');
+        const copy = hasRottenOnTable
+          ? {
+            title: '烂菜不捡 · 接着翻',
+            body: '带 ✕ 的烂菜不能装（点它可随手拨走）。\n再点遮挡堆，把最后一件翻出来！',
+          }
+          : {
+            title: '继续翻完这摊',
+            body: '遮挡堆里还有剩货，继续点它翻出来！',
+          };
+        const aim = this._aim(this._tutPile, 8, { speech: 'bottom' });
+        return aim ? { ...aim, ...copy } : { speech: 'bottom', ...copy };
+      }
+      return this._aim(this._basketBtn, 6, { speech: 'bottom' });
+    }
+    if (step === TutorialStep.OPEN_BASKET) return this._aim(this._basketBtn, 6, { speech: 'bottom', speechY: top });
     if (step === TutorialStep.RETURN_MAP) return this._aim(this._backBtn, 6, { speech: 'bottom' });
     if (step === TutorialStep.GO_HOME) return this._aim(this._leaveBtn, 6, { speech, speechY: top });
     if (step === TutorialStep.FREE_WALK) {
-      const stallCopy = {
-        title: '捡进篮',
-        body: '点桌上翻出来的菜。\n坏了的不能要，进篮后还能再抽。',
-      };
+      // 任何弹窗打开时自动避让，不叠字挡按钮
+      if (
+        this._basket._isOpen
+        || this._event._isOpen
+        || this._mysterySack._isOpen
+        || this._steelyard._isOpen
+        || this._duskExtend._isOpen
+      ) {
+        return null;
+      }
+      const visitedCount = RunManager.run?.visited.length ?? 0;
       if (stall) {
-        if (this._basket._isOpen) {
-          return { dim: false, speech: 'bottom', ...stallCopy };
-        }
         const loot = this._aim(this._tutToken, 8, { dim: false, speech: 'bottom' });
-        if (loot) return { ...loot, ...stallCopy };
+        if (loot) {
+          return {
+            ...loot,
+            title: '好菜进篮',
+            body: '点桌上的好菜收进菜篮（带 ✕ 的烂菜可点走或不管）。',
+          };
+        }
         const hasCrate = RunManager.crateLeft().length > 0;
         const hasCleanPile = RunManager.currentPile().some((it) => it.quality !== 'rotten');
-        if (!hasCrate && !hasCleanPile) {
-          const backAim = this._aim(this._backBtn, 6, { dim: false, speech: 'bottom' });
-          const doneCopy = {
-            title: '这摊翻完啦',
-            body: '点左上角回菜场，或直接点右上角「回家」开火。',
-          };
-          return backAim ? { ...backAim, ...doneCopy } : { dim: false, speech: 'bottom', ...doneCopy };
-        }
         if (hasCrate) {
           const pileAim = this._aim(this._tutPile, 8, { dim: false, speech: 'bottom' });
-          if (pileAim) return { ...pileAim, ...stallCopy };
+          const drawCopy = {
+            title: '继续翻堆',
+            body: '点摊上的遮挡堆，把藏着的菜翻到桌上。',
+          };
+          return pileAim ? { ...pileAim, ...drawCopy } : { dim: false, speech: 'bottom', ...drawCopy };
         }
-        return { dim: false, speech: 'bottom', ...stallCopy };
+        if (!hasCleanPile) {
+          const targetBtn = visitedCount >= 2 ? this._leaveBtn : this._backBtn;
+          const exitAim = this._aim(targetBtn, 6, { dim: false, speech: 'bottom' });
+          const doneCopy = visitedCount >= 2
+            ? {
+              title: '这摊翻空啦',
+              body: '菜够下锅了！点右上角「回家」开火，或回菜场再逛。',
+            }
+            : {
+              title: '这摊翻空啦',
+              body: '点左上角「返回菜场」继续往前走。',
+            };
+          return exitAim ? { ...exitAim, ...doneCopy } : { dim: false, speech: 'bottom', ...doneCopy };
+        }
       }
       const caitaiCount = RunManager.basket.items.filter(
         (it) => it.defId === 'caitai' && it.quality !== 'rotten',
       ).length;
-      const visitedCount = RunManager.run?.visited.length ?? 0;
       if (caitaiCount < 1) {
         const cardAim = this._aim(this._tutCard, 6, { dim: false, speech: 'top', speechY: top });
         const needCopy = {
           title: '再捡一棵菜苔',
-          body: '篮里还没菜苔！点脚下的卡再翻一棵，\n回家才能下锅炒菜苔。',
+          body: '篮里还没菜苔！点脚下的路线卡再翻一棵，\n回家才能下锅炒菜苔。',
         };
         return cardAim ? { ...cardAim, ...needCopy } : { dim: false, speech: 'top', speechY: top, ...needCopy };
       }
-      if (visitedCount < 2) {
+      if (visitedCount < 2 && this._tutCard) {
         const cardAim = this._aim(this._tutCard, 6, { dim: false, speech: 'top', speechY: top });
         const moreCopy = {
-          title: '再逛一摊',
-          body: '点脚下的卡再翻一摊多带点菜，\n也能随时点右上角「回家」开火。',
+          title: '再逛一步',
+          body: '点脚下的路线卡再顺手逛一步，\n也能随时点右上角「回家」开火。',
         };
         return cardAim ? { ...cardAim, ...moreCopy } : { dim: false, speech: 'top', speechY: top, ...moreCopy };
       }
       const homeAim = this._aim(this._leaveBtn, 6, { dim: false, speech: 'top', speechY: top });
       const homeCopy = {
-        title: '收获不少啦',
-        body: '材料够下锅了！点右上角「回家」开火炒菜，\n想多捡点也能继续逛到天黑。',
+        title: '收获够下锅啦',
+        body: '材料齐活！点右上角「回家」开火炒菜，\n想多捡点也能继续逛到天黑。',
       };
       return homeAim ? { ...homeAim, ...homeCopy } : { dim: false, speech: 'top', speechY: top, ...homeCopy };
     }
@@ -475,10 +517,12 @@ export class MarketScene implements Scene {
         this._res.addChild(wChip);
       }
     }
+    const tutReadyHome = TutorialManager.isStep(TutorialStep.FREE_WALK)
+      && (run.visited.length >= 2);
     const leave = this._roundIconBtn(HUD_ICON.leave, '回家', () => {
       if (TutorialGuard.block('extract')) return;
       RunManager.extract(true);
-    }, redraw, hintExit && basketFull);
+    }, redraw, (hintExit && basketFull) || tutReadyHome);
     leave.position.set(w - 16 - side, y);
     this._leaveBtn = leave;
     this._res.addChild(leave);
@@ -707,8 +751,9 @@ export class MarketScene implements Scene {
     this._body.addChild(view.root);
     const want = TutorialManager.allowedCardId;
     const front = view.rows[0] ?? [];
-    const cell = front.find((c) => c.option.node.id === want)
-      ?? front.find((c) => isRummageNode(c.option.node) && !c.option.blocked);
+    const cell = front.find((c) => c.option.node.id === want && !c.option.blocked)
+      ?? front.find((c) => isRummageNode(c.option.node) && !c.option.blocked)
+      ?? front.find((c) => !c.option.blocked);
     this._tutCard = cell?.card ?? null;
 
     if (blocked) {
@@ -1118,8 +1163,6 @@ export class MarketScene implements Scene {
       const token = this._pileToken(slot.item, slot.x, slot.y, slot.w, slot.h);
       if (slot.item.quality !== 'rotten') {
         if (!this._tutToken || slot.item.defId === 'caitai') this._tutToken = token;
-      } else if (!this._tutToken) {
-        this._tutToken = token;
       }
       const flight = this._flying.get(slot.item.uid);
       if (flight) {
@@ -1197,20 +1240,33 @@ export class MarketScene implements Scene {
 
   private _drawOne(): void {
     if (TutorialGuard.block('drawPile')) return;
+    if (
+      TutorialManager.isStep(TutorialStep.TAKE_LOOT)
+      && RunManager.currentPile().some((it) => it.quality !== 'rotten')
+    ) {
+      AudioManager.play('ui_deny');
+      Platform.showToast('先把桌上的好菜收进菜篮，再继续抽');
+      return;
+    }
     const crate = RunManager.crateLeft();
     if (!crate.length) {
       RunManager.drawFromCrate();
       return;
     }
     const pick = TutorialManager.isStep(TutorialStep.CLICK_PILE)
-      ? crate.find((it) => it.defId === 'caitai') ?? crate[0]
-      : crate[Math.floor(Math.random() * crate.length)];
+      ? crate.find((it) => it.defId === 'caitai' && it.quality !== 'rotten') ?? crate[0]
+      : TutorialManager.isStep(TutorialStep.TAKE_LOOT)
+        ? (crate.length >= 2
+          ? crate.find((it) => it.quality === 'rotten') ?? crate[0]
+          : crate.find((it) => it.quality !== 'rotten') ?? crate[0])
+        : crate[Math.floor(Math.random() * crate.length)];
     if (this._flying.has(pick.uid)) return;
     AudioManager.play('rummage');
     this._flying.set(pick.uid, { playing: false, wrap: null, token: null });
     this._pileKick += 1;
     RunManager.drawFromCrate(pick.uid);
     TutorialManager.advanceIf(TutorialStep.CLICK_PILE);
+    TutorialOverlay.refresh();
   }
 
   private _playDrawReveal(
@@ -1460,8 +1516,9 @@ export class MarketScene implements Scene {
       if (this.container.parent) this._sync(true);
     });
     const rotten = item.quality === 'rotten';
+    const rawLabel = RunManager.labelFor(item);
     const tag = makeStallNameTag(
-      RunManager.labelFor(item),
+      rotten ? `✕ ${rawLabel}` : rawLabel,
       rotten ? 0xE07058 : RARITY_STYLE[def.rarity].float,
       { maxWidth: Math.max(96, tw + 8) },
     );
@@ -1470,6 +1527,7 @@ export class MarketScene implements Scene {
     fitSpriteInBox(icon, tw * 0.86, Math.max(48, th - tagH - 4));
     icon.anchor.set(0.5);
     icon.position.set(tw / 2, (th - tagH) / 2);
+    if (rotten) icon.alpha = 0.72;
     if (look === 'rotten' && !isTextureReady(gameTexture(`subpkg_images/${def.id}_rotten.png`))) icon.tint = 0x6B4A32;
     root.addChild(icon);
     tag.position.set(tw / 2, th - 1);
@@ -1500,22 +1558,20 @@ export class MarketScene implements Scene {
   private _takeItem(uid: string): void {
     const item = this._findPile(uid);
     if (!item) return;
-    if (TutorialManager.isActive && TutorialManager.isStep(TutorialStep.TAKE_LOOT)) {
-      if (item.defId !== 'caitai') {
-        TutorialGuard.block('takeLoot');
-        return;
-      }
-    } else if (TutorialGuard.block('takeLoot')) {
+    if (item.quality === 'rotten') {
+      Platform.vibrateShort('light');
+      AudioManager.play('rummage');
+      RunManager.discardRotten(uid);
+      Platform.showToast('烂菜已随手拨到一边');
+      TutorialOverlay.refresh();
+      return;
+    }
+    if (!TutorialManager.isStep(TutorialStep.TAKE_LOOT) && TutorialGuard.block('takeLoot')) {
       return;
     }
     Platform.vibrateShort('light');
     if (item.defId === GOD_PICK.id && !item.inspected) {
       this._playGodPick(uid);
-      return;
-    }
-    if (item.quality === 'rotten') {
-      AudioManager.play('ui_deny');
-      Platform.showToast('坏了，捡不了');
       return;
     }
     if (!tryAutoPlace(RunManager.basket, pileToBasketDraft(item))) {
@@ -1527,7 +1583,15 @@ export class MarketScene implements Scene {
     if (item.quality === 'god' || item.defId === GOD_PICK.id) AudioManager.playGain();
     else AudioManager.play('basket_place');
     RunManager.take(uid);
-    if (RunManager.basket.items.length) TutorialManager.advanceIf(TutorialStep.TAKE_LOOT);
+    if (TutorialManager.isStep(TutorialStep.TAKE_LOOT)) {
+      const crateEmpty = RunManager.crateLeft().length === 0;
+      const cleanLeft = RunManager.currentPile().some((it) => it.quality !== 'rotten');
+      if (RunManager.basket.items.length > 0 && crateEmpty && !cleanLeft) {
+        TutorialManager.advanceIf(TutorialStep.TAKE_LOOT);
+      } else {
+        TutorialOverlay.refresh();
+      }
+    }
   }
 
   private _playGodPick(uid: string): void {

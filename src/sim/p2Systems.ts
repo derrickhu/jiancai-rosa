@@ -490,7 +490,7 @@ export function harvestPickle(
 // 2. 菜场流浪小橘猫「阿橘」（Stray Orange Tabby Cat System）
 // ═══════════════════════════════════════════════════════════════════════════
 
-export const CAT_UNLOCK_LEVEL = 2;
+export const CAT_UNLOCK_LEVEL = 4;
 export const CAT_NAME = '阿橘';
 
 export interface CatGiftFood {
@@ -592,8 +592,8 @@ export function migrateStrayCat(raw: unknown): StrayCatState {
   };
 }
 
-export function catUnlocked(save: Pick<KitchenSave, 'level'>): boolean {
-  return cookLevel(save as KitchenSave) >= CAT_UNLOCK_LEVEL;
+export function catUnlocked(save: Pick<KitchenSave, 'level'> & { strayCat?: { adopted?: boolean } }): boolean {
+  return cookLevel(save as KitchenSave) >= CAT_UNLOCK_LEVEL || !!save.strayCat?.adopted;
 }
 
 export interface CatBondView {

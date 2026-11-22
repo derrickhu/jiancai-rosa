@@ -55,7 +55,7 @@ import { MarketLootPanel } from '@/gameobjects/ui/MarketLootPanel';
 import { marketBootPaths, specialBootPaths } from '@/utils/outingAssets';
 import { SpecialMarketScene } from '@/scenes/SpecialMarketScene';
 import { TutorialManager, TutorialStep } from '@/managers/TutorialManager';
-import { TutorialOverlay, stageRectOf } from '@/gameobjects/ui/TutorialOverlay';
+import { TutorialOverlay, stageRectOf, type TutorialTarget } from '@/gameobjects/ui/TutorialOverlay';
 import { TutorialGuard } from '@/systems/TutorialGuard';
 import { tryShowInterstitial } from '@/services/InterstitialAdService';
 
@@ -93,6 +93,7 @@ export class DestinationScene implements Scene {
   private _browse: VehicleId = 'walk';
   private _loot = new MarketLootPanel();
   private _xiangkoGo: PIXI.Container | null = null;
+  private _firstWeatherTag: PIXI.Container | null = null;
 
   constructor() {
     this.container.eventMode = 'static';
@@ -109,6 +110,7 @@ export class DestinationScene implements Scene {
     EventBus.on(EV.kitchenChanged, this._onKitchen);
     AudioManager.playBgm('outing');
     TutorialOverlay.register('dest', () => this.tutorialRect());
+    TutorialOverlay.registerContextual('dest_ctx', () => this._contextualTip());
     TutorialManager.advanceIf(TutorialStep.GO_OUT);
     this.relayout();
   }
@@ -118,6 +120,23 @@ export class DestinationScene implements Scene {
     this._scroller.disable();
     this._loot.close(true);
     TutorialOverlay.unregister('dest');
+    TutorialOverlay.unregisterContextual('dest_ctx');
+  }
+
+  private _contextualTip(): TutorialTarget | null {
+    if (TutorialManager.isActive || this._loot._isOpen) return null;
+    if (KitchenManager.hasSeenGuide('guide_weather')) return null;
+    const hole = stageRectOf(this._firstWeatherTag, 6);
+    if (!hole) return null;
+    return {
+      dim: false,
+      holes: [hole],
+      fingerAt: { x: hole.x + hole.w * 0.5, y: hole.y + hole.h * 0.5 },
+      speech: 'bottom',
+      title: '今日菜场天时签',
+      body: '每天各菜场都有不同「天时签」（首摊免单、多塞好菜或加步数），看准天时出发更划算！（点气泡可收起）',
+      onDismiss: () => KitchenManager.markGuideSeen('guide_weather'),
+    };
   }
 
   private _onKitchen = (): void => {
@@ -131,6 +150,7 @@ export class DestinationScene implements Scene {
 
   relayout(): void {
     this._xiangkoGo = null;
+    this._firstWeatherTag = null;
     this._ui.removeChildren();
     const w = Game.designWidth;
     const h = Game.logicHeight;
@@ -391,7 +411,10 @@ export class DestinationScene implements Scene {
       tagBg.endFill();
       tagTxt.anchor.set(0.5);
       tagTxt.position.set(tx + tw / 2, ty + th / 2 + 0.5);
-      root.addChild(tagBg, tagTxt);
+      const weatherChip = new PIXI.Container();
+      weatherChip.addChild(tagBg, tagTxt);
+      root.addChild(weatherChip);
+      if (!this._firstWeatherTag) this._firstWeatherTag = weatherChip;
     }
 
     const hint = makeLabel(market.hint, height < 176 ? 17 : 18, UI_PALETTE.muted, {
@@ -870,6 +893,7 @@ export class DestinationScene implements Scene {
     }
     if (OutingCurtain.busy) return;
     if (!RunManager.start(market.id)) return;
+    if (!TutorialManager.isActive) KitchenManager.markGuideSeen('guide_weather');
     TutorialManager.advanceIf(TutorialStep.PICK_XIANGKO);
     OutingCurtain.play({
       paths: marketBootPaths(market.id, RunManager.run ?? undefined),

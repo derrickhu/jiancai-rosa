@@ -632,10 +632,14 @@ class KitchenManagerClass {
     duplicate: boolean;
     gold: number;
     toast: string;
+    specialKind?: 'mastery_note' | 'outing_charm';
+    masteryRecipeId?: RecipeId;
+    bonusTickets?: number;
   } {
     const empty = { ok: false, duplicate: false, gold: 0, toast: '', foodFolded: false, foldGold: 0 };
     const {
       save, error, toast, recipeUnlock, recipeId, duplicate, gold, foodDefId, foodQty, foodFolded, foldGold,
+      specialKind, masteryRecipeId, bonusTickets,
     } = drawRecipeGacha(this.save, Date.now(), opts?.mode ?? 'ticket');
     if (error) {
       AudioManager.play('ui_deny');
@@ -645,6 +649,23 @@ class KitchenManagerClass {
     SaveManager.replace(save);
     this.emit();
     const reveal = opts?.reveal !== false;
+    if (specialKind) {
+      if (reveal) {
+        AudioManager.play('recipe_paper');
+        if (toast) Platform.showToast(toast, 'success');
+      }
+      return {
+        ok: true,
+        specialKind,
+        masteryRecipeId,
+        bonusTickets,
+        duplicate: false,
+        gold,
+        toast,
+        foodFolded: false,
+        foldGold: 0,
+      };
+    }
     if (foodDefId) {
       if (reveal && toast) Platform.showToast(toast, 'success');
       return {
@@ -897,12 +918,28 @@ class KitchenManagerClass {
     SaveManager.replace({ ...this.save, tutorialGiftClaimed: true });
   }
 
-  claimTutorialGift(n: number): void {
+  claimTutorialGift(n: number, tickets = 2): void {
     const coins = Math.max(0, Math.floor(n));
+    const bonusTickets = Math.max(0, Math.floor(tickets));
     SaveManager.replace({
       ...this.save,
       money: this.save.money + coins,
+      recipeTickets: this.save.recipeTickets + bonusTickets,
       tutorialGiftClaimed: true,
+    });
+    this.emit();
+  }
+
+  hasSeenGuide(guideId: string): boolean {
+    return (this.save.seenGuides ?? []).includes(guideId);
+  }
+
+  markGuideSeen(guideId: string): void {
+    const list = this.save.seenGuides ?? [];
+    if (list.includes(guideId)) return;
+    SaveManager.replace({
+      ...this.save,
+      seenGuides: [...list, guideId],
     });
     this.emit();
   }

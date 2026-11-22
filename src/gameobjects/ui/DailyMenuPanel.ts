@@ -2,6 +2,7 @@ import * as PIXI from 'pixi.js';
 import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
+import { TutorialOverlay } from '@/gameobjects/ui/TutorialOverlay';
 import { Platform } from '@/core/PlatformService';
 import { warmupAdScene } from '@/services/RewardedAdService';
 import { KitchenManager } from '@/managers/KitchenManager';
@@ -98,6 +99,7 @@ export class DailyMenuPanel extends PIXI.Container {
     this._inspect = null;
     this._paintQueued = false;
     this._root.removeChildren();
+    TutorialOverlay.refresh();
   }
 
   private _warm(): void {

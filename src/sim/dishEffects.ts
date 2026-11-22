@@ -327,6 +327,27 @@ export const RECIPE_EAT: Record<RecipeId, DishEffectId> = {
   jade_garlic_tofu: 'sell_up_small',
   sauerkraut_fish: 'stamina_2',
   chopped_chili_fish: 'sell_up',
+
+  // 秘传抽谱扩充池：按稀有度与食材档次对齐
+  chive_egg: 'stamina_1',
+  cilantro_egg: 'bag_dry_1',
+  onion_egg: 'steps_1',
+  pepper_potato: 'sell_up_small',
+  onion_potato: 'cook_xp_small',
+  tomato_tofu: 'bag_wet_1',
+  radish_tofu: 'stamina_1',
+  sprout_chive: 'stall_leaf',
+  braised_eggplant: 'sell_up_small',
+  garlic_pumpkin: 'cook_xp_small',
+  home_tofu: 'fee_80',
+  garlic_clam: 'bag_wet_1',
+  mushroom_yam_soup: 'stamina_2',
+  shrimp_egg: 'luck_rare',
+  shrimp_tofu: 'order_soon',
+  braised_hairtail: 'stall_fish',
+  bamboo_chicken: 'cook_xp',
+  yellowfish_tofu: 'sell_up',
+  crab_tofu: 'cook_double',
 };
 
 {
@@ -863,4 +884,28 @@ export function applyEatEffects<T extends EatSaveSlice>(
         : `吃了${name}，${line}`,
     nudgeOffer: false,
   };
+}
+
+export function grantDirectOutingBuff<T extends { outingBuffs?: OutingBuff[]; outingBuff?: OutingBuff }>(
+  save: T,
+  kind: DishEffectId,
+  recipeId: RecipeId = 'stirfry',
+): T {
+  const put = upsertBuff(liveOutingBuffs(save), { kind, recipeId });
+  return { ...save, outingBuffs: put.list };
+}
+
+export function grantDirectKitchenBuff<T extends { kitchenBuffs?: KitchenBuff[]; kitchenBuff?: KitchenBuff }>(
+  save: T,
+  kind: DishEffectId,
+  recipeId: RecipeId = 'smashed_cucumber',
+  now = Date.now(),
+): T {
+  const until = kind === 'sell_up'
+    ? now + SELL_UP_MS
+    : kind === 'sell_up_small'
+      ? now + SELL_UP_SMALL_MS
+      : 0;
+  const put = upsertBuff(liveKitchenBuffs(save, now), { kind, recipeId, until });
+  return { ...save, kitchenBuffs: put.list };
 }

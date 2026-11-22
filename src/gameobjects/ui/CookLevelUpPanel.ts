@@ -7,6 +7,8 @@ import { OverlayManager } from '@/core/OverlayManager';
 import { EV } from '@/config/events';
 import { KitchenManager, type CookLevelUp } from '@/managers/KitchenManager';
 import {
+  CAT_UNLOCK_LEVEL,
+  PICKLE_UNLOCK_LEVEL,
   RARITY_STYLE,
   marketsUnlockedBetween,
   recipeById,
@@ -14,9 +16,10 @@ import {
   type Rarity,
   type RecipeDef,
 } from '@/sim';
-import { fillRect, makeLabel } from '@/utils/ui';
+import { P2_ART, drawCraftCard, fillRect, makeLabel, makeSlotBadge } from '@/utils/ui';
 import { dishTexture, fitSpriteInBox, gameTexture, isTextureReady, resolveDishAssetPath, whenTextureReady } from '@/utils/assets';
 import { ensureRecipeUnlockPanel } from './RecipeUnlockPanel';
+import { TutorialOverlay } from './TutorialOverlay';
 
 const BURST = 'subpkg_kitchen/ui_result_burst.png';
 const TITLE = 'subpkg_kitchen/ui_cook_level_title.png';
@@ -53,6 +56,7 @@ export class CookLevelUpPanel extends PIXI.Container {
     AudioManager.play('level_up');
     this.relayout();
     OverlayManager.bringToFront();
+    TutorialOverlay.refresh();
   }
 
   close(): void {
@@ -91,9 +95,10 @@ export class CookLevelUpPanel extends PIXI.Container {
 
     const recipes = data.recipes.map((id) => recipeById(id)).filter((r): r is NonNullable<typeof r> => !!r);
     const markets = marketsUnlockedBetween(data.from, data.to);
+    const features = this._featureUnlocks(data);
     const n = recipes.length;
     const cols = n <= 1 ? 1 : n === 2 ? 2 : 3;
-    const art = n <= 1 ? 240 : n <= 2 ? 200 : 168;
+    const art = n <= 1 ? (features.length ? 200 : 240) : n <= 2 ? 186 : 164;
     const gap = 22;
     const cardH = art + 52;
     const gridW = n ? cols * art + (cols - 1) * gap : 0;
@@ -121,15 +126,26 @@ export class CookLevelUpPanel extends PIXI.Container {
     const step = this._lvStep(data);
     step.root.position.set(-step.width / 2, y);
     stack.addChild(step.root);
-    y += step.height + 22;
+    y += step.height + 20;
 
-    const hasReward = n > 0 || markets.length > 0;
+    const hasReward = n > 0 || markets.length > 0 || features.length > 0;
     let head: PIXI.Container | null = null;
     if (hasReward) {
       head = this._rewardHead();
       head.position.set(0, y);
       stack.addChild(head);
       y += 34;
+    }
+
+    if (features.length) {
+      for (let i = 0; i < features.length; i++) {
+        const fCard = this._featureCard(features[i]);
+        fCard.position.set(0, y);
+        stack.addChild(fCard);
+        if (celebrate) this._pop(fCard, 0.14 + i * 0.08);
+        y += 108;
+      }
+      y += 6;
     }
 
     if (n) {
@@ -491,6 +507,63 @@ export class CookLevelUpPanel extends PIXI.Container {
     this._fx = [];
   }
 
+  private _featureUnlocks(data: CookLevelUp): Array<{ icon: string; badge: string; title: string; sub: string }> {
+    const out: Array<{ icon: string; badge: string; title: string; sub: string }> = [];
+    if (data.from < PICKLE_UNLOCK_LEVEL && data.to >= PICKLE_UNLOCK_LEVEL) {
+      out.push({
+        icon: P2_ART.pickleIdle,
+        badge: '新区域',
+        title: '老坛腌制坊开启',
+        sub: '厨房右滑窗边角 · 余菜入坛送私房大菜谱',
+      });
+    }
+    if (data.from < CAT_UNLOCK_LEVEL && data.to >= CAT_UNLOCK_LEVEL) {
+      out.push({
+        icon: P2_ART.catIdle,
+        badge: '新伙伴',
+        title: '橘猫阿橘闻香上门',
+        sub: '厨房右滑窗边角 · 免费收留每天寻宝带礼',
+      });
+    }
+    return out;
+  }
+
+  private _featureCard(info: { icon: string; badge: string; title: string; sub: string }): PIXI.Container {
+    const root = new PIXI.Container();
+    const cw = 486;
+    const ch = 96;
+    const bg = new PIXI.Graphics();
+    drawCraftCard(bg, -cw / 2, 0, cw, ch, { radius: 18, tone: 'gold' });
+    root.addChild(bg);
+
+    whenTextureReady(info.icon, () => {
+      if (this._isOpen) this.relayout();
+    });
+    const tex = gameTexture(info.icon);
+    if (isTextureReady(tex)) {
+      const spr = new PIXI.Sprite(tex);
+      fitSpriteInBox(spr, 76, 76);
+      spr.anchor.set(0.5);
+      spr.position.set(-cw / 2 + 54, ch / 2);
+      root.addChild(spr);
+    }
+
+    const b = makeSlotBadge(info.badge, 'lack', 14);
+    b.node.position.set(-cw / 2 + 102, 18);
+    root.addChild(b.node);
+
+    const t = makeLabel(info.title, 24, INK, { fontFamily: TITLE_FONT, fontWeight: '700' });
+    t.position.set(-cw / 2 + 102 + b.w + 8, 16);
+    root.addChild(t);
+
+    const s = makeLabel(info.sub, 16, 0x6A4A24, { fontWeight: '700' });
+    s.position.set(-cw / 2 + 102, 56);
+    root.addChild(s);
+
+    root.eventMode = 'none';
+    return root;
+  }
+
   private _advance(force = false): void {
     if (!force && Date.now() - this._openedAt < 520) return;
     KitchenManager.shiftCookLevelUp();
@@ -504,6 +577,7 @@ export class CookLevelUpPanel extends PIXI.Container {
     }
     this.close();
     ensureRecipeUnlockPanel().present();
+    TutorialOverlay.refresh();
   }
 }
 

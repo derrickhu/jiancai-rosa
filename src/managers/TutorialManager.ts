@@ -36,6 +36,7 @@ export enum TutorialStep {
 }
 
 export const TUTORIAL_GIFT_COINS = 30;
+export const TUTORIAL_GIFT_TICKETS = 2;
 
 export const TUTORIAL_SEQUENCE: TutorialStep[] = [
   TutorialStep.INTRO,
@@ -248,7 +249,7 @@ class TutorialManagerClass {
       return false;
     }
     this._gifted = true;
-    KitchenManager.claimTutorialGift(TUTORIAL_GIFT_COINS);
+    KitchenManager.claimTutorialGift(TUTORIAL_GIFT_COINS, TUTORIAL_GIFT_TICKETS);
     this.advanceTo(TutorialStep.HINT_DOOR);
     return true;
   }

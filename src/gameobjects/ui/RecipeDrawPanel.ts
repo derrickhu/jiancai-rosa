@@ -7,26 +7,28 @@ import { warmupAdScene } from '@/services/RewardedAdService';
 import { Ease, TweenManager } from '@/core/TweenManager';
 import { KitchenManager } from '@/managers/KitchenManager';
 import { ensureRecipeUnlockPanel } from '@/gameobjects/ui/RecipeUnlockPanel';
+import { TutorialOverlay } from '@/gameobjects/ui/TutorialOverlay';
 import {
   DAILY_AD_LIMITS,
   RECIPE_GACHA_COST,
   canUseDailyAd,
   dailyAdLeft,
   freshGachaRecipes,
+  gachaPityLeft,
   itemRarity,
   recipeUnlockView,
   type GachaDrawMode,
   type RecipeId,
 } from '@/sim';
-import { playRewardCollect } from '@/utils/coinCollect';
+import { kitchenGachaHudPos, playRewardCollect, playTicketCollect } from '@/utils/coinCollect';
 import { P0_ART, UI_KIT, fillRect, makeAdButton, makeCloseButton, makeLabel, makeRarityFlare, makeSlicedButton } from '@/utils/ui';
 import {
   fitSpriteInBox,
   gameTexture,
-  imgPath,
   isTextureFailed,
   isTextureReady,
   itemTexture,
+  resolveItemAssetPath,
   watchTextures,
   whenTextureReady,
 } from '@/utils/assets';
@@ -52,6 +54,9 @@ type DrawResult = {
   duplicate: boolean;
   gold: number;
   toast: string;
+  specialKind?: 'mastery_note' | 'outing_charm';
+  masteryRecipeId?: RecipeId;
+  bonusTickets?: number;
 };
 
 export class RecipeDrawPanel extends PIXI.Container {
@@ -97,6 +102,7 @@ export class RecipeDrawPanel extends PIXI.Container {
     this._root.removeChildren();
     this._box = null;
     if (pending) this._deliver(pending);
+    TutorialOverlay.refresh();
   }
 
   private _scheduleRelayout = (): void => {
@@ -173,8 +179,14 @@ export class RecipeDrawPanel extends PIXI.Container {
     closeBtn.position.set(boardW - 58, 44);
     shell.addChild(closeBtn);
 
+    const save = KitchenManager.save;
+    const tickets = save.recipeTickets;
+    const remainRecipes = freshGachaRecipes(recipeUnlockView(save)).length;
+    const isMasterChest = remainRecipes <= 0;
+    const pityLeft = gachaPityLeft(save);
+
     // Header Title on Wooden Plaque
-    const title = makeLabel('菜 谱 抽 箱', 34, INK, {
+    const title = makeLabel(isMasterChest ? '名 厨 秘 匣' : '菜 谱 抽 箱', 34, INK, {
       fontFamily: TITLE_FONT,
       fontWeight: '700',
       stroke: 0xFFF6E8,
@@ -184,16 +196,13 @@ export class RecipeDrawPanel extends PIXI.Container {
     title.position.set(boardW / 2, Math.round(boardH * 0.145));
     shell.addChild(title);
 
-    const save = KitchenManager.save;
-    const tickets = save.recipeTickets;
-    const remainRecipes = freshGachaRecipes(recipeUnlockView(save)).length;
-
     // Ticket Pill + Pool Info
     const subY = Math.round(boardH * 0.255);
-    const subText = remainRecipes > 0
-      ? `池内还有 ${remainRecipes} 本隐藏菜谱  ·  或出 3~5 份好食材`
-      : '秘传菜谱已抽齐  ·  必出 3~5 份稀有以上好食材';
-    const sub = makeLabel(subText, 18, MUTED, { fontWeight: '700' });
+    const pityTag = pityLeft <= 1 ? '本箱必出新菜谱！' : `再开${pityLeft}箱内必出新谱`;
+    const subText = !isMasterChest
+      ? `还剩 ${remainRecipes} 本秘传菜谱 · ${pityTag}`
+      : '秘传菜谱已集齐 · 必出火候心得 / 臻品陈酿 / 鸿运签';
+    const sub = makeLabel(subText, 18, !isMasterChest && pityLeft <= 1 ? 0xC46A3A : MUTED, { fontWeight: '700' });
     sub.anchor.set(0.5);
     sub.position.set(boardW / 2, subY);
     shell.addChild(sub);
@@ -398,7 +407,7 @@ export class RecipeDrawPanel extends PIXI.Container {
     const afterShake = (): void => {
       if (!this._playing) return;
       if (result.foodDefId) {
-        this._waitPath(imgPath(`${result.foodDefId}.png`), () => {
+        this._waitPath(resolveItemAssetPath(result.foodDefId), () => {
           if (!this._playing) return;
           this._spinItem(result.foodDefId!, result.foodQty ?? 1, () => {
             if (!this._playing) return;
@@ -409,7 +418,7 @@ export class RecipeDrawPanel extends PIXI.Container {
       }
       this._waitPath(PAPER, () => {
         if (!this._playing) return;
-        this._spinPaper(result.duplicate, () => {
+        this._spinPaper(result.duplicate && !result.specialKind, () => {
           if (!this._playing) return;
           this._finishDraw();
         });
@@ -603,8 +612,14 @@ export class RecipeDrawPanel extends PIXI.Container {
     const from = this._box
       ? { x: this._box.x, y: this._box.y - 60 }
       : { x: Game.designWidth / 2, y: Math.round(Game.logicHeight * 0.42) };
+    if (result.specialKind) {
+      if (result.toast) Platform.showToast(result.toast, 'success');
+      if (result.gold > 0) playRewardCollect({ gold: result.gold, from });
+      if ((result.bonusTickets ?? 0) > 0) playTicketCollect(from, kitchenGachaHudPos(), 0);
+      return;
+    }
     if (result.foodDefId) {
-      if (result.foodFolded && result.toast) Platform.showToast(result.toast, 'success');
+      if (result.toast) Platform.showToast(result.toast, 'success');
       playRewardCollect({
         gold: result.gold,
         foldGold: result.foldGold,

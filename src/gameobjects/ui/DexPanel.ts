@@ -2,6 +2,7 @@ import * as PIXI from 'pixi.js';
 import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
+import { TutorialOverlay } from '@/gameobjects/ui/TutorialOverlay';
 import { Platform } from '@/core/PlatformService';
 import { KitchenManager } from '@/managers/KitchenManager';
 import {
@@ -129,6 +130,7 @@ export class DexPanel extends PIXI.Container {
     this._inspect = null;
     this._dragging = false;
     this._bindWx(false);
+    TutorialOverlay.refresh();
   }
 
   relayout(): void {

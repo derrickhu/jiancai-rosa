@@ -30,6 +30,7 @@ export interface TutorialTarget {
   speechY?: number;
   title?: string;
   body?: string;
+  onDismiss?: () => void;
 }
 
 type ProviderResult = SpotlightRect | TutorialTarget | null;
@@ -89,9 +90,13 @@ class TutorialOverlayClass {
   private _root: PIXI.Container | null = null;
   private _layer = new PIXI.Container();
   private _providers = new Map<string, () => ProviderResult>();
+  private _contextualProviders = new Map<string, () => TutorialTarget | null>();
   private _introPage = 0;
   private _shownStep: TutorialStep | null = null;
+  private _shownContextKey = '';
   private _finger: PIXI.Container | null = null;
+  private _tapRipple: PIXI.Graphics | null = null;
+  private _tapDot: PIXI.Graphics | null = null;
   private _blankTap: (() => void) | null = null;
   private _onStep = (step: TutorialStep) => {
     if (step === TutorialStep.INTRO) this._introPage = 0;
@@ -114,7 +119,7 @@ class TutorialOverlayClass {
     EventBus.on(EV.tutorialStepChanged, this._onStep);
     EventBus.on(EV.tutorialCompleted, this._onCompleted);
     Game.onViewportChange(() => this.refresh());
-    OverlayManager.onBroughtToFront(() => this.ensureTop());
+    OverlayManager.onBroughtToFront(() => this.refresh());
     this.refresh();
   }
 
@@ -133,6 +138,16 @@ class TutorialOverlayClass {
     this._providers.delete(id);
   }
 
+  registerContextual(id: string, get: () => TutorialTarget | null): void {
+    this._contextualProviders.set(id, get);
+    this.refresh();
+  }
+
+  unregisterContextual(id: string): void {
+    this._contextualProviders.delete(id);
+    this.refresh();
+  }
+
   onBlankTap(fn: (() => void) | null): void {
     this._blankTap = fn;
   }
@@ -142,10 +157,18 @@ class TutorialOverlayClass {
     if (!this._root) return;
     this.ensureTop();
     if (!TutorialManager.isActive) {
-      this._clear();
-      this._root.visible = false;
+      const ctx = this._rawContextual();
+      if (!ctx) {
+        this._clear();
+        this._shownContextKey = '';
+        this._root.visible = false;
+        return;
+      }
+      this._root.visible = true;
+      this._drawContextual(ctx);
       return;
     }
+    this._shownContextKey = '';
     this._root.visible = true;
     const step = TutorialManager.currentStep;
     if (step === TutorialStep.INTRO) {
@@ -158,6 +181,48 @@ class TutorialOverlayClass {
       return;
     }
     this._drawGuide(step);
+  }
+
+  private _rawContextual(): TutorialTarget | null {
+    const ids = [...this._contextualProviders.keys()].reverse();
+    for (const id of ids) {
+      const raw = this._contextualProviders.get(id)?.() ?? null;
+      if (raw && (raw.title || raw.body || raw.fingerAt || (raw.holes && raw.holes.length))) {
+        return raw;
+      }
+    }
+    return null;
+  }
+
+  private _drawContextual(raw: TutorialTarget): void {
+    const key = `${raw.title ?? ''}|${raw.body ?? ''}`;
+    const fresh = this._shownContextKey !== key;
+    this._clear();
+    this._shownContextKey = key;
+    const w = Game.designWidth;
+    const holes = (raw.holes ?? []).filter((h) => h.w > 8 && h.h > 8);
+    const fingerAt = raw.fingerAt ?? (holes[0]
+      ? { x: holes[0].x + holes[0].w * 0.5, y: holes[0].y + holes[0].h * 0.5 }
+      : undefined);
+
+    for (const hole of holes) this._drawGlow(hole);
+    if (fingerAt) this._startFinger(fingerAt, holes[0]);
+
+    if (raw.title && raw.body) {
+      const bubbleY = this._bubbleY({ ...raw, dim: false, holes, fingerAt });
+      const speech = this._speech(raw.title, raw.body, w / 2, bubbleY, w - 56, true);
+      if (raw.onDismiss) {
+        speech.eventMode = 'static';
+        speech.cursor = 'pointer';
+        speech.on('pointertap', (e) => {
+          e.stopPropagation();
+          AudioManager.play('ui_click');
+          raw.onDismiss?.();
+        });
+      }
+      this._layer.addChild(speech);
+    }
+    if (fresh) AudioManager.play('tutorial_pop');
   }
 
   private _onCompleted = (): void => {
@@ -189,8 +254,8 @@ class TutorialOverlayClass {
     return null;
   }
 
-  private _normalize(step: TutorialStep): TutorialTarget {
-    const raw = this._rawTarget();
+  private _normalize(_step: TutorialStep, rawInput?: ProviderResult): TutorialTarget {
+    const raw = rawInput === undefined ? this._rawTarget() : rawInput;
     const dim = TutorialManager.usesMask();
     if (!raw) return { dim };
     if (isSpotlightRect(raw)) {
@@ -262,11 +327,17 @@ class TutorialOverlayClass {
   }
 
   private _drawGuide(step: TutorialStep): void {
+    const raw = this._rawTarget();
+    if (!raw && (step === TutorialStep.FREE_WALK || step === TutorialStep.HINT_DOOR)) {
+      this._clear();
+      if (this._root) this._root.visible = false;
+      return;
+    }
     const fresh = this._shownStep !== step;
     this._clear();
     this._shownStep = step;
     const w = Game.designWidth;
-    const target = this._normalize(step);
+    const target = this._normalize(step, raw);
     const holes = target.holes ?? [];
     const copy = (target.title && target.body)
       ? { title: target.title, body: target.body }
@@ -278,9 +349,7 @@ class TutorialOverlayClass {
       }
     }
 
-    if (target.dim) {
-      for (const hole of holes) this._drawGlow(hole);
-    }
+    for (const hole of holes) this._drawGlow(hole);
 
     if (TutorialManager.tapHoleAdvances()) {
       for (const hole of holes) this._holeCatcher(hole, step);
@@ -293,7 +362,7 @@ class TutorialOverlayClass {
     }
 
     if (target.fingerAt && step !== TutorialStep.WAIT_RESULT) {
-      this._startFinger(target.fingerAt);
+      this._startFinger(target.fingerAt, holes[0]);
     }
 
     if (step === TutorialStep.WAIT_RESULT) {
@@ -414,31 +483,150 @@ class TutorialOverlayClass {
     pulse();
   }
 
-  private _startFinger(at: { x: number; y: number }): void {
-    const finger = this._makeFinger();
-    const flip = at.x + 120 > Game.designWidth - 16;
-    const x = flip ? at.x - 8 : at.x + 40;
-    const y = at.y;
-    finger.scale.x = flip ? -1 : 1;
-    finger.position.set(x, y);
+  private _resolveFingerPose(
+    at: { x: number; y: number },
+    hole?: SpotlightRect,
+  ): { x: number; y: number; size: number; flipX: boolean; rotation: number } {
+    const w = Game.designWidth;
+    const h = Game.logicHeight;
+    const isLargeProp = !!hole && hole.h > 136;
+    const size = isLargeProp ? 122 : 108;
+    const reachX = Math.round(size * 0.74);
+    const reachY = Math.round(size * 0.86);
+    let tipX = at.x;
+    let tipY = at.y;
+
+    if (hole) {
+      // 按钮 / 胶囊 / 图标（高度 <= 136）：指尖轻触下沿边框，整个 Q 版小手垂在框外留白处，绝不压字
+      if (!isLargeProp) {
+        tipY = hole.y + hole.h - 4;
+        const preferX = hole.x + hole.w * (hole.w > 180 ? 0.68 : 0.60);
+        tipX = preferX + reachX <= w - 8
+          ? preferX
+          : hole.x + hole.w * (hole.w > 180 ? 0.34 : 0.40);
+      } else {
+        // 大区域（菜摊遮挡堆、木门、冰箱、背篓分区）：停在正中偏右，避开底部文字条
+        tipY = hole.y + hole.h * 0.50;
+        const preferX = hole.x + hole.w * 0.54;
+        tipX = preferX + reachX <= w - 8 ? preferX : hole.x + hole.w * 0.42;
+      }
+    }
+
+    const flipX = tipX + reachX > w - 8;
+    let rotation = 0;
+    if (tipY + reachY > h - 8) {
+      if (hole) {
+        tipX = flipX ? hole.x + 8 : hole.x + hole.w - 8;
+        tipY = Math.min(hole.y + hole.h * 0.58, h - reachY - 6);
+      } else {
+        tipY = h - reachY - 6;
+      }
+      rotation = flipX ? 0.32 : -0.32;
+    }
+
+    return { x: tipX, y: tipY, size, flipX, rotation };
+  }
+
+  private _startFinger(at: { x: number; y: number }, hole?: SpotlightRect): void {
+    const pose = this._resolveFingerPose(at, hole);
+
+    const ripple = new PIXI.Graphics();
+    ripple.lineStyle(5.5, INK, 0.45);
+    ripple.drawCircle(0, 0, 18);
+    ripple.lineStyle(3.5, 0xFFE26A, 1);
+    ripple.beginFill(0xFFF8DC, 0.24);
+    ripple.drawCircle(0, 0, 18);
+    ripple.endFill();
+    ripple.position.set(pose.x, pose.y);
+    ripple.eventMode = 'none';
+    this._layer.addChild(ripple);
+    this._tapRipple = ripple;
+
+    const dot = new PIXI.Graphics();
+    dot.lineStyle(2.8, INK, 0.9);
+    dot.beginFill(0xFFD447, 0.96);
+    dot.drawCircle(0, 0, 9.5);
+    dot.endFill();
+    dot.lineStyle(0);
+    dot.beginFill(0xFFFDF6, 0.95);
+    dot.drawCircle(0, 0, 4.5);
+    dot.endFill();
+    dot.position.set(pose.x, pose.y);
+    dot.eventMode = 'none';
+    this._layer.addChild(dot);
+    this._tapDot = dot;
+
+    const finger = this._makeFinger(pose.size);
+    const baseSignX = pose.flipX ? -1 : 1;
+    const restDx = pose.flipX ? -16 : 16;
+    const restDy = 16;
+    const restX = pose.x + restDx;
+    const restY = pose.y + restDy;
+    finger.scale.set(baseSignX * 1.04, 1.04);
+    finger.rotation = pose.rotation;
+    finger.position.set(restX, restY);
     finger.eventMode = 'none';
     this._layer.addChild(finger);
     this._finger = finger;
-    const toward = flip ? -14 : 14;
+
     const bounce = (): void => {
       if (!this._finger || this._finger.destroyed) return;
+      if (this._tapRipple && !this._tapRipple.destroyed) {
+        this._tapRipple.scale.set(0.6);
+        this._tapRipple.alpha = 0.15;
+      }
+      if (this._tapDot && !this._tapDot.destroyed) {
+        this._tapDot.scale.set(0.85);
+      }
       TweenManager.to({
         target: this._finger,
-        props: { x: x + toward },
+        props: { x: pose.x, y: pose.y },
         duration: 0.36,
-        ease: Ease.easeInOutQuad,
+        ease: Ease.easeInQuad,
+      });
+      TweenManager.to({
+        target: this._finger.scale,
+        props: { x: baseSignX * 0.93, y: 0.93 },
+        duration: 0.36,
+        ease: Ease.easeInQuad,
         onComplete: () => {
           if (!this._finger || this._finger.destroyed) return;
+          if (this._tapDot && !this._tapDot.destroyed) {
+            this._tapDot.scale.set(1.22);
+            TweenManager.to({
+              target: this._tapDot.scale,
+              props: { x: 0.85, y: 0.85 },
+              duration: 0.44,
+              ease: Ease.easeOutQuad,
+            });
+          }
+          if (this._tapRipple && !this._tapRipple.destroyed) {
+            this._tapRipple.scale.set(0.7);
+            this._tapRipple.alpha = 0.95;
+            TweenManager.to({
+              target: this._tapRipple.scale,
+              props: { x: 1.9, y: 1.9 },
+              duration: 0.48,
+              ease: Ease.easeOutQuad,
+            });
+            TweenManager.to({
+              target: this._tapRipple,
+              props: { alpha: 0 },
+              duration: 0.48,
+              ease: Ease.easeOutQuad,
+            });
+          }
           TweenManager.to({
             target: this._finger,
-            props: { x },
-            duration: 0.36,
-            ease: Ease.easeInOutQuad,
+            props: { x: restX, y: restY },
+            duration: 0.44,
+            ease: Ease.easeOutQuad,
+          });
+          TweenManager.to({
+            target: this._finger.scale,
+            props: { x: baseSignX * 1.04, y: 1.04 },
+            duration: 0.44,
+            ease: Ease.easeOutQuad,
             onComplete: bounce,
           });
         },
@@ -450,31 +638,44 @@ class TutorialOverlayClass {
   private _stopFinger(): void {
     if (this._finger) {
       TweenManager.cancelTarget(this._finger);
+      TweenManager.cancelTarget(this._finger.scale);
       this._finger = null;
+    }
+    if (this._tapRipple) {
+      TweenManager.cancelTarget(this._tapRipple);
+      TweenManager.cancelTarget(this._tapRipple.scale);
+      this._tapRipple = null;
+    }
+    if (this._tapDot) {
+      TweenManager.cancelTarget(this._tapDot);
+      TweenManager.cancelTarget(this._tapDot.scale);
+      this._tapDot = null;
     }
   }
 
-  private _makeFinger(): PIXI.Container {
+  private _makeFinger(size: number): PIXI.Container {
     const root = new PIXI.Container();
     whenTextureReady(TUTORIAL_ASSETS.hand, () => {
-      if (TutorialManager.isActive && this._shownStep && this._shownStep !== TutorialStep.INTRO) {
+      if (
+        (TutorialManager.isActive && this._shownStep && this._shownStep !== TutorialStep.INTRO)
+        || !!this._shownContextKey
+      ) {
         this.refresh();
       }
     });
     const tex = gameTexture(TUTORIAL_ASSETS.hand);
     if (isTextureReady(tex)) {
       const sp = new PIXI.Sprite(tex);
-      sp.anchor.set(0.08, 0.38);
-      sp.width = 96;
-      sp.height = 96;
+      sp.anchor.set(0.24, 0.12);
+      sp.width = size;
+      sp.height = size;
       root.addChild(sp);
       return root;
     }
     const g = new PIXI.Graphics();
     g.lineStyle(3, INK, 1);
-    g.beginFill(0xF2C7A4);
-    g.drawRoundedRect(8, -16, 46, 28, 10);
-    g.drawRoundedRect(-36, -10, 52, 18, 9);
+    g.beginFill(0xFFF3DC);
+    g.drawCircle(12, 16, 16);
     g.endFill();
     root.addChild(g);
     return root;
@@ -560,7 +761,7 @@ class TutorialOverlayClass {
   private _cabbage(size: number): PIXI.Container {
     const root = new PIXI.Container();
     whenTextureReady(TUTORIAL_ASSETS.cabbage, () => {
-      if (TutorialManager.isActive) this.refresh();
+      if (TutorialManager.isActive || !!this._shownContextKey) this.refresh();
     });
     const tex = gameTexture(TUTORIAL_ASSETS.cabbage);
     root.eventMode = 'none';
@@ -586,13 +787,16 @@ class TutorialOverlayClass {
     const h = Game.logicHeight;
     const top = Game.safeTop + 16;
     const bottom = h - Math.max(28, Game.safeBottom + 20) - 150;
+    const rect = target.holes?.[0] ?? null;
     if (target.speechY != null) return target.speechY;
     if (target.speech === 'top') return top;
-    if (target.speech === 'bottom') return bottom;
-    const rect = target.holes?.[0] ?? null;
+    if (target.speech === 'bottom') {
+      if (rect && rect.y + rect.h + 98 > bottom && rect.y > top + 180) return top;
+      return bottom;
+    }
     if (!rect || !target.dim) return bottom;
     const above = rect.y - 28 - 130;
-    const below = rect.y + rect.h + 18;
+    const below = rect.y + rect.h + 104;
     if (below < bottom) return below;
     if (above > top) return above;
     return top;

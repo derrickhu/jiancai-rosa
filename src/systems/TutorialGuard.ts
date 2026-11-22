@@ -51,7 +51,7 @@ const ALLOWED: Partial<Record<TutorialStep, TutorialAction[]>> = {
   [TutorialStep.PICK_XIANGKO]: ['departXiangko', 'door'],
   [TutorialStep.CLICK_CARD]: ['walkCard'],
   [TutorialStep.CLICK_PILE]: ['drawPile'],
-  [TutorialStep.TAKE_LOOT]: ['takeLoot'],
+  [TutorialStep.TAKE_LOOT]: ['takeLoot', 'drawPile'],
   [TutorialStep.OPEN_BASKET]: ['openBasket'],
   [TutorialStep.BASKET_DRY]: [],
   [TutorialStep.BASKET_WET]: [],

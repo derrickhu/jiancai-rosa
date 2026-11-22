@@ -315,15 +315,47 @@ function ensureCleanCaitai(pile: PileItem[], count: number): PileItem[] {
   return [...front, ...next];
 }
 
-/** 教学局：脚下第一排保底有翻摊且至少两棵干净菜苔，下一排翻摊也保底有一棵菜苔。 */
+/** 教学局：第一摊定制紧凑 3 件教学堆（干货菜苔 + 演示烂菜 + 湿货小白菜），下一排节点全部免单零门槛。 */
 export function seedTutorialOuting(state: RunState): string {
   const nodeId = ensureTutorialFrontRummage(state);
-  state.piles[nodeId] = ensureCleanCaitai(state.piles[nodeId] ?? [], 2);
+  state.piles[nodeId] = [
+    {
+      uid: nextUid('p'),
+      defId: 'caitai',
+      quality: 'fresh',
+      revealed: false,
+      inspected: false,
+      washed: false,
+      drawn: false,
+    },
+    {
+      uid: nextUid('p'),
+      defId: 'bokchoy',
+      quality: 'rotten',
+      revealed: false,
+      inspected: false,
+      washed: false,
+      drawn: false,
+    },
+    {
+      uid: nextUid('p'),
+      defId: 'bokchoy',
+      quality: 'fresh',
+      revealed: false,
+      inspected: false,
+      washed: false,
+      drawn: false,
+    },
+  ];
+  state.freePass = true;
   const nextIds = state.map.nodes[nodeId]?.next ?? [];
   for (const nid of nextIds) {
     const node = state.map.nodes[nid];
-    if (node && isRummageNode(node)) {
-      state.piles[nid] = ensureCleanCaitai(state.piles[nid] ?? [], 1);
+    if (!node) continue;
+    node.fee = 0;
+    node.cookNeed = 0;
+    if (isRummageNode(node)) {
+      state.piles[nid] = ensureCleanCaitai(state.piles[nid] ?? [], 1).slice(0, 4);
     }
   }
   return nodeId;

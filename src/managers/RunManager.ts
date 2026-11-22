@@ -899,6 +899,16 @@ class RunManagerClass {
     return 'placed';
   }
 
+  /** 点击桌面上的烂菜随手拨到一边，清理桌面不占篮。 */
+  discardRotten(uid: string): boolean {
+    if (!this.run) return false;
+    const item = this.findPile(uid);
+    if (!item || item.quality !== 'rotten' || item.washed) return false;
+    this.patchPile(uid, { washed: true });
+    this.emit();
+    return true;
+  }
+
   tryManualPlace(item: BasketItem): string | null {
     const result = place(this.basket, item);
     if (!result.ok) return result.reason;

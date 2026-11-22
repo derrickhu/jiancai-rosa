@@ -22,7 +22,11 @@ export type RecipeId =
   | 'pineapple_pork' | 'mango_shrimp' | 'loofah_soup' | 'braised_lamb' | 'lychee_ribs' | 'papaya_fish'
   | 'orange_wings' | 'coconut_chicken'
   | 'hawthorn_ribs' | 'pear_shrimp' | 'dragon_beef' | 'lemon_bass' | 'squid_stir' | 'pea_shrimp' | 'garlic_okra'
-  | 'crispy_cucumber_egg' | 'jade_garlic_tofu' | 'sauerkraut_fish' | 'chopped_chili_fish';
+  | 'crispy_cucumber_egg' | 'jade_garlic_tofu' | 'sauerkraut_fish' | 'chopped_chili_fish'
+  | 'chive_egg' | 'cilantro_egg' | 'onion_egg' | 'pepper_potato' | 'onion_potato'
+  | 'tomato_tofu' | 'radish_tofu' | 'sprout_chive' | 'braised_eggplant' | 'garlic_pumpkin'
+  | 'home_tofu' | 'garlic_clam' | 'mushroom_yam_soup' | 'shrimp_egg' | 'shrimp_tofu'
+  | 'braised_hairtail' | 'bamboo_chicken' | 'yellowfish_tofu' | 'crab_tofu';
 
 export interface RecipeFood {
   uid?: string;
@@ -89,8 +93,6 @@ export const RECIPE_ID_ALIASES: Record<string, RecipeId> = {
   egg_tofu_soup: 'spinach_ham',
   spinach_egg_soup: 'spinach_ham',
   ham_melon_soup: 'melon_cup',
-  braised_eggplant: 'garlic_bokchoy',
-  onion_egg: 'onion_wood_ear',
   pan_smallfish: 'mixed_fish_pot',
 };
 
@@ -243,6 +245,27 @@ export const RECIPES: RecipeDef[] = [
   dish('jade_garlic_tofu', '翡翠蒜烧豆腐', '家常', 'epic', '焦黄豆腐吸饱浓汁，顶上几瓣翡翠蒜酸甜解腻。', ['pickled_garlic', 'tofu', 'tofu']),
   dish('sauerkraut_fish', '老坛酸菜鱼', '水产', 'epic', '金汤滚白鱼，老坛酸菜把小杂鱼捧成了镇店大菜。', ['pickled_greens', 'smallfish', 'smallfish']),
   dish('chopped_chili_fish', '剁椒蒸鲜鱼', '水产', 'legendary', '红亮剁椒盖满整条鲜鱼，热油一泼，白米饭自己往碗里跑。', ['pickled_chili', 'crucian', 'tofu']),
+
+  // ── 秘传抽谱池：分档家常 / 河海 / 镇席名菜 ────────────────────
+  dish('chive_egg', '韭菜炒蛋', '家常', 'common', '头刀春韭切碎撞进蛋液，锅边一圈焦香最下饭。', ['chive', 'egg', 'egg']),
+  dish('cilantro_egg', '香菜炒蛋', '家常', 'common', '爱它的人连汤汁都不剩，金黄里裹着满屋清香。', ['cilantro', 'egg', 'egg']),
+  dish('onion_egg', '洋葱炒蛋', '家常', 'common', '紫皮洋葱煸出甜水，蛋花蓬松兜住甜香。', ['onion', 'egg', 'egg']),
+  dish('pepper_potato', '青椒土豆丝', '家常', 'common', '青椒断生、土豆丝脆爽，大火快颠十秒出锅。', ['pepper', 'potato', 'potato']),
+  dish('onion_potato', '洋葱炒土豆', '家常', 'common', '土豆片煎出金边，洋葱丝把焦香全裹在盘底。', ['onion', 'potato', 'potato']),
+  dish('tomato_tofu', '番茄烧豆腐', '家常', 'common', '红沙番茄熬出浓汁，白豆腐咕嘟咕嘟吸饱酸甜。', ['tomato', 'tofu', 'tofu']),
+  dish('radish_tofu', '萝卜炖豆腐', '汤', 'common', '白萝卜清甜配嫩豆腐，热乎乎一碗顺气暖胃。', ['radish', 'tofu']),
+  dish('sprout_chive', '韭菜炒豆芽', '家常', 'common', '银芽配绿韭，旺火一兜脆生生端上桌。', ['sprout', 'chive']),
+  dish('braised_eggplant', '蒜香烧茄子', '家常', 'rare', '紫茄滚刀吸满浓油赤酱，出锅前撒一把生蒜末。', ['eggplant', 'eggplant', 'garlic']),
+  dish('garlic_pumpkin', '蒜香南瓜', '家常', 'rare', '粉糯老南瓜焖出金沙边，蒜香裹着回甜。', ['pumpkin', 'garlic']),
+  dish('home_tofu', '家常烧豆腐', '家常', 'rare', '两面煎黄的老豆腐配木耳青椒，芡汁亮晶晶挂满。', ['tofu', 'pepper', 'wood_ear']),
+  dish('garlic_clam', '蒜蓉花蛤', '水产', 'rare', '金银蒜末铺底猛火焗开，壳一张嘴鲜汁四溢。', ['clam', 'clam', 'garlic']),
+  dish('mushroom_yam_soup', '香菇山药汤', '汤', 'rare', '鲜菇吊出醇汤，铁棍山药炖到绵软起沙。', ['mushroom', 'yam']),
+  dish('shrimp_egg', '虾仁滑蛋', '水产', 'rare', '粉红大虾仁卧在半凝固的滑嫩蛋浪里。', ['shrimp', 'egg', 'egg']),
+  dish('shrimp_tofu', '虾仁蒸豆腐', '水产', 'rare', '玉白豆腐托着鲜弹虾仁，淋一勺豉油鲜掉眉毛。', ['shrimp', 'tofu']),
+  dish('braised_hairtail', '红烧带鱼', '水产', 'epic', '宽油煎定银鳞，葱姜浓汁慢收，连鱼骨都酥香。', ['hairtail', 'ginger', 'scallion']),
+  dish('bamboo_chicken', '春笋炖鸡', '荤', 'epic', '雨后嫩春笋吸尽鸡汤金油，山野鲜气扑面而来。', ['bamboo_shoot', 'chicken_leg']),
+  dish('yellowfish_tofu', '黄鱼炖豆腐', '水产', 'epic', '金鳞黄鱼慢煨成奶白浓汤，千滚豆腐嫩如凝脂。', ['yellowfish', 'tofu']),
+  dish('crab_tofu', '蟹黄豆腐', '水产', 'legendary', '澄黄蟹膏熬化进热油，每一块嫩豆腐都裹着金沙。', ['crab', 'tofu', 'tofu']),
 ];
 
 /** 两道菜去重后的食材种类不能撞车，份数不同也算重复。 */
@@ -302,6 +325,25 @@ export const HIDDEN_RECIPE_IDS: ReadonlySet<RecipeId> = new Set([
   'wild_fish_soup',
   'hawthorn_ribs',
   'squid_stir',
+  'chive_egg',
+  'cilantro_egg',
+  'onion_egg',
+  'pepper_potato',
+  'onion_potato',
+  'tomato_tofu',
+  'radish_tofu',
+  'sprout_chive',
+  'braised_eggplant',
+  'garlic_pumpkin',
+  'home_tofu',
+  'garlic_clam',
+  'mushroom_yam_soup',
+  'shrimp_egg',
+  'shrimp_tofu',
+  'braised_hairtail',
+  'bamboo_chicken',
+  'yellowfish_tofu',
+  'crab_tofu',
   ...PICKLE_RECIPE_IDS,
 ]);
 
