@@ -6,6 +6,61 @@ import { buffIconPath, type HudBuff } from '@/sim/dishEffects';
 import { fitSpriteInBox, gameTexture, isTextureReady, itemTexture, resolveItemAssetPath, whenTextureReady } from './assets';
 
 export const FONT = 'PingFang SC, Hiragino Sans GB, sans-serif';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 字号体系（设计宽 750，1 设计像素 ≈ 手机 0.5pt）。新代码一律走 makeText，不要再写死 14–20 的小字。
+// ═══════════════════════════════════════════════════════════════════════════
+export const TYPE = {
+  /** 面板标题丝带、结算大字 */
+  display: 46,
+  /** 卡片标题、物品名 */
+  title: 34,
+  /** 分区标题、按钮主文字 */
+  heading: 30,
+  /** 正文、说明 */
+  body: 26,
+  /** 辅助信息、时长（最小可用字号） */
+  caption: 22,
+  /** 数量角标、价格 */
+  number: 24,
+} as const;
+
+export type TextRole = keyof typeof TYPE;
+
+/**
+ * 统一文字预设：全部用系统黑体（玩家最熟悉、最好认），靠字号和字重拉开层级。
+ * 传 stroke 时自动加圆角描边，用在压图的字上。
+ */
+export function makeText(
+  role: TextRole,
+  text: string,
+  color: number = UI_PALETTE.ink,
+  opts: Partial<PIXI.ITextStyle> & { size?: number; stroke?: number; strokeWidth?: number } = {},
+): PIXI.Text {
+  const { size, stroke, strokeWidth, ...rest } = opts;
+  const heavy = role === 'display' || role === 'title' || role === 'heading' || role === 'number';
+  const style: Partial<PIXI.ITextStyle> = {
+    fontFamily: FONT,
+    fontSize: size ?? TYPE[role],
+    fill: color,
+    fontWeight: heavy ? '700' : (role === 'body' ? '600' : '500'),
+    lineJoin: 'round',
+    padding: 4,
+  };
+  if (stroke !== undefined) {
+    style.stroke = stroke;
+    style.strokeThickness = strokeWidth ?? Math.max(2, Math.round((size ?? TYPE[role]) * 0.12));
+  }
+  const t = new PIXI.Text(text, { ...style, ...rest });
+  t.eventMode = 'none';
+  return t;
+}
+
+/** 文字超宽时等比缩小到 maxW 以内（不换行的短标签用）。 */
+export function fitTextWidth(t: PIXI.Text, maxW: number): PIXI.Text {
+  if (t.width > maxW && maxW > 0) t.scale.set(maxW / t.width);
+  return t;
+}
 export const SERIF_FONT = 'Songti SC, STSong, PingFang SC, serif';
 
 /** 全游戏统一手作木艺 × 暖米宣纸配色板。 */
@@ -755,9 +810,10 @@ export function makeSlicedButton(opts: {
       : 0xFFF8F0;
   const finalCol = opts.textColor ?? defaultTextCol;
   const lightText = finalCol >= 0xD00000;
-  const fSize = opts.fontSize ?? Math.min(24, Math.max(17, Math.round(height * 0.43)));
+  const fSize = opts.fontSize ?? Math.min(30, Math.max(22, Math.round(height * 0.46)));
   const text = makeLabel(opts.label, fSize, finalCol, {
     fontWeight: '700',
+    padding: 4,
     ...(lightText
       ? {
         stroke: skin === 'olive' ? 0x1F3D1B : skin === 'gold' ? 0x5A350C : UI_PALETTE.ink,
@@ -785,6 +841,93 @@ export function makeSlicedButton(opts: {
   (root as any)._label = text;
   (root as any)._face = face;
   return root;
+}
+
+/** 带金币图标的价格按钮（不再写「金」字，统一用 `[前缀] [金币图标] [数字]` 居中排版）。 */
+export function makeCoinButton(opts: {
+  prefix?: string;
+  price: number | string;
+  width: number;
+  height?: number;
+  skin?: keyof typeof UI_BTN;
+  path?: string;
+  textColor?: number;
+  fontSize?: number;
+  iconSize?: number;
+  onReady?: () => void;
+  silent?: boolean;
+}): PIXI.Container {
+  const height = opts.height ?? 48;
+  const skin = opts.skin ?? 'gold';
+  const btn = makeSlicedButton({
+    label: '',
+    width: opts.width,
+    height,
+    skin,
+    path: opts.path,
+    textColor: opts.textColor,
+    fontSize: opts.fontSize,
+    onReady: opts.onReady,
+    silent: opts.silent,
+  });
+  const face: PIXI.Container = (btn as any)._face ?? btn;
+  const defaultTextCol = skin === 'cream' ? 0x4A3420 : skin === 'gold' ? 0x3A220E : 0xFFF8F0;
+  const finalCol = opts.textColor ?? defaultTextCol;
+  const lightText = finalCol >= 0xD00000;
+  const fSize = opts.fontSize ?? Math.min(30, Math.max(22, Math.round(height * 0.46)));
+  const textStyle: Partial<PIXI.ITextStyle> = {
+    fontWeight: '700',
+    padding: 4,
+    ...(lightText
+      ? { stroke: skin === 'olive' ? 0x1F3D1B : skin === 'gold' ? 0x5A350C : UI_PALETTE.ink, strokeThickness: 3, lineJoin: 'round' }
+      : skin === 'gold'
+        ? { stroke: 0xFFF3CE, strokeThickness: 2.5, lineJoin: 'round' }
+        : {}),
+  };
+
+  const iconSize = opts.iconSize ?? Math.round(fSize * 1.15);
+  const gap = 6;
+  const parts = new PIXI.Container();
+  parts.eventMode = 'none';
+  let x = 0;
+
+  if (opts.prefix) {
+    const pre = makeLabel(opts.prefix, fSize, finalCol, textStyle);
+    pre.anchor.set(0, 0.5);
+    pre.position.set(x, 0);
+    parts.addChild(pre);
+    x += pre.width + gap;
+  }
+
+  whenTextureReady(HUD_ICON.coin, () => opts.onReady?.());
+  const cTex = gameTexture(HUD_ICON.coin);
+  if (isTextureReady(cTex)) {
+    const sp = new PIXI.Sprite(cTex);
+    fitSpriteInBox(sp, iconSize, iconSize);
+    sp.anchor.set(0.5);
+    sp.position.set(x + iconSize / 2, 0);
+    parts.addChild(sp);
+    x += iconSize + 4;
+  } else {
+    const fallback = makeLabel('🪙', fSize, finalCol, textStyle);
+    fallback.anchor.set(0, 0.5);
+    fallback.position.set(x, 0);
+    parts.addChild(fallback);
+    x += fallback.width + 4;
+  }
+
+  const num = makeLabel(`${opts.price}`, fSize, finalCol, textStyle);
+  num.anchor.set(0, 0.5);
+  num.position.set(x, 0);
+  parts.addChild(num);
+  const totalW = x + num.width;
+
+  const maxW = Math.max(36, opts.width - 24);
+  if (totalW > maxW) parts.scale.set(maxW / totalW);
+  const scaledW = totalW * parts.scale.x;
+  parts.position.set(Math.round((opts.width - scaledW) / 2), Math.round(height / 2 - 1));
+  face.addChild(parts);
+  return btn;
 }
 
 /** 顶栏动作钮：立体圆胶囊 + 描边，和厨房奶油条同一套线。 */
@@ -950,9 +1093,10 @@ export function makeHeaderRibbon(opts: {
     root.addChild(fb);
   }
 
-  const titleTxt = makeLabel(opts.title, opts.fontSize ?? Math.min(31, Math.round(height * 0.46)), 0xFFF8EC, {
+  const titleTxt = makeLabel(opts.title, opts.fontSize ?? Math.min(38, Math.round(height * 0.52)), 0xFFF8EC, {
     fontFamily: SERIF_FONT,
     fontWeight: '700',
+    padding: 6,
     stroke: 0x261509,
     strokeThickness: 5,
     lineJoin: 'round',
@@ -2125,4 +2269,94 @@ export function makeMasterySpoonRow(opts: {
     root.addChild(slot);
   });
   return root;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 手绘进度条（subpkg_kitchen/ui_kit_bar_*.png，九宫格拉伸；未加载时退回代码绘制）
+// ═══════════════════════════════════════════════════════════════════════════
+const BAR_SLICE = {
+  barTrough: { path: 'subpkg_kitchen/ui_kit_bar_trough.png', l: 42, t: 36, r: 42, b: 38 },
+  barFill: { path: 'subpkg_kitchen/ui_kit_bar_fill.png', l: 42, t: 36, r: 42, b: 38 },
+} as const;
+
+export function uiBarPaths(): string[] {
+  return Object.values(BAR_SLICE).map((s) => s.path);
+}
+
+function makeBarSlice(kind: keyof typeof BAR_SLICE, w: number, h: number, onReady?: () => void): PIXI.Container {
+  const spec = BAR_SLICE[kind];
+  const root = new PIXI.Container();
+  root.eventMode = 'none';
+  whenTextureReady(spec.path, () => onReady?.());
+  const tex = gameTexture(spec.path);
+  if (isTextureReady(tex)) {
+    const s = Math.max(0.05, Math.min(h / (spec.t + spec.b), w / (spec.l + spec.r)));
+    const plane = new PIXI.NineSlicePlane(tex, spec.l, spec.t, spec.r, spec.b);
+    plane.width = Math.max(spec.l + spec.r, w / s);
+    plane.height = Math.max(spec.t + spec.b, h / s);
+    plane.scale.set(s);
+    root.addChild(plane);
+  } else {
+    const g = new PIXI.Graphics();
+    g.lineStyle(2, UI_PALETTE.ink, 1);
+    g.beginFill(kind === 'barFill' ? 0xE3A033 : 0xE2D2B8, 1);
+    g.drawRoundedRect(0, 0, w, h, h / 2);
+    g.endFill();
+    root.addChild(g);
+  }
+  return root;
+}
+
+/** 手绘进度条：槽 + 蜂蜜填充。返回 setRatio 以便计时器刷新。 */
+export function makeHandProgressBar(opts: {
+  width: number;
+  height: number;
+  ratio: number;
+  onReady?: () => void;
+}): { node: PIXI.Container; setRatio: (r: number) => void } {
+  const node = new PIXI.Container();
+  node.eventMode = 'none';
+  node.addChild(makeBarSlice('barTrough', opts.width, opts.height, opts.onReady));
+  const fillHolder = new PIXI.Container();
+  node.addChild(fillHolder);
+  const inset = Math.max(2, Math.round(opts.height * 0.18));
+  const fh = opts.height - inset * 2;
+  const setRatio = (r: number): void => {
+    fillHolder.removeChildren();
+    const ratio = Math.min(1, Math.max(0, r));
+    const fw = Math.max(fh * 1.2, Math.round((opts.width - inset * 2) * ratio));
+    const fill = makeBarSlice('barFill', fw, fh);
+    fill.position.set(inset, inset);
+    fillHolder.addChild(fill);
+  };
+  setRatio(opts.ratio);
+  return { node, setRatio };
+}
+
+/** 统一数量/状态小角标：标题字体数字 + 圆角胶囊底。tone: ok 绿 / lack 红 / gold 金 / dark 深棕。 */
+export function makeKitBadge(
+  text: string,
+  tone: 'ok' | 'lack' | 'gold' | 'dark' = 'dark',
+  size: number = TYPE.number,
+): { node: PIXI.Container; w: number; h: number } {
+  const fills = { ok: 0x5E8E4E, lack: 0xC9533A, gold: 0xE7B243, dark: 0x5A3A22 };
+  const textCol = tone === 'gold' ? UI_PALETTE.ink : 0xFFF8EC;
+  const t = makeText('number', text, textCol, { size });
+  const h = Math.round(size * 1.36);
+  const w = Math.max(h, Math.ceil(t.width) + Math.round(size * 0.8));
+  const node = new PIXI.Container();
+  node.eventMode = 'none';
+  const g = new PIXI.Graphics();
+  g.lineStyle(2.4, UI_PALETTE.ink, 1);
+  g.beginFill(fills[tone], 1);
+  g.drawRoundedRect(0, 0, w, h, h / 2);
+  g.endFill();
+  g.lineStyle(0);
+  g.beginFill(0xFFFFFF, 0.22);
+  g.drawRoundedRect(4, 3, w - 8, h * 0.32, h * 0.16);
+  g.endFill();
+  t.anchor.set(0.5);
+  t.position.set(w / 2, h / 2);
+  node.addChild(g, t);
+  return { node, w, h };
 }
