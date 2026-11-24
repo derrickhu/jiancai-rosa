@@ -1,21 +1,58 @@
 import * as PIXI from 'pixi.js';
 import { Game } from './Game';
 import { Ease, TweenManager } from './TweenManager';
+import { fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from '@/utils/assets';
 
 const Z = 30000;
 const FONT = 'PingFang SC, Hiragino Sans GB, sans-serif';
-const HOLD = 1.65;
-const IN = 0.16;
-const OUT = 0.3;
-const GAP = 50;
+const HOLD = 1.75;
+const IN = 0.2;
+const OUT = 0.28;
+const GAP = 72;
 const MAX = 3;
+
+const SEAL_TEX = 'subpkg_images/scene_pk_seal.png';
 
 export type ToastKind = 'success' | 'none' | 'error';
 
-function fillOf(kind: ToastKind): number {
-  if (kind === 'success') return 0xF2C14D;
-  if (kind === 'error') return 0xF0B4A0;
-  return 0xFFF8F0;
+interface ToastTone {
+  paper: number;
+  paperRim: number;
+  woodCap: number;
+  ink: number;
+  sealText: string;
+  sealBg: number;
+}
+
+function toneOf(kind: ToastKind): ToastTone {
+  if (kind === 'success') {
+    return {
+      paper: 0xFFF7E0,
+      paperRim: 0xC9963B,
+      woodCap: 0x7A4B22,
+      ink: 0x3A220E,
+      sealText: '吉',
+      sealBg: 0xC43826,
+    };
+  }
+  if (kind === 'error') {
+    return {
+      paper: 0xFDF0E8,
+      paperRim: 0xB85A44,
+      woodCap: 0x6E2E20,
+      ink: 0x7A2014,
+      sealText: '意',
+      sealBg: 0xB8361F,
+    };
+  }
+  return {
+    paper: 0xFAF0DA,
+    paperRim: 0xA88760,
+    woodCap: 0x6B4224,
+    ink: 0x2A2018,
+    sealText: '签',
+    sealBg: 0xB8361F,
+  };
 }
 
 class ToastManagerClass {
@@ -43,13 +80,21 @@ class ToastManagerClass {
     this._items.push(item);
     this._layer!.addChild(item);
     this._place(item);
+    const targetY = item.y;
     item.alpha = 0;
-    item.y += 14;
+    item.y = targetY + 18;
+    item.scale.set(0.88);
     TweenManager.to({
       target: item,
-      props: { alpha: 1, y: item.y - 14 },
+      props: { alpha: 1, y: targetY },
       duration: IN,
       ease: Ease.easeOutQuad,
+    });
+    TweenManager.to({
+      target: item.scale,
+      props: { x: 1, y: 1 },
+      duration: IN + 0.04,
+      ease: Ease.easeOutBack,
       onComplete: () => this._hold(item, HOLD),
     });
     while (this._items.length > MAX) {
@@ -72,6 +117,7 @@ class ToastManagerClass {
     const idx = this._items.indexOf(item);
     if (idx !== -1) this._items.splice(idx, 1);
     TweenManager.cancelTarget(item);
+    TweenManager.cancelTarget(item.scale);
     if (item.destroyed) return;
     if (instant) {
       item.destroy({ children: true });
@@ -79,7 +125,7 @@ class ToastManagerClass {
     }
     TweenManager.to({
       target: item,
-      props: { alpha: 0, y: item.y - 18 },
+      props: { alpha: 0, y: item.y - 22 },
       duration: OUT,
       ease: Ease.easeInQuad,
       onComplete: () => {
@@ -94,39 +140,117 @@ class ToastManagerClass {
       TweenManager.cancelTarget(item);
       TweenManager.to({
         target: item,
-        props: { y: item.y - GAP, alpha: Math.min(item.alpha, 0.62) },
+        props: { y: item.y - GAP, alpha: Math.min(item.alpha, 0.72) },
         duration: 0.16,
         ease: Ease.easeOutQuad,
-        onComplete: () => this._hold(item, 0.7),
+        onComplete: () => this._hold(item, 0.75),
       });
     }
   }
 
+  /**
+   * 温润手绘宣纸木轴提示签：两端胡桃木压条 + 铜钉 + 宣纸内芯 + 朱红小印章 + 25pt 浓墨大字。
+   */
   private _make(text: string, kind: ToastKind): PIXI.Container {
     const root = new PIXI.Container();
     root.eventMode = 'none';
+    const tone = toneOf(kind);
+
+    const maxWrapW = Math.max(300, Math.min(540, Game.logicWidth - 150));
     const label = new PIXI.Text(text, {
       fontFamily: FONT,
-      fontSize: 26,
+      fontSize: 25,
       fontWeight: '700',
-      fill: fillOf(kind),
-      stroke: 0x2A2018,
-      strokeThickness: 6,
+      fill: tone.ink,
       lineJoin: 'round',
       align: 'center',
       wordWrap: true,
-      wordWrapWidth: Math.max(280, Game.logicWidth - 96),
+      wordWrapWidth: maxWrapW,
       breakWords: true,
-      dropShadow: true,
-      dropShadowColor: '#1A1410',
-      dropShadowAlpha: 0.4,
-      dropShadowDistance: 2,
-      dropShadowAngle: Math.PI / 2,
-      dropShadowBlur: 2,
+      lineHeight: 33,
+      padding: 4,
     });
-    label.anchor.set(0.5);
+    label.anchor.set(0, 0.5);
     label.eventMode = 'none';
+
+    const sealSize = 36;
+    const gap = 12;
+    const padX = 28;
+    const padY = 14;
+    const contentW = sealSize + gap + Math.ceil(label.width);
+    const bodyW = Math.max(260, contentW + padX * 2);
+    const bodyH = Math.max(58, Math.ceil(label.height) + padY * 2);
+    const rodW = 10;
+
+    const g = new PIXI.Graphics();
+    // Soft warm drop shadow
+    g.beginFill(0x160E08, 0.3);
+    g.drawRoundedRect(-bodyW / 2 - 2, -bodyH / 2 + 5, bodyW + 4, bodyH + 2, 10);
+    g.endFill();
+
+    // Main xuan-parchment slip body
+    g.lineStyle(2.5, 0x3A2414, 1);
+    g.beginFill(tone.paper, 0.98);
+    g.drawRoundedRect(-bodyW / 2, -bodyH / 2, bodyW, bodyH, 8);
+    g.endFill();
+
+    // Inner delicate ink rule line (traditional paper slip feel)
+    g.lineStyle(1.2, tone.paperRim, 0.65);
+    g.drawRoundedRect(-bodyW / 2 + rodW + 5, -bodyH / 2 + 5, bodyW - (rodW + 5) * 2, bodyH - 10, 4);
+
+    // Left & right carved wooden scroll rods + brass tacks
+    for (const side of [-1, 1] as const) {
+      const rx = side < 0 ? -bodyW / 2 : bodyW / 2 - rodW;
+      g.lineStyle(2.2, 0x2A180C, 1);
+      g.beginFill(tone.woodCap, 1);
+      g.drawRoundedRect(rx, -bodyH / 2 - 3, rodW, bodyH + 6, 4);
+      g.endFill();
+      // Brass pin in rod center
+      g.lineStyle(1.2, 0x3A220E, 0.9);
+      g.beginFill(0xE8BE66, 1);
+      g.drawCircle(rx + rodW / 2, 0, 3.2);
+      g.endFill();
+    }
+    root.addChild(g);
+
+    // Vermilion mini seal stamp on the left
+    const startX = -contentW / 2;
+    const sealHost = new PIXI.Container();
+    sealHost.position.set(startX + sealSize / 2, 0);
+    sealHost.rotation = -0.08;
+    const paintSeal = (): void => {
+      if (sealHost.destroyed) return;
+      sealHost.removeChildren();
+      const tex = gameTexture(SEAL_TEX);
+      if (isTextureReady(tex)) {
+        const sp = new PIXI.Sprite(tex);
+        fitSpriteInBox(sp, sealSize, sealSize);
+        sp.anchor.set(0.5);
+        sealHost.addChild(sp);
+      } else {
+        const sg = new PIXI.Graphics();
+        sg.lineStyle(1.5, 0x7A1C12, 1);
+        sg.beginFill(tone.sealBg, 1);
+        sg.drawRoundedRect(-sealSize / 2, -sealSize / 2, sealSize, sealSize, 6);
+        sg.endFill();
+        sealHost.addChild(sg);
+      }
+      const st = new PIXI.Text(tone.sealText, {
+        fontFamily: FONT,
+        fontSize: 19,
+        fontWeight: '700',
+        fill: 0xFFF6EA,
+      });
+      st.anchor.set(0.5);
+      sealHost.addChild(st);
+    };
+    paintSeal();
+    whenTextureReady(SEAL_TEX, paintSeal);
+    root.addChild(sealHost);
+
+    label.position.set(startX + sealSize + gap, -0.5);
     root.addChild(label);
+
     return root;
   }
 
@@ -136,7 +260,7 @@ class ToastManagerClass {
 
   private _baseY(): number {
     const top = Number.isFinite(Game.safeTop) ? Game.safeTop : 96;
-    return Math.max(top + 156, Game.logicHeight * 0.3);
+    return Math.max(top + 156, Game.logicHeight * 0.28);
   }
 
   private _ensure(): void {

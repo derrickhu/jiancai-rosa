@@ -1,8 +1,8 @@
 import * as PIXI from 'pixi.js';
+import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { KitchenManager } from '@/managers/KitchenManager';
 import {
-  RARITY_STYLE,
   displayName,
   GOD_PICK,
   fridgeItemBlurb,
@@ -24,17 +24,17 @@ import {
   type RecipeId,
 } from '@/sim';
 import {
-  FONT,
+  HUD_ICON,
+  UI_BTN,
+  UI_KIT,
   UI_PALETTE,
   bindUiClick,
-  drawItemSlotBox,
-  drawRecessedWell,
-  drawSectionTray,
   fillRect,
-  makeArtisanShell,
-  makeLabel,
+  fitTextWidth,
+  makeCoinButton,
+  makeRarityFlare,
   makeSlicedButton,
-  makeSlotBadge,
+  makeText,
 } from '@/utils/ui';
 import {
   dishTexture,
@@ -44,15 +44,18 @@ import {
   itemLookTexture,
   resolveDishAssetPath,
   resolveItemAssetPath,
-  whenTextureReady,
+  watchTextures,
 } from '@/utils/assets';
-
-const INK = UI_PALETTE.ink;
-const PAPER = 0xFFF8F0;
-const TERRACOTTA = UI_PALETTE.terracotta;
-const MUTED = UI_PALETTE.muted;
-const INDIGO = 0x35647B;
-const COIN = 'subpkg_images/hud_coin.png';
+import {
+  SCENE_ART,
+  SCENE_INK,
+  drawInkDivider,
+  drawSceneClose,
+  drawStretchSheet,
+  makeSealStamp,
+  sceneArtPaths,
+  sceneSprite,
+} from './scenePanel';
 
 export interface ItemInspectView {
   title: string;
@@ -74,6 +77,19 @@ export interface ItemInspectView {
 export function inspectFromFridge(it: FridgeItem): ItemInspectView {
   const dish = fridgeKind(it) === 'dish';
   const recipe = dish && it.defId ? recipeById(it.defId as RecipeId) : undefined;
+  let note: string | undefined;
+  if (dish) {
+    note = recipe ? `${recipe.group} · 私房热菜` : '灶台成菜';
+  } else if (it.quality === 'rotten') {
+    note = '久置变质 · 不可下锅';
+  } else {
+    try {
+      const def = getItem(it.defId);
+      note = `${def.zone === 'wet' ? '湿货鲜材' : '干货食材'} · 占篮 ${def.w}×${def.h}`;
+    } catch {
+      note = '市井鲜材';
+    }
+  }
   return {
     title: fridgeItemName(it),
     blurb: fridgeItemBlurb(it),
@@ -84,6 +100,7 @@ export function inspectFromFridge(it: FridgeItem): ItemInspectView {
     unitPrice: fridgeItemUnitPrice(it, KitchenManager.save),
     maxQty: fridgeItemQty(it),
     eatLabel: recipe ? recipeEatLabel(recipe.id) : undefined,
+    note,
   };
 }
 
@@ -100,6 +117,7 @@ export function inspectFromRecipe(id: RecipeId): ItemInspectView | null {
     unitPrice: recipeSellPrice(id),
     maxQty: 1,
     eatLabel: recipeEatLabel(id),
+    note: `${recipe.group} · 私房菜谱`,
   };
 }
 
@@ -128,13 +146,26 @@ export function inspectFromFood(opts: {
       rarity: look.rarity,
       unitPrice: sellPrice(opts.defId, opts.quality, inspected),
       maxQty: 1,
-      note: `${def.zone === 'wet' ? '湿货' : '干货'} ${def.w}×${def.h}`,
+      note: opts.quality === 'rotten'
+        ? '久置变质 · 不可下锅'
+        : `${def.zone === 'wet' ? '湿货' : '干货'} · 占篮 ${def.w}×${def.h}`,
     };
   } catch {
     return null;
   }
 }
 
+function resolveInspectIconPath(view: ItemInspectView): string {
+  if (view.iconPath) return view.iconPath;
+  if (view.kind === 'dish') return resolveDishAssetPath(view.defId);
+  return resolveItemAssetPath(view.defId, view.quality === 'rotten');
+}
+
+/**
+ * 宣纸鉴赏笺浮层：
+ * 铜钉卷角宣纸底 + 青花瓷碟托物 + 朱红品阶印章 + 水墨分割线 + 大字风味评述与功效，
+ * 彻底告别多层圆角小色块框。
+ */
 export function makeItemInspectCard(opts: {
   view: ItemInspectView;
   qty: number;
@@ -148,203 +179,338 @@ export function makeItemInspectCard(opts: {
 }): PIXI.Container {
   const view = opts.view;
   const qty = Math.max(1, Math.min(view.maxQty, Math.floor(opts.qty)));
+  const iconPath = resolveInspectIconPath(view);
+
+  watchTextures(
+    [
+      ...sceneArtPaths(),
+      HUD_ICON.coin,
+      UI_KIT.closeRound,
+      UI_KIT.btnOlive,
+      UI_KIT.btnGold,
+      UI_BTN.terracotta,
+      UI_BTN.cream,
+      'subpkg_kitchen/ui_pickup_flare.png',
+      iconPath,
+    ],
+    () => opts.onReady?.(),
+  );
+
   const root = new PIXI.Container();
-  const w = Game.designWidth;
-  const h = Game.logicHeight;
+  const sw = Game.designWidth;
+  const sh = Game.logicHeight;
+
   const dim = new PIXI.Graphics();
-  fillRect(dim, 0, 0, w, h, 0x160E08);
-  dim.alpha = 0.46;
+  fillRect(dim, 0, 0, sw, sh, 0x160E08);
+  dim.alpha = 0.62;
   dim.eventMode = 'static';
   dim.on('pointertap', opts.onClose);
   root.addChild(dim);
 
+  const cardW = Math.min(628, sw - 44);
+  const padX = 52;
+  const contentW = cardW - padX * 2;
   const canEat = view.kind === 'dish' && !!view.eatLabel;
   const showUsage = !!view.eatLabel;
   const showStepper = opts.actions && view.maxQty > 1;
-  const cardW = Math.min(536, w - 56);
-  const cardH = opts.actions
-    ? (showStepper || canEat ? 446 : 398)
-    : (showUsage ? 368 : 326);
 
-  const { shell: card } = makeArtisanShell({
-    width: cardW,
-    height: cardH,
-    onReady: opts.onReady,
-    closeSilent: true,
-    onClose: opts.onClose,
-  });
-  card.position.set(Math.round((w - cardW) / 2), Math.round((h - cardH) / 2));
-  root.addChild(card);
-
-  const headerTray = new PIXI.Graphics();
-  drawSectionTray(headerTray, 26, 24, cardW - 52, 102, { radius: 14, tone: 'sand' });
-  card.addChild(headerTray);
-
-  const iconBox = 86;
-  const iconHost = new PIXI.Container();
-  const iconBg = new PIXI.Graphics();
-  drawItemSlotBox(iconBg, 0, 0, iconBox, iconBox, { radius: 13, rarity: view.rarity });
-  iconHost.addChild(iconBg);
-
-  if (view.iconPath) {
-    whenTextureReady(view.iconPath, () => opts.onReady?.());
-    const tex = gameTexture(view.iconPath);
-    if (isTextureReady(tex)) {
-      const icon = new PIXI.Sprite(tex);
-      fitSpriteInBox(icon, iconBox - 16, iconBox - 16);
-      icon.anchor.set(0.5);
-      icon.position.set(iconBox / 2, iconBox / 2);
-      iconHost.addChild(icon);
-    }
-  } else if (view.kind === 'dish') {
-    const path = resolveDishAssetPath(view.defId);
-    whenTextureReady(path, () => opts.onReady?.());
-    const tex = dishTexture(view.defId);
-    if (isTextureReady(tex)) {
-      const icon = new PIXI.Sprite(tex);
-      fitSpriteInBox(icon, iconBox - 16, iconBox - 16);
-      icon.anchor.set(0.5);
-      icon.position.set(iconBox / 2, iconBox / 2);
-      iconHost.addChild(icon);
-    }
-  } else {
-    const look = view.quality === 'rotten' ? 'rotten' as const : 'clean' as const;
-    const path = resolveItemAssetPath(view.defId, look === 'rotten');
-    whenTextureReady(path, () => opts.onReady?.());
-    const tex = itemLookTexture(view.defId, look);
-    if (isTextureReady(tex)) {
-      const icon = new PIXI.Sprite(tex);
-      fitSpriteInBox(icon, iconBox - 16, iconBox - 16);
-      icon.anchor.set(0.5);
-      icon.position.set(iconBox / 2, iconBox / 2);
-      iconHost.addChild(icon);
-    }
-  }
-  iconHost.position.set(34, 32);
-  if (view.maxQty > 1) {
-    const badge = makeSlotBadge(`×${view.maxQty}`, 'olive', 13);
-    badge.node.position.set(iconBox - badge.w - 3, iconBox - badge.h - 3);
-    iconHost.addChild(badge.node);
-  }
-  card.addChild(iconHost);
-
-  const name = makeLabel(view.title, 24, INK, { fontWeight: '700' });
-  name.position.set(134, 32);
-  card.addChild(name);
-
-  const gradeText = view.note ? `${rarityLabel(view.rarity)} · ${view.note}` : rarityLabel(view.rarity);
-  const grade = makeLabel(gradeText, 15, RARITY_STYLE[view.rarity].ink, { fontWeight: '700' });
-  const gradePill = new PIXI.Graphics();
-  gradePill.lineStyle(1.4, 0x9C7D5A, 0.9);
-  gradePill.beginFill(0xFFFBF2, 1);
-  gradePill.drawRoundedRect(134, 65, Math.ceil(grade.width) + 18, 24, 8);
-  gradePill.endFill();
-  grade.position.set(143, 68);
-  card.addChild(gradePill, grade);
-
-  const unit = view.unitPrice;
-  const goldN = unit * qty;
-  if (view.priceLine !== undefined) {
-    if (view.priceLine) {
-      const gold = makeLabel(view.priceLine, 17, TERRACOTTA, { fontWeight: '700' });
-      gold.position.set(134, 94);
-      card.addChild(gold);
-    }
-  } else if (unit > 0) {
-    const gold = makeLabel(`单价  ${unit}`, 17, 0x8F5808, { fontWeight: '700' });
-    gold.position.set(134, 94);
-    card.addChild(gold);
-    whenTextureReady(COIN, () => opts.onReady?.());
-    const coinTex = gameTexture(COIN);
-    if (isTextureReady(coinTex)) {
-      const coin = new PIXI.Sprite(coinTex);
-      fitSpriteInBox(coin, 24, 24);
-      coin.anchor.set(0, 0.5);
-      coin.position.set(134 + gold.width + 6, 105);
-      coin.eventMode = 'none';
-      card.addChild(coin);
-    }
-  } else {
-    const gold = makeLabel('坏了，卖不掉', 19, MUTED, { fontWeight: '700' });
-    gold.position.set(134, 96);
-    card.addChild(gold);
-  }
-
-  const blurb = new PIXI.Text(view.blurb, {
-    fontFamily: FONT,
-    fontSize: 19,
-    fill: INK,
-    fontWeight: '500',
+  // 先排版测量高度，确保宣纸笺随文案自动舒展不裁字
+  const blurb = makeText('body', view.blurb, SCENE_INK.ink, {
+    size: 26,
     wordWrap: true,
     breakWords: true,
-    wordWrapWidth: cardW - 84,
-    lineHeight: 30,
+    wordWrapWidth: contentW,
+    lineHeight: 38,
   });
-  blurb.eventMode = 'none';
-  const wellH = Math.max(72, Math.min(104, Math.ceil(blurb.height) + 24));
-  const blurbWell = new PIXI.Graphics();
-  drawRecessedWell(blurbWell, 28, 134, cardW - 56, wellH, { radius: 14 });
-  blurb.position.set(42, 146);
-  card.addChild(blurbWell, blurb);
+  const blurbTop = 228;
+  const blurbH = Math.max(76, Math.ceil(blurb.height));
 
-  let y = 134 + wellH + 12;
+  let cursorY = blurbTop + blurbH + 20;
+  let usageNode: PIXI.Container | null = null;
+  let usageY = 0;
   if (showUsage) {
-    const eatPill = new PIXI.Graphics();
-    eatPill.lineStyle(1.4, 0x99BDCD, 0.9);
-    eatPill.beginFill(0xEDF5F8, 1);
-    eatPill.drawRoundedRect(28, y, cardW - 56, 36, 18);
-    eatPill.endFill();
-    const eat = makeLabel(`✦ ${view.eatLabel ?? '食用增益'}`, 17, INDIGO, { fontWeight: '700' });
-    eat.anchor.set(0.5);
-    eat.position.set(cardW / 2, y + 18);
-    card.addChild(eatPill, eat);
-    y += 46;
+    usageY = cursorY;
+    usageNode = new PIXI.Container();
+    const prefix = makeText('heading', '食效 · ', SCENE_INK.red, { size: 25 });
+    const desc = makeText('body', view.eatLabel ?? '食用增益', SCENE_INK.green, {
+      size: 25,
+      fontWeight: '700',
+      wordWrap: true,
+      breakWords: true,
+      wordWrapWidth: Math.max(180, contentW - prefix.width - 6),
+      lineHeight: 34,
+    });
+    desc.position.set(prefix.width, 0);
+    usageNode.addChild(prefix, desc);
+    cursorY += 20 + Math.max(36, Math.ceil(desc.height)) + 16;
   }
 
+  let stepperY = 0;
   if (showStepper) {
-    card.addChild(makeQtyStepper(cardW / 2, y + 22, qty, view.maxQty, opts.onQty));
-    y += 58;
+    stepperY = cursorY + 32;
+    cursorY += 76;
   }
 
-  if (!opts.actions) return root;
-
-  const btnW = cardW - 56;
-  const btnY = cardH - 74;
-  const half = Math.floor((btnW - 14) / 2);
-  if (canEat) {
-    const eatBtn = makeSlicedButton({
-      label: '吃掉',
-      width: half,
-      height: 50,
-      skin: 'olive',
-      textColor: PAPER,
-      onReady: opts.onReady,
-    });
-    eatBtn.position.set(28, btnY);
-    eatBtn.on('pointertap', () => opts.onEat?.());
-    card.addChild(eatBtn);
-
-    const sell = makeSellChip(half, 50, unit > 0 ? goldN : 0, opts.onReady);
-    sell.position.set(28 + half + 14, btnY);
-    sell.on('pointertap', () => {
-      if (unit <= 0) return;
-      opts.onSell?.();
-    });
-    opts.onSellBtn?.(sell);
-    card.addChild(sell);
+  let btnY = 0;
+  const btnH = 62;
+  if (opts.actions) {
+    btnY = cursorY + 8;
+    cursorY = btnY + btnH + 46;
   } else {
-    const sell = makeSellChip(btnW, 50, unit > 0 ? goldN : 0, opts.onReady);
-    sell.position.set(28, btnY);
-    sell.on('pointertap', () => {
-      if (unit <= 0) return;
-      opts.onSell?.();
-    });
-    opts.onSellBtn?.(sell);
-    card.addChild(sell);
+    cursorY += 54;
   }
+
+  const cardH = Math.max(380, cursorY);
+  const card = new PIXI.Container();
+  card.eventMode = 'static';
+  card.hitArea = new PIXI.Rectangle(0, -24, cardW + 20, cardH + 36);
+  card.on('pointertap', (e) => e.stopPropagation());
+
+  const availH = sh - Game.safeTop - Math.max(20, Game.safeBottom) - 40;
+  const scale = Math.min(1, (sw - 28) / cardW, availH / cardH);
+  card.scale.set(scale);
+  card.position.set(
+    Math.round((sw - cardW * scale) / 2),
+    Math.round(Game.safeTop + 20 + Math.max(0, (availH - cardH * scale) / 2)),
+  );
+  root.addChild(card);
+
+  // 宣纸投影 + 铜钉卷角宣纸底
+  const shadow = new PIXI.Graphics();
+  shadow.beginFill(0x0E0804, 0.44);
+  shadow.drawRoundedRect(10, 16, cardW - 16, cardH - 8, 18);
+  shadow.endFill();
+  card.addChild(shadow);
+
+  drawStretchSheet(card, SCENE_ART.sheet, 0, 0, cardW, cardH, 140, 120);
+
+  // ── 顶部实物区：成菜去底盘大尺寸直呈（配柔和墨影），食材/道具保留青花瓷碟托底 ──
+  const plateCx = 134;
+  const plateCy = 132;
+  if (view.quality !== 'rotten' && (view.rarity !== 'common' || view.kind === 'dish')) {
+    const flare = makeRarityFlare(view.rarity, 208);
+    flare.position.set(plateCx, plateCy - 8);
+    card.addChild(flare);
+  }
+
+  const plateW = 176;
+  let itemTex: PIXI.Texture;
+  if (view.iconPath) {
+    itemTex = gameTexture(view.iconPath);
+  } else if (view.kind === 'dish') {
+    itemTex = dishTexture(view.defId);
+  } else {
+    itemTex = itemLookTexture(view.defId, view.quality === 'rotten' ? 'rotten' : 'clean');
+  }
+
+  if (view.kind === 'dish') {
+    const dishShadow = new PIXI.Graphics();
+    dishShadow.beginFill(0x2A1A0E, 0.22);
+    dishShadow.drawEllipse(plateCx, plateCy + 42, 68, 19);
+    dishShadow.endFill();
+    dishShadow.eventMode = 'none';
+    card.addChild(dishShadow);
+
+    if (isTextureReady(itemTex)) {
+      const icon = new PIXI.Sprite(itemTex);
+      fitSpriteInBox(icon, 172, 172);
+      icon.anchor.set(0.5);
+      icon.position.set(plateCx, plateCy - 6);
+      icon.eventMode = 'none';
+      card.addChild(icon);
+    }
+  } else {
+    const plate = sceneSprite(SCENE_ART.plate, plateW);
+    if (plate) {
+      plate.anchor.set(0.5);
+      plate.position.set(plateCx, plateCy + 14);
+      if (view.quality === 'rotten') plate.tint = 0xD8CCB8;
+      card.addChild(plate);
+    }
+    if (isTextureReady(itemTex)) {
+      const icon = new PIXI.Sprite(itemTex);
+      fitSpriteInBox(icon, 114, 114);
+      icon.anchor.set(0.5, 1);
+      icon.position.set(plateCx, plateCy + 32);
+      icon.eventMode = 'none';
+      card.addChild(icon);
+    }
+  }
+
+  if (view.maxQty > 1) {
+    const qtyMark = makeText('number', `×${view.maxQty}`, SCENE_INK.red, {
+      size: 26,
+      stroke: 0xFFF8EA,
+      strokeWidth: 5,
+    });
+    qtyMark.anchor.set(1, 1);
+    qtyMark.position.set(plateCx + plateW / 2 + 4, plateCy + 54);
+    card.addChild(qtyMark);
+  }
+
+  // 右侧文字与朱印品阶章（避开宣纸右上黄铜图钉）
+  const infoX = 242;
+  const infoR = cardW - padX;
+  const sealSize = 58;
+  const seal = makeSealStamp(rarityLabel(view.rarity), sealSize, -0.09);
+  seal.position.set(infoR - 36, 82);
+  card.addChild(seal);
+
+  const title = makeText('title', view.title, SCENE_INK.ink, { size: 36 });
+  title.position.set(infoX, 50);
+  fitTextWidth(title, infoR - infoX - sealSize - 20);
+  card.addChild(title);
+
+  const noteStr = view.note || (view.kind === 'dish' ? '灶台家常味' : '市井精挑鲜材');
+  const noteTxt = makeText(
+    'body',
+    noteStr,
+    view.quality === 'rotten' ? SCENE_INK.red : SCENE_INK.soft,
+    { size: 23 },
+  );
+  noteTxt.position.set(infoX, 98);
+  fitTextWidth(noteTxt, infoR - infoX - sealSize - 10);
+  card.addChild(noteTxt);
+
+  // 售价直排：无框金币图标 + 大字墨金数值
+  const unit = view.unitPrice;
+  const goldN = unit * qty;
+  const priceY = 152;
+  if (view.priceLine !== undefined) {
+    if (view.priceLine) {
+      const customPrice = makeText('heading', view.priceLine, SCENE_INK.gold, { size: 25 });
+      customPrice.anchor.set(0, 0.5);
+      customPrice.position.set(infoX, priceY);
+      fitTextWidth(customPrice, infoR - infoX);
+      card.addChild(customPrice);
+    }
+  } else if (unit > 0) {
+    const priceRow = new PIXI.Container();
+    priceRow.position.set(infoX, priceY);
+    const coinSp = sceneSprite(HUD_ICON.coin, 30, 30);
+    let px = 0;
+    if (coinSp) {
+      coinSp.anchor.set(0, 0.5);
+      priceRow.addChild(coinSp);
+      px = 36;
+    }
+    const priceStr = opts.actions && qty > 1
+      ? `单价 ${unit} · 共 ${goldN}`
+      : `单价 ${unit}`;
+    const priceTxt = makeText('number', priceStr, SCENE_INK.gold, { size: 26 });
+    priceTxt.anchor.set(0, 0.5);
+    priceTxt.position.set(px, 0);
+    fitTextWidth(priceTxt, infoR - infoX - px);
+    priceRow.addChild(priceTxt);
+    card.addChild(priceRow);
+  } else {
+    const rottenTxt = makeText('body', '已变质 · 无法售卖', SCENE_INK.red, { size: 24, fontWeight: '700' });
+    rottenTxt.anchor.set(0, 0.5);
+    rottenTxt.position.set(infoX, priceY);
+    card.addChild(rottenTxt);
+  }
+
+  // 水墨分割线 + 风味评述正文
+  drawInkDivider(card, padX, 204, contentW, 0.58, 12);
+  blurb.position.set(padX, blurbTop);
+  card.addChild(blurb);
+
+  // 食用功效（无框水墨行）
+  if (usageNode) {
+    drawInkDivider(card, padX, usageY, contentW, 0.28, 8);
+    usageNode.position.set(padX, usageY + 18);
+    card.addChild(usageNode);
+  }
+
+  // 份数加减器
+  if (showStepper) {
+    card.addChild(makeQtyStepper(cardW / 2, stepperY, qty, view.maxQty, opts.onQty));
+  }
+
+  // 底部手绘操作按钮或轻触收起提示
+  if (opts.actions) {
+    const gap = 18;
+    if (canEat) {
+      const half = Math.floor((contentW - gap) / 2);
+      const eatBtn = makeSlicedButton({
+        label: '品尝享用',
+        width: half,
+        height: btnH,
+        skin: 'olive',
+        fontSize: 28,
+        onReady: opts.onReady,
+      });
+      eatBtn.position.set(padX, btnY);
+      eatBtn.on('pointertap', () => opts.onEat?.());
+      card.addChild(eatBtn);
+
+      const sellBtn = makeInspectSellBtn(half, btnH, unit > 0 ? goldN : 0, opts.onReady);
+      sellBtn.position.set(padX + half + gap, btnY);
+      sellBtn.on('pointertap', () => {
+        if (unit <= 0) return;
+        opts.onSell?.();
+      });
+      opts.onSellBtn?.(sellBtn);
+      card.addChild(sellBtn);
+    } else {
+      const sellBtn = makeInspectSellBtn(contentW, btnH, unit > 0 ? goldN : 0, opts.onReady);
+      sellBtn.position.set(padX, btnY);
+      sellBtn.on('pointertap', () => {
+        if (unit <= 0) return;
+        opts.onSell?.();
+      });
+      opts.onSellBtn?.(sellBtn);
+      card.addChild(sellBtn);
+    }
+  } else {
+    const hint = makeText('caption', '轻触空白处收起', SCENE_INK.muted, { size: 22 });
+    hint.anchor.set(0.5, 1);
+    hint.position.set(cardW / 2, cardH - 22);
+    card.addChild(hint);
+  }
+
+  drawSceneClose(card, cardW - 44, -18, () => {
+    AudioManager.play('ui_close');
+    opts.onClose();
+  }, opts.onReady);
+
   return root;
 }
 
+function makeInspectSellBtn(
+  width: number,
+  height: number,
+  gold: number,
+  onReady?: () => void,
+): PIXI.Container {
+  if (gold > 0) {
+    return makeCoinButton({
+      prefix: '卖出',
+      price: gold,
+      width,
+      height,
+      skin: 'gold',
+      textColor: SCENE_INK.ink,
+      fontSize: 28,
+      onReady,
+      silent: true,
+    });
+  }
+  return makeSlicedButton({
+    label: '无法售卖',
+    width,
+    height,
+    skin: 'cream',
+    textColor: 0x8A7358,
+    fontSize: 26,
+    onReady,
+    silent: true,
+  });
+}
+
+/**
+ * 手绘木扣份数加减器（无小塑料凹槽框，大字清晰易点）。
+ */
 export function makeQtyStepper(
   cx: number,
   cy: number,
@@ -353,92 +519,66 @@ export function makeQtyStepper(
   onQty: (n: number) => void,
 ): PIXI.Container {
   const root = new PIXI.Container();
-  const track = new PIXI.Graphics();
-  drawRecessedWell(track, cx - 118, cy - 22, 236, 44, { radius: 22 });
-  root.addChild(track);
+  const span = 108;
 
-  const minus = makeRoundBtn('－', qty > 1);
-  minus.position.set(cx - 88, cy);
-  minus.on('pointertap', () => {
+  // 柔和墨迹底衬线，不套厚重色块框
+  const line = new PIXI.Graphics();
+  line.lineStyle(2, 0xB89A74, 0.55);
+  line.moveTo(cx - span + 28, cy + 20);
+  line.lineTo(cx + span - 28, cy + 20);
+  root.addChild(line);
+
+  const minus = makeRoundStepBtn('－', qty > 1);
+  minus.position.set(cx - span, cy);
+  minus.on('pointertap', (e) => {
+    e.stopPropagation();
     if (qty <= 1) return;
     onQty(qty - 1);
   });
-  const plus = makeRoundBtn('＋', qty < max);
-  plus.position.set(cx + 88, cy);
-  plus.on('pointertap', () => {
+
+  const plus = makeRoundStepBtn('＋', qty < max);
+  plus.position.set(cx + span, cy);
+  plus.on('pointertap', (e) => {
+    e.stopPropagation();
     if (qty >= max) return;
     onQty(qty + 1);
   });
-  const n = makeLabel(`${qty} / ${max}`, 22, INK, { fontWeight: '700' });
+
+  const n = makeText('number', `${qty} / ${max}`, SCENE_INK.ink, { size: 28 });
   n.anchor.set(0.5);
-  n.position.set(cx, cy);
+  n.position.set(cx, cy - 2);
   root.addChild(minus, plus, n);
   return root;
 }
 
-function makeRoundBtn(label: string, on: boolean): PIXI.Container {
+function makeRoundStepBtn(label: string, on: boolean): PIXI.Container {
   const root = new PIXI.Container();
+  const r = 24;
   const g = new PIXI.Graphics();
-  g.lineStyle(2.5, INK, 1);
-  g.beginFill(on ? TERRACOTTA : 0xDFD0BC, 1);
-  g.drawCircle(0, 0, 20);
+  g.beginFill(0x1E120A, 0.22);
+  g.drawCircle(0, 3, r);
   g.endFill();
-  const text = makeLabel(label, 24, on ? PAPER : MUTED, { fontWeight: '700' });
+  g.lineStyle(2.5, UI_PALETTE.ink, 1);
+  g.beginFill(on ? UI_PALETTE.terracotta : 0xE5D8C3, 1);
+  g.drawCircle(0, 0, r);
+  g.endFill();
+  if (on) {
+    g.lineStyle(0);
+    g.beginFill(0xFFFFFF, 0.22);
+    g.drawEllipse(0, -8, 13, 5);
+    g.endFill();
+  }
+  const text = makeText('heading', label, on ? 0xFFF8F0 : SCENE_INK.muted, {
+    size: 28,
+    ...(on ? { stroke: UI_PALETTE.ink, strokeWidth: 3 } : {}),
+  });
   text.anchor.set(0.5);
   text.position.set(0, -1);
   root.addChild(g, text);
   root.eventMode = 'static';
   root.cursor = on ? 'pointer' : 'default';
-  root.hitArea = new PIXI.Circle(0, 0, 24);
+  root.hitArea = new PIXI.Circle(0, 0, r + 8);
   if (on) bindUiClick(root);
-  root.alpha = on ? 1 : 0.55;
+  root.alpha = on ? 1 : 0.58;
   return root;
-}
-
-function makeSellChip(
-  width: number,
-  height: number,
-  gold: number,
-  onReady?: () => void,
-): PIXI.Container {
-  const btn = makeSlicedButton({
-    label: '',
-    width,
-    height,
-    skin: gold > 0 ? 'terracotta' : 'cream',
-    onReady,
-  });
-  const face = ((btn as any)._face as PIXI.Container | undefined) ?? btn;
-  const row = new PIXI.Container();
-  row.eventMode = 'none';
-  const label = makeLabel('卖出', Math.min(23, height * 0.42), gold > 0 ? PAPER : MUTED, {
-    fontWeight: '700',
-    ...(gold > 0 ? { stroke: INK, strokeThickness: 3 } : {}),
-  });
-  label.anchor.set(0, 0.5);
-  row.addChild(label);
-  let x = label.width + 8;
-  if (gold > 0) {
-    whenTextureReady(COIN, () => onReady?.());
-    const coin = new PIXI.Sprite(gameTexture(COIN));
-    if (isTextureReady(coin.texture)) {
-      fitSpriteInBox(coin, 26, 26);
-      coin.anchor.set(0, 0.5);
-      coin.position.set(x, 0);
-      row.addChild(coin);
-      x += 30;
-    }
-    const n = makeLabel(String(gold), Math.min(22, height * 0.4), PAPER, {
-      fontWeight: '700',
-      stroke: INK,
-      strokeThickness: 3,
-    });
-    n.anchor.set(0, 0.5);
-    n.position.set(x, 0);
-    row.addChild(n);
-    x += n.width;
-  }
-  row.position.set(Math.round((width - x) / 2), height / 2 - 1);
-  face.addChild(row);
-  return btn;
 }

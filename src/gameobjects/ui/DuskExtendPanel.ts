@@ -1,21 +1,36 @@
 import * as PIXI from 'pixi.js';
 import { AudioManager } from '@/core/AudioManager';
 import { Ease, TweenManager } from '@/core/TweenManager';
-import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { Platform } from '@/core/PlatformService';
 import { warmupAdScene } from '@/services/RewardedAdService';
 import { RunManager } from '@/managers/RunManager';
 import { DUSK_EXTEND_STEPS } from '@/sim';
-import { fitSpriteInBox, gameTexture, isTextureReady, watchTextures } from '@/utils/assets';
-import { P0_ART, fillRect, makeAdButton, makeLabel, makeSlicedButton } from '@/utils/ui';
+import { watchTextures } from '@/utils/assets';
+import {
+  P0_ART,
+  UI_KIT,
+  fitTextWidth,
+  makeAdButton,
+  makeRarityFlare,
+  makeSlicedButton,
+  makeText,
+} from '@/utils/ui';
+import {
+  SCENE_ART,
+  SCENE_INK,
+  drawInkDivider,
+  drawStretchSheet,
+  makeSceneRoot,
+  makeSealStamp,
+  sceneArtPaths,
+  sceneSprite,
+} from './scenePanel';
 
-const BURST = 'subpkg_kitchen/ui_result_burst.png';
-const TITLE_FONT = 'Songti SC, STSong, PingFang SC, serif';
-const INK = 0x2A2018;
-const MUTED = 0x7A5A34;
-const PAPER = 0xFFF8F0;
-const TERRACOTTA = 0xC46A3A;
+const FLARE = 'subpkg_kitchen/ui_pickup_flare.png';
+const W = 660;
+const H = 900;
+const INK = SCENE_INK.ink;
 
 export class DuskExtendPanel extends PIXI.Container {
   _isOpen = false;
@@ -79,130 +94,123 @@ export class DuskExtendPanel extends PIXI.Container {
     this._root.removeChildren();
     if (!this._isOpen) return;
 
-    watchTextures([P0_ART.gachaStage, P0_ART.duskFlashlight, P0_ART.adClapper, BURST], this._scheduleRelayout);
+    watchTextures(
+      [
+        P0_ART.gachaStage,
+        P0_ART.duskFlashlight,
+        P0_ART.adClapper,
+        UI_KIT.btnGold,
+        FLARE,
+        ...sceneArtPaths(),
+      ],
+      this._scheduleRelayout,
+    );
 
-    const w = Game.designWidth;
-    const h = Game.logicHeight;
-    this.hitArea = new PIXI.Rectangle(0, 0, w, h);
+    const { scene } = makeSceneRoot({
+      parent: this._root,
+      designW: W,
+      panelH: H,
+      topBleed: 24,
+      dimAlpha: 0.74,
+      onDimTap: () => {},
+    });
 
-    const dim = new PIXI.Graphics();
-    fillRect(dim, 0, 0, w, h, 0x160F0A);
-    dim.alpha = 0.72;
-    dim.eventMode = 'static';
-    dim.on('pointertap', (e) => e.stopPropagation());
-    this._root.addChild(dim);
+    // 暮色红灯笼木牌舞台（508×694 等比放到 660×900）
+    const shadow = new PIXI.Graphics();
+    shadow.beginFill(0x0D0703, 0.48);
+    shadow.drawRoundedRect(10, 18, W - 20, H - 12, 34);
+    shadow.endFill();
+    scene.addChild(shadow);
 
-    const boardW = Math.min(w - 44, 620);
-    const boardH = Math.round(boardW * (694 / 508));
-    const bx = Math.round((w - boardW) / 2);
-    const by = Math.round(Math.max(Game.safeTop + 12, (h - boardH) / 2));
-
-    const card = new PIXI.Container();
-    card.position.set(bx, by);
-    card.eventMode = 'static';
-    card.hitArea = new PIXI.Rectangle(0, 0, boardW, boardH);
-    card.on('pointertap', (e) => e.stopPropagation());
-    this._root.addChild(card);
-
-    const stageTex = gameTexture(P0_ART.gachaStage);
-    if (isTextureReady(stageTex)) {
-      const bg = new PIXI.Sprite(stageTex);
-      bg.width = boardW;
-      bg.height = boardH;
-      bg.eventMode = 'none';
-      card.addChild(bg);
+    const stageBg = sceneSprite(P0_ART.gachaStage, W, H);
+    if (stageBg) {
+      stageBg.width = W;
+      stageBg.height = H;
+      scene.addChild(stageBg);
     } else {
       const fb = new PIXI.Graphics();
-      fb.lineStyle(6, 0x8B5A2B, 1);
+      fb.lineStyle(6, 0x5A3518, 1);
       fb.beginFill(0xF6EDE0, 1);
-      fb.drawRoundedRect(0, 0, boardW, boardH, 28);
+      fb.drawRoundedRect(0, 0, W, H, 28);
       fb.endFill();
-      card.addChild(fb);
+      scene.addChild(fb);
     }
 
-    // Header Plaque Title
-    const title = makeLabel('天黑收摊啦', 34, INK, {
-      fontFamily: TITLE_FONT,
-      fontWeight: '700',
-      stroke: 0xFFF6E8,
-      strokeThickness: 5,
+    // 顶部木匾牌面正中大字标题（H * 0.105 对准木牌中心）
+    const title = makeText('display', '天黑收摊啦', 0x4A2A12, {
+      size: 40,
+      stroke: 0xF6DDB0,
+      strokeWidth: 4,
     });
     title.anchor.set(0.5);
-    title.position.set(boardW / 2, Math.round(boardH * 0.145));
-    card.addChild(title);
+    title.position.set(W / 2, Math.round(H * 0.105));
+    scene.addChild(title);
 
-    // Centerpiece Flashlight + Soft Sunburst Glow
-    const centerY = Math.round(boardH * 0.43);
-    const burstTex = gameTexture(BURST);
-    if (isTextureReady(burstTex)) {
-      const burst = new PIXI.Sprite(burstTex);
-      fitSpriteInBox(burst, boardW * 0.68, boardW * 0.68);
-      burst.anchor.set(0.5);
-      burst.position.set(boardW / 2, centerY);
-      burst.alpha = 0.65;
-      burst.eventMode = 'none';
-      card.addChild(burst);
-    }
+    // 舞台中央：透明通道暖金发散光 + 老式铁皮手电筒实物 + 朱印
+    const centerY = Math.round(H * 0.365);
+    const flare = makeRarityFlare('legendary', 420);
+    flare.alpha = 0.72;
+    flare.position.set(W / 2, centerY);
+    scene.addChild(flare);
 
     const lampWrap = new PIXI.Container();
-    lampWrap.position.set(boardW / 2, centerY);
+    lampWrap.position.set(W / 2, centerY);
     lampWrap.eventMode = 'none';
-    const flashTex = gameTexture(P0_ART.duskFlashlight);
-    if (isTextureReady(flashTex)) {
-      const spr = new PIXI.Sprite(flashTex);
-      fitSpriteInBox(spr, boardW * 0.64, boardH * 0.34);
-      spr.anchor.set(0.5);
-      lampWrap.addChild(spr);
+    const flash = sceneSprite(P0_ART.duskFlashlight, 404, 270);
+    if (flash) {
+      flash.anchor.set(0.5);
+      lampWrap.addChild(flash);
     }
-    card.addChild(lampWrap);
+    scene.addChild(lampWrap);
     this._lamp = lampWrap;
     this._floatLamp(lampWrap, centerY);
 
-    // Ahead Route Highlights
+    const seal = makeSealStamp('夜逛', 54, 0.1);
+    seal.position.set(W - 124, centerY - 88);
+    scene.addChild(seal);
+
+    // 钉在灯下的宣纸提示笺（首行避开四角黄铜图钉）
+    const sheetX = 56;
+    const sheetY = Math.round(H * 0.535);
+    const sheetW = W - sheetX * 2;
+    const sheetH = 204;
+    drawStretchSheet(scene, SCENE_ART.sheet, sheetX, sheetY, sheetW, sheetH, 86, 76);
+
     const highlights = RunManager.duskAheadHighlights();
-    const tagY = Math.round(boardH * 0.635);
-    if (highlights.length) {
-      const lead = makeLabel('前头还没逛完：', 20, MUTED, { fontWeight: '700' });
-      lead.anchor.set(0.5);
-      lead.position.set(boardW / 2, tagY - 22);
-      card.addChild(lead);
+    const aheadText = highlights.length
+      ? `前头未逛：${highlights.join(' · ')}`
+      : '街尾还有老摊主没收完筐，不翻可惜！';
+    const aheadLbl = makeText(
+      'title',
+      aheadText,
+      highlights.length ? SCENE_INK.red : INK,
+      { size: 26 },
+    );
+    aheadLbl.anchor.set(0.5);
+    aheadLbl.position.set(W / 2, sheetY + 64);
+    fitTextWidth(aheadLbl, sheetW - 128);
+    scene.addChild(aheadLbl);
 
-      const row = new PIXI.Container();
-      let curX = 0;
-      highlights.forEach((txt, idx) => {
-        if (idx > 0) curX += 10;
-        const chip = this._highlightChip(txt);
-        chip.x = curX;
-        curX += chip.width;
-        row.addChild(chip);
-      });
-      row.position.set(Math.round((boardW - curX) / 2), tagY + 2);
-      card.addChild(row);
-    } else {
-      const lead = makeLabel('街尾还有摊主没收完筐，不翻可惜！', 22, INK, { fontWeight: '700' });
-      lead.anchor.set(0.5);
-      lead.position.set(boardW / 2, tagY);
-      card.addChild(lead);
-    }
+    drawInkDivider(scene, sheetX + 52, sheetY + 104, sheetW - 104, 0.48, 10);
 
-    const desc = makeLabel(
-      `看一段视频借摊主手电筒，摸黑再逛 ${DUSK_EXTEND_STEPS} 步`,
-      20,
+    const desc = makeText(
+      'body',
+      `借摊主手电筒照路，摸黑再逛 ${DUSK_EXTEND_STEPS} 步！`,
       INK,
-      { fontWeight: '700' },
+      { size: 25, fontWeight: '700' },
     );
     desc.anchor.set(0.5);
-    desc.position.set(boardW / 2, Math.round(boardH * 0.728));
-    card.addChild(desc);
+    desc.position.set(W / 2, sheetY + 148);
+    fitTextWidth(desc, sheetW - 84);
+    scene.addChild(desc);
 
-    // Footer Buttons inside bottom cream band
-    const btnY = Math.round(boardH * 0.812);
-    const btnH = 56;
+    // 底部木框奶油栏内的大号双按钮
+    const btnY = Math.round(H * 0.816);
+    const btnH = 62;
     const gap = 16;
-    const homeW = 190;
-    const adW = Math.min(316, boardW - 84 - homeW - gap);
-    const totalW = homeW + gap + adW;
-    const startX = Math.round((boardW - totalW) / 2);
+    const homeW = 212;
+    const adW = 340;
+    const startX = Math.round((W - (homeW + gap + adW)) / 2);
 
     const homeBtn = makeSlicedButton({
       label: '直接回家',
@@ -210,6 +218,7 @@ export class DuskExtendPanel extends PIXI.Container {
       height: btnH,
       skin: 'cream',
       textColor: INK,
+      fontSize: 26,
       onReady: this._scheduleRelayout,
     });
     homeBtn.position.set(startX, btnY);
@@ -218,14 +227,15 @@ export class DuskExtendPanel extends PIXI.Container {
       this.close(true);
       RunManager.declineDuskExtend();
     });
-    card.addChild(homeBtn);
+    scene.addChild(homeBtn);
 
     const adBtn = makeAdButton({
       label: `借手电 +${DUSK_EXTEND_STEPS}步`,
       width: adW,
       height: btnH,
       skin: 'gold',
-      badge: '限1次',
+      textColor: INK,
+      badge: '本局限1',
       onReady: this._scheduleRelayout,
     });
     adBtn.position.set(startX + homeW + gap, btnY);
@@ -243,24 +253,7 @@ export class DuskExtendPanel extends PIXI.Container {
         },
       );
     });
-    card.addChild(adBtn);
-  }
-
-  private _highlightChip(text: string): PIXI.Container {
-    const wrap = new PIXI.Container();
-    const lbl = makeLabel(text, 18, TERRACOTTA, { fontWeight: '700' });
-    const pw = Math.ceil(lbl.width) + 22;
-    const ph = 32;
-    const bg = new PIXI.Graphics();
-    bg.lineStyle(2, 0xC4A574, 1);
-    bg.beginFill(PAPER, 1);
-    bg.drawRoundedRect(0, 0, pw, ph, ph / 2);
-    bg.endFill();
-    lbl.anchor.set(0.5);
-    lbl.position.set(pw / 2, ph / 2 + 0.5);
-    wrap.addChild(bg, lbl);
-    wrap.eventMode = 'none';
-    return wrap;
+    scene.addChild(adBtn);
   }
 
   private _floatLamp(target: PIXI.Container, baseY: number): void {
@@ -268,14 +261,14 @@ export class DuskExtendPanel extends PIXI.Container {
       if (!this._isOpen || target.destroyed) return;
       TweenManager.to({
         target,
-        props: { y: baseY - 7 },
+        props: { y: baseY - 8 },
         duration: 1.1,
         ease: Ease.easeInOutQuad,
         onComplete: () => {
           if (!this._isOpen || target.destroyed) return;
           TweenManager.to({
             target,
-            props: { y: baseY + 5 },
+            props: { y: baseY + 6 },
             duration: 1.1,
             ease: Ease.easeInOutQuad,
             onComplete: stepUp,

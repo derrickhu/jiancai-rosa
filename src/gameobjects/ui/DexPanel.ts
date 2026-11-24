@@ -4,11 +4,13 @@ import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { TutorialOverlay } from '@/gameobjects/ui/TutorialOverlay';
 import { Platform } from '@/core/PlatformService';
+import { Ease, TweenManager } from '@/core/TweenManager';
 import { KitchenManager } from '@/managers/KitchenManager';
 import {
   DEX_ENTRY_GOLD,
   DEX_FOOD_CATS,
   DEX_STAMP_SETS,
+  RARITY_STYLE,
   dexMilestoneStatus,
   dexObtainHint,
   dexRedDotCount,
@@ -18,13 +20,20 @@ import {
   dishGroups,
   dishesInGroup,
   foodsInCat,
+  getItem,
   isDexEntryClaimed,
   isDishUnlocked,
   isFoodUnlocked,
+  isRecipeId,
   isStampMemberUnlocked,
   itemRarity,
+  rarityLabel,
+  recipeById,
+  recipeEatLabel,
   recipeMasteryView,
   recipeRarity,
+  recipeSellPrice,
+  sellPrice,
   stampMemberName,
   unclaimedDexInDishGroup,
   unclaimedDexInFoodCat,
@@ -34,23 +43,21 @@ import {
   type DexTab,
   type KitchenSave,
   type Rarity,
-  isRecipeId,
-  recipeEatLabel,
 } from '@/sim';
 import { kitchenGachaHudPos, playRewardCollect, playTicketCollect } from '@/utils/coinCollect';
 import {
+  FONT,
   HUD_ICON,
   P0_ART,
-  drawCraftCard,
-  drawItemSlotBox,
-  drawSectionTray,
+  UI_KIT,
   fillRect,
-  makeDexName,
-  makeLabel,
+  fitTextWidth,
+  makeHandProgressBar,
   makeMasterySpoonRow,
+  makeRarityFlare,
   makeSlicedButton,
-  makeSlotBadge,
-  makeStrokeLabel,
+  makeText,
+  uiBarPaths,
 } from '@/utils/ui';
 import {
   applyGray,
@@ -60,39 +67,67 @@ import {
   imgPath,
   isTextureReady,
   itemTexture,
+  resolveDishAssetPath,
+  resolveItemAssetPath,
   watchTextures,
 } from '@/utils/assets';
 import { dexViewPaths } from '@/utils/panelAssets';
+import { VerticalScroller } from '@/utils/scroll';
+import {
+  SCENE_INK,
+  drawInkDivider,
+  drawPlaqueTitle,
+  drawSceneClose,
+  drawStretchSheet,
+  makeInlineRewards,
+  makeSealStamp,
+  makeSceneRoot,
+  sceneArtPaths,
+  sceneSprite,
+} from './scenePanel';
 
-const BG = 'subpkg_kitchen/ui_dex_panel.png';
-const INK = 0x2A2018;
-const MUTED = 0x8A6A40;
-const TITLE_FONT = 'Songti SC, STSong, PingFang SC, serif';
-const PAGE = { x: 0.155, y: 0.172, w: 0.725, h: 0.668 };
-const TITLE_Y = 0.052;
+const ART = {
+  book: 'subpkg_images/scene_dex_book.png',
+  tab: 'subpkg_images/scene_dex_tab.png',
+  photo: 'subpkg_images/scene_dex_photo.png',
+  spot: 'subpkg_images/scene_dex_spot.png',
+  washi: 'subpkg_images/scene_dex_washi.png',
+  note: 'subpkg_images/scene_club_note.png',
+  flare: 'subpkg_kitchen/ui_pickup_flare.png',
+} as const;
+
+const W = 720;
+const H = 1073;
+const PAGE_X = 114;
+const PAGE_R = 650;
+const PAGE_W = PAGE_R - PAGE_X;
 
 type View =
   | { kind: 'home' }
   | { kind: 'food'; cat: DexFoodCat }
   | { kind: 'dish'; group: string };
 
+interface DexDetailModal {
+  kind: DexEntryKind;
+  id: string;
+  unlocked: boolean;
+  title: string;
+  subtitle: string;
+  metaLine?: string;
+  blurb: string;
+  eatLine?: string;
+  rarity: Rarity;
+  stars?: 0 | 1 | 2 | 3;
+}
+
 export class DexPanel extends PIXI.Container {
   _isOpen = false;
   private _root = new PIXI.Container();
   private _tab: DexTab = 'food';
   private _view: View = { kind: 'home' };
-  private _scrollY = 0;
-  private _scrollMax = 0;
-  private _scrollBaseY = 0;
-  private _scrollList: PIXI.Container | null = null;
-  private _scrollHit = { x: 0, y: 0, w: 0, h: 0 };
-  private _dragging = false;
-  private _dragY = 0;
-  private _dragStart = 0;
-  private _dragMoved = false;
-  private _wxBound = false;
+  private _scroller: VerticalScroller;
   private _paintQueued = false;
-  private _inspect: { title: string; blurb: string } | null = null;
+  private _detail: DexDetailModal | null = null;
 
   constructor() {
     super();
@@ -101,231 +136,1203 @@ export class DexPanel extends PIXI.Container {
     this.eventMode = 'static';
     this.addChild(this._root);
     OverlayManager.container.addChild(this);
-    this.on('pointerdown', this._onPtrDown);
-    this.on('globalpointermove', this._onPtrMove);
-    this.on('pointerup', this._onPtrUp);
-    this.on('pointerupoutside', this._onPtrUp);
-    this.on('pointercancel', this._onPtrUp);
-    this.on('wheel', this._onWheel);
+    this._scroller = new VerticalScroller(this, {
+      visible: () => this._isOpen && !this._detail,
+    });
   }
 
   open(tab: DexTab = 'food'): void {
     this._tab = tab;
     this._view = { kind: 'home' };
-    this._scrollY = 0;
-    this._inspect = null;
+    this._detail = null;
+    this._scroller.reset();
+    this._scroller.enable();
     if (!this._isOpen) AudioManager.play('ui_open');
     this._isOpen = true;
     this.visible = true;
     this.relayout();
     OverlayManager.bringToFront();
-    this._bindWx(true);
-    this._warmView();
   }
 
   close(silent = false): void {
     if (this._isOpen && !silent) AudioManager.play('ui_close');
     this._isOpen = false;
     this.visible = false;
-    this._inspect = null;
-    this._dragging = false;
-    this._bindWx(false);
+    this._detail = null;
+    this._paintQueued = false;
+    this._scroller.disable();
+    this._scroller.clear();
+    this._root.removeChildren();
     TutorialOverlay.refresh();
+  }
+
+  private _scheduleRelayout = (): void => {
+    if (!this._isOpen || this._paintQueued) return;
+    this._paintQueued = true;
+    const later = typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame
+      : (cb: () => void) => setTimeout(cb, 0);
+    later(() => {
+      this._paintQueued = false;
+      if (this._isOpen) this.relayout();
+    });
+  };
+
+  private _warmView(): void {
+    const view = this._view.kind === 'home'
+      ? { kind: 'home' as const, tab: this._tab }
+      : this._view;
+    const paths: string[] = [
+      ...Object.values(ART),
+      ...sceneArtPaths(),
+      ...uiBarPaths(),
+      ...dexViewPaths(KitchenManager.save, view),
+      UI_KIT.closeRound,
+      UI_KIT.btnOlive,
+      UI_KIT.btnGold,
+      HUD_ICON.coin,
+      HUD_ICON.ticket,
+      P0_ART.dexStamp,
+      ...P0_ART.spoons,
+    ];
+    if (this._detail) {
+      paths.push(
+        this._detail.kind === 'dish'
+          ? resolveDishAssetPath(this._detail.id)
+          : resolveItemAssetPath(this._detail.id),
+      );
+    }
+    watchTextures([...new Set(paths)], this._scheduleRelayout);
   }
 
   relayout(): void {
     this._root.removeChildren();
-    const w = Game.designWidth;
-    const h = Game.logicHeight;
-    this.hitArea = new PIXI.Rectangle(0, 0, w, h);
-    const redraw = this._scheduleRelayout;
-
-    const dim = new PIXI.Graphics();
-    fillRect(dim, 0, 0, w, h, 0x000000);
-    dim.alpha = 0.46;
-    dim.eventMode = 'static';
-    dim.on('pointertap', () => this.close());
-    this._root.addChild(dim);
-
-    const box = this._boardBox(w, h);
-    const shell = new PIXI.Container();
-    shell.position.set(box.x, box.y);
-    shell.eventMode = 'static';
-    shell.hitArea = new PIXI.Rectangle(0, 0, box.w, box.h);
-    shell.on('pointertap', (e) => e.stopPropagation());
-    this._root.addChild(shell);
-
+    if (!this._isOpen) return;
     this._warmView();
-    const bgTex = gameTexture(BG);
-    if (isTextureReady(bgTex)) {
-      const bg = new PIXI.Sprite(bgTex);
-      bg.width = box.w;
-      bg.height = box.h;
-      shell.addChild(bg);
+
+    const sw = Game.designWidth;
+    const sh = Game.logicHeight;
+    this.hitArea = new PIXI.Rectangle(0, 0, sw, sh);
+
+    const { scene, toStage } = makeSceneRoot({
+      parent: this._root,
+      designW: W,
+      panelH: H,
+      topBleed: 44,
+      dimAlpha: 0.66,
+      onDimTap: () => {
+        if (this._detail) {
+          AudioManager.play('ui_close');
+          this._detail = null;
+          this.relayout();
+          return;
+        }
+        this.close();
+      },
+    });
+
+    this._drawBookBase(scene);
+    drawPlaqueTitle(scene, this._titleText(), W / 2, -42, 348);
+    drawSceneClose(
+      scene,
+      W - 54,
+      -18,
+      () => {
+        if (this._detail) {
+          AudioManager.play('ui_close');
+          this._detail = null;
+          this.relayout();
+          return;
+        }
+        this.close();
+      },
+      this._scheduleRelayout,
+    );
+
+    this._drawHeaderSection(scene, toStage);
+    this._drawNavSection(scene);
+    this._drawScrollViewport(scene, toStage);
+
+    if (this._detail) {
+      this._drawDetailModal(this._detail);
     }
-
-    this._drawClose(shell, box.w);
-    const page = {
-      x: box.w * PAGE.x,
-      y: box.h * PAGE.y,
-      w: box.w * PAGE.w,
-      h: box.h * PAGE.h,
-    };
-    this._drawHeader(shell, box.w, box.h, page, redraw);
-    this._drawBody(shell, box, page, redraw);
-    this._drawFooter(shell, box.w, box.h, page);
   }
 
-  private _boardBox(w: number, h: number): { x: number; y: number; w: number; h: number } {
-    const top = (Number.isFinite(Game.safeTop) ? Game.safeTop : 96) + 8;
-    const bottom = 16 + Game.safeBottom;
-    const height = Math.min(h - top - bottom, 1120);
-    const width = Math.min(w - 24, Math.round(height * (750 / 1136)));
-    return { x: (w - width) / 2, y: top + (h - top - bottom - height) / 2, w: width, h: height };
+  private _drawBookBase(scene: PIXI.Container): void {
+    const shadow = new PIXI.Graphics();
+    shadow.beginFill(0x0E0804, 0.45);
+    shadow.drawRoundedRect(10, 14, W - 20, H - 6, 36);
+    shadow.endFill();
+    scene.addChild(shadow);
+
+    const book = sceneSprite(ART.book, W, H);
+    if (book) {
+      scene.addChild(book);
+    } else {
+      const fb = new PIXI.Graphics();
+      fb.lineStyle(4, SCENE_INK.ink, 1);
+      fb.beginFill(0x5E381E, 1);
+      fb.drawRoundedRect(0, 0, W, H, 32);
+      fb.endFill();
+      fb.lineStyle(2, 0xB89A72, 1);
+      fb.beginFill(0xF6EAD2, 1);
+      fb.drawRoundedRect(74, 58, W - 114, H - 132, 20);
+      fb.endFill();
+      scene.addChild(fb);
+    }
   }
 
-  private _drawClose(shell: PIXI.Container, bw: number): void {
-    const btn = new PIXI.Container();
-    const g = new PIXI.Graphics();
-    g.lineStyle(3, INK, 1);
-    g.beginFill(0xC46A3A);
-    g.drawCircle(22, 22, 20);
-    g.endFill();
-    const x = makeLabel('×', 28, 0xFFF8F0, { fontWeight: '700' });
-    x.anchor.set(0.5);
-    x.position.set(22, 20);
-    btn.addChild(g, x);
-    btn.position.set(bw - 58, 18);
-    btn.eventMode = 'static';
-    btn.cursor = 'pointer';
-    btn.hitArea = new PIXI.Circle(22, 22, 22);
-    btn.on('pointertap', () => this.close());
-    shell.addChild(btn);
-  }
-
-  private _drawHeader(
-    shell: PIXI.Container,
-    bw: number,
-    bh: number,
-    page: { x: number; y: number; w: number },
-    redraw: () => void,
+  private _drawHeaderSection(
+    scene: PIXI.Container,
+    toStage: (x: number, y: number) => { x: number; y: number },
   ): void {
-    const title = this._titleText();
-    const head = makeLabel(title, 36, INK, { fontFamily: TITLE_FONT, fontWeight: '700' });
-    head.anchor.set(0.5);
-    head.position.set(bw / 2, bh * TITLE_Y);
-    shell.addChild(head);
-
     const save = KitchenManager.save;
     const { have, total } = this._progress(save);
     const ms = dexMilestoneStatus(save);
     const claimable = dexRedDotCount(save) > 0;
 
-    const barH = 56;
-    const bar = new PIXI.Container();
-    bar.position.set(page.x, page.y);
-    const barBg = new PIXI.Graphics();
-    barBg.lineStyle(2.5, 0x8B5A2B, 1);
-    barBg.beginFill(0xFFF6E8, 0.96);
-    barBg.drawRoundedRect(0, 0, page.w, barH, 16);
-    barBg.endFill();
-    bar.addChild(barBg);
-
-    const stampTex = gameTexture(P0_ART.dexStamp);
-    if (isTextureReady(stampTex)) {
-      const sp = new PIXI.Sprite(stampTex);
-      fitSpriteInBox(sp, 40, 40);
-      sp.anchor.set(0.5);
-      sp.position.set(28, barH / 2);
-      sp.eventMode = 'none';
-      bar.addChild(sp);
+    // 避开顶部木匾底沿（y≈132）与右上暗红丝带书签（x≈515..628, y≈0..202）
+    const row1Cy = 168;
+    const stampIcon = sceneSprite(P0_ART.dexStamp, 46, 46);
+    if (stampIcon) {
+      stampIcon.anchor.set(0, 0.5);
+      stampIcon.position.set(PAGE_X, row1Cy);
+      scene.addChild(stampIcon);
     }
 
-    const line1 = makeLabel(`已收集 ${have}/${total}`, 20, INK, { fontWeight: '700' });
-    line1.anchor.set(0, 0.5);
-    line1.position.set(54, barH / 2);
-    bar.addChild(line1);
+    const progTitle = makeText('title', `已收录 ${have}/${total}`, SCENE_INK.ink, { size: 28 });
+    progTitle.anchor.set(0, 0.5);
+    progTitle.position.set(PAGE_X + 54, row1Cy);
+    fitTextWidth(progTitle, 332);
+    scene.addChild(progTitle);
 
-    const msBadge = makeSlotBadge(
-      ms.readySteps > 0 ? `可领券×${ms.readySteps}` : `满${ms.stepProgress}/${ms.stepNeed}送券`,
-      ms.readySteps > 0 ? 'lack' : 'gold',
-      14,
-    );
-    msBadge.node.position.set(54 + Math.ceil(line1.width) + 10, Math.round((barH - msBadge.h) / 2));
-    bar.addChild(msBadge.node);
+    // 第二行位于 y=208..264，完整落在暗红丝带燕尾下方，全宽可用且字号不压缩
+    const row2Top = 208;
+    const msTextStr = ms.readySteps > 0
+      ? `里程碑可领券 ×${ms.readySteps}`
+      : `再集 ${Math.max(1, ms.stepNeed - ms.stepProgress)} 味赠菜谱券`;
 
     if (claimable) {
-      const btnW = 126;
-      const btnH = 42;
+      const btnW = 172;
+      const btnH = 56;
+      const barW = PAGE_W - btnW - 18;
+      const bar = makeHandProgressBar({
+        width: barW,
+        height: 18,
+        ratio: total > 0 ? have / total : 0,
+        onReady: this._scheduleRelayout,
+      });
+      bar.node.position.set(PAGE_X, row2Top + 4);
+      scene.addChild(bar.node);
+
+      const msTxt = makeText(
+        'caption',
+        msTextStr,
+        ms.readySteps > 0 ? SCENE_INK.red : SCENE_INK.gold,
+        { size: 22, fontWeight: '700' },
+      );
+      msTxt.anchor.set(0, 0);
+      msTxt.position.set(PAGE_X + 2, row2Top + 30);
+      fitTextWidth(msTxt, barW - 4);
+      scene.addChild(msTxt);
+
       const claimBtn = makeSlicedButton({
         label: '盖章领赏',
         width: btnW,
         height: btnH,
         skin: 'terracotta',
-        textColor: 0xFFF8F0,
-        fontSize: 18,
-        onReady: redraw,
+        fontSize: 25,
+        onReady: this._scheduleRelayout,
       });
-      claimBtn.position.set(page.w - btnW - 8, Math.round((barH - btnH) / 2));
+      claimBtn.position.set(PAGE_R - btnW, row2Top + 2);
       claimBtn.on('pointertap', (e) => {
         e.stopPropagation();
         const res = KitchenManager.claimAllDex();
         if (res.gold <= 0 && res.tickets <= 0) return;
-        const from = { x: Game.designWidth / 2, y: Math.round(Game.logicHeight * 0.28) };
+        const from = toStage(PAGE_R - btnW / 2, row2Top + 30);
         if (res.gold > 0) playRewardCollect({ gold: res.gold, from });
         if (res.tickets > 0) playTicketCollect(from, kitchenGachaHudPos(), 0);
         const parts: string[] = [];
-        if (res.gold > 0) parts.push(`+${res.gold} 金`);
+        if (res.gold > 0) parts.push(`+${res.gold} 金币`);
         if (res.tickets > 0) parts.push(`菜谱券 ×${res.tickets}`);
         Platform.showToast(`盖章领赏：${parts.join('  ')}`, 'success');
-        if (this.visible) this.relayout();
+        if (this._isOpen) this.relayout();
       });
-      bar.addChild(claimBtn);
+      scene.addChild(claimBtn);
+    } else {
+      const msTxt = makeText('caption', msTextStr, SCENE_INK.gold, { size: 23, fontWeight: '700' });
+      msTxt.anchor.set(1, 0.5);
+      msTxt.position.set(PAGE_R, row2Top + 22);
+      scene.addChild(msTxt);
+
+      const barW = Math.max(220, PAGE_W - Math.ceil(msTxt.width) - 20);
+      const bar = makeHandProgressBar({
+        width: barW,
+        height: 20,
+        ratio: total > 0 ? have / total : 0,
+        onReady: this._scheduleRelayout,
+      });
+      bar.node.position.set(PAGE_X, row2Top + 12);
+      scene.addChild(bar.node);
     }
-    shell.addChild(bar);
+  }
+
+  private _drawNavSection(scene: PIXI.Container): void {
+    const navY = 276;
+    const save = KitchenManager.save;
 
     if (this._view.kind === 'home') {
-      const tabY = page.y + 66;
-      const gap = 8;
-      const tw = (page.w - gap * 2) / 3;
-      const stampReady = unclaimedDexStampSets(save).length;
-      (['food', 'dish', 'stamp'] as const).forEach((tab, i) => {
-        const on = this._tab === tab;
-        const label = tab === 'food' ? '食材' : tab === 'dish' ? '菜品' : '集章册';
-        const btn = makeSlicedButton({
-          label,
-          width: tw,
-          height: 48,
-          skin: on ? 'terracotta' : 'cream',
-          textColor: on ? 0xFFF8F0 : INK,
-          fontSize: 21,
-          onReady: redraw,
-        });
-        btn.position.set(page.x + i * (tw + gap), tabY);
-        if (tab === 'stamp' && stampReady > 0) {
-          const dot = makeSlotBadge(`可盖${stampReady}`, 'lack', 14);
-          dot.node.position.set(tw - dot.w + 4, -9);
-          btn.addChild(dot.node);
+      const gap = 13;
+      const tabW = Math.floor((PAGE_W - gap * 2) / 3);
+      const tabH = 60;
+      const foodRed = DEX_FOOD_CATS.reduce((n, c) => n + unclaimedDexInFoodCat(save, c.id), 0);
+      const dishRed = dishGroups().reduce((n, g) => n + unclaimedDexInDishGroup(save, g), 0);
+      const stampRed = unclaimedDexStampSets(save).length;
+
+      const tabs: Array<{ id: DexTab; label: string; badge: number }> = [
+        { id: 'food', label: '食材篇', badge: foodRed },
+        { id: 'dish', label: '菜谱篇', badge: dishRed },
+        { id: 'stamp', label: '集章册', badge: stampRed },
+      ];
+
+      tabs.forEach((item, idx) => {
+        const active = this._tab === item.id;
+        const wrap = new PIXI.Container();
+        const ty = active ? navY - 4 : navY + 4;
+        const th = active ? tabH + 4 : tabH - 4;
+        wrap.position.set(PAGE_X + idx * (tabW + gap), ty);
+
+        const tex = gameTexture(ART.tab);
+        if (isTextureReady(tex)) {
+          const sp = new PIXI.Sprite(tex);
+          sp.width = tabW;
+          sp.height = th;
+          sp.tint = active ? 0xFFFBF2 : 0xE6D3B5;
+          wrap.addChild(sp);
+        } else {
+          const g = new PIXI.Graphics();
+          g.lineStyle(2.5, SCENE_INK.ink, 1);
+          g.beginFill(active ? 0xFFFBF2 : 0xE6D3B5, 1);
+          g.drawRoundedRect(0, 0, tabW, th, 14);
+          g.endFill();
+          wrap.addChild(g);
         }
-        btn.on('pointertap', () => {
-          this._tab = tab;
+
+        if (active) {
+          const underline = new PIXI.Graphics();
+          underline.beginFill(SCENE_INK.red, 0.9);
+          underline.drawRoundedRect(tabW * 0.22, th - 8, tabW * 0.56, 4, 2);
+          underline.endFill();
+          wrap.addChild(underline);
+        }
+
+        const lbl = makeText(
+          'heading',
+          item.label,
+          active ? SCENE_INK.red : SCENE_INK.soft,
+          { size: active ? 28 : 25 },
+        );
+        lbl.anchor.set(0.5);
+        lbl.position.set(tabW / 2, th * 0.48);
+        wrap.addChild(lbl);
+
+        if (item.badge > 0) {
+          const seal = makeSealStamp(`新${item.badge}`, 44, 0.12);
+          seal.position.set(tabW - 14, 8);
+          wrap.addChild(seal);
+        }
+
+        wrap.eventMode = 'static';
+        wrap.cursor = 'pointer';
+        wrap.hitArea = new PIXI.Rectangle(0, 0, tabW, th);
+        wrap.on('pointertap', () => {
+          if (this._tab === item.id) return;
+          AudioManager.play('ui_click');
+          this._tab = item.id;
           this._view = { kind: 'home' };
-          this._scrollY = 0;
-          this._inspect = null;
+          this._detail = null;
+          this._scroller.reset();
           this.relayout();
         });
-        shell.addChild(btn);
+        scene.addChild(wrap);
       });
+    } else {
+      const backBtn = makeSlicedButton({
+        label: '← 返回目录',
+        width: 184,
+        height: 52,
+        skin: 'cream',
+        fontSize: 24,
+        onReady: this._scheduleRelayout,
+      });
+      backBtn.position.set(PAGE_X, navY + 2);
+      backBtn.on('pointertap', () => {
+        this._view = { kind: 'home' };
+        this._detail = null;
+        this._scroller.reset();
+        this.relayout();
+      });
+      scene.addChild(backBtn);
+
+      const tip = makeText('caption', '轻点相片翻看风味与线索', SCENE_INK.muted, { size: 22, fontWeight: '600' });
+      tip.anchor.set(1, 0.5);
+      tip.position.set(PAGE_R, navY + 28);
+      fitTextWidth(tip, PAGE_W - 198);
+      scene.addChild(tip);
     }
+
+    drawInkDivider(scene, PAGE_X, navY + 60, PAGE_W, 0.55, 10);
+  }
+
+  private _drawScrollViewport(
+    scene: PIXI.Container,
+    toStage: (x: number, y: number) => { x: number; y: number },
+  ): void {
+    const listTop = 350;
+    const listBottom = 972;
+    const listH = listBottom - listTop;
+
+    const list = new PIXI.Container();
+    list.position.set(PAGE_X, listTop);
+    let contentH = 0;
+    if (this._view.kind === 'home') {
+      if (this._tab === 'food') contentH = this._paintFoodCats(list);
+      else if (this._tab === 'dish') contentH = this._paintDishCats(list);
+      else contentH = this._paintStampSets(list, toStage, listTop);
+    } else {
+      contentH = this._paintEntriesGrid(list);
+    }
+    contentH += 24;
+
+    const mask = new PIXI.Graphics();
+    fillRect(mask, PAGE_X - 8, listTop, PAGE_W + 16, listH, 0xFFFFFF);
+    mask.eventMode = 'none';
+    const viewport = new PIXI.Container();
+    viewport.eventMode = 'static';
+    viewport.hitArea = new PIXI.Rectangle(PAGE_X, listTop, PAGE_W, listH);
+    viewport.mask = mask;
+    viewport.addChild(list);
+    scene.addChild(mask, viewport);
+
+    const tl = toStage(PAGE_X, listTop);
+    const br = toStage(PAGE_R, listBottom);
+    this._scroller.attach({
+      content: list,
+      maxScroll: Math.max(0, contentH - listH),
+      baseY: listTop,
+      hit: { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y },
+    });
+  }
+
+  private _paintFoodCats(list: PIXI.Container): number {
+    const save = KitchenManager.save;
+    return this._paintCatGrid(
+      list,
+      DEX_FOOD_CATS.map((cat) => {
+        const items = foodsInCat(cat.id);
+        const have = items.filter((it) => isFoodUnlocked(save, it.id)).length;
+        return {
+          label: cat.label,
+          icon: cat.icon,
+          have,
+          total: items.length,
+          unclaimed: unclaimedDexInFoodCat(save, cat.id),
+          ink: cat.ink,
+          onTap: () => {
+            AudioManager.play('ui_click');
+            this._view = { kind: 'food', cat: cat.id };
+            this._detail = null;
+            this._scroller.reset();
+            this.relayout();
+          },
+        };
+      }),
+    );
+  }
+
+  private _paintDishCats(list: PIXI.Container): number {
+    const save = KitchenManager.save;
+    return this._paintCatGrid(
+      list,
+      dishGroups().map((group) => {
+        const items = dishesInGroup(group, save.recipesFound);
+        const have = items.filter((it) => isDishUnlocked(save, it.id)).length;
+        return {
+          label: group,
+          icon: dishGroupCatIcon(group),
+          have,
+          total: items.length,
+          unclaimed: unclaimedDexInDishGroup(save, group),
+          ink: dishGroupTheme(group).ink,
+          onTap: () => {
+            AudioManager.play('ui_click');
+            this._view = { kind: 'dish', group };
+            this._detail = null;
+            this._scroller.reset();
+            this.relayout();
+          },
+        };
+      }),
+    );
+  }
+
+  private _paintCatGrid(
+    list: PIXI.Container,
+    cats: Array<{
+      label: string;
+      icon: string;
+      have: number;
+      total: number;
+      unclaimed: number;
+      ink: number;
+      onTap: () => void;
+    }>,
+  ): number {
+    const cols = 2;
+    const gapX = 20;
+    const gapY = 22;
+    const cardW = Math.floor((PAGE_W - gapX) / cols);
+    const cardH = 340;
+
+    cats.forEach((cat, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = col * (cardW + gapX);
+      const y = row * (cardH + gapY);
+
+      const card = new PIXI.Container();
+      card.pivot.set(cardW / 2, cardH / 2);
+      card.position.set(x + cardW / 2, y + cardH / 2);
+      card.rotation = col === 0 ? -0.015 : 0.015;
+
+      const photoTex = gameTexture(ART.photo);
+      if (isTextureReady(photoTex)) {
+        const frame = new PIXI.Sprite(photoTex);
+        frame.width = cardW;
+        frame.height = cardH;
+        card.addChild(frame);
+      } else {
+        const fb = new PIXI.Graphics();
+        fb.lineStyle(2.5, SCENE_INK.ink, 1);
+        fb.beginFill(0xFAF0DC, 1);
+        fb.drawRoundedRect(0, 12, cardW, cardH - 12, 10);
+        fb.endFill();
+        card.addChild(fb);
+      }
+
+      // 拍立得相窗区域（对应 240x337 原图的 [20..220, 40..264]）
+      const winX = Math.round(cardW * 0.088);
+      const winY = Math.round(cardH * 0.122);
+      const winW = Math.round(cardW * 0.824);
+      const winH = Math.round(cardH * 0.656);
+
+      const catTex = gameTexture(imgPath(`${cat.icon}.png`));
+      if (isTextureReady(catTex)) {
+        const spr = new PIXI.Sprite(catTex);
+        const scale = Math.max(winW / catTex.width, winH / catTex.height);
+        spr.scale.set(scale);
+        spr.anchor.set(0.5);
+        spr.position.set(winX + winW / 2, winY + winH / 2);
+        const mask = new PIXI.Graphics();
+        fillRect(mask, winX + 2, winY + 2, winW - 4, winH - 4, 0xFFFFFF, 6);
+        spr.mask = mask;
+        card.addChild(mask, spr);
+      }
+
+      const name = makeText('title', cat.label, cat.ink, { size: 30 });
+      name.anchor.set(0, 0.5);
+      name.position.set(winX + 2, winY + winH + 28);
+      fitTextWidth(name, winW * 0.58);
+      card.addChild(name);
+
+      const cnt = makeText('number', `${cat.have}/${cat.total}`, SCENE_INK.ink, { size: 25 });
+      cnt.anchor.set(1, 0.5);
+      cnt.position.set(winX + winW - 2, winY + winH + 28);
+      card.addChild(cnt);
+
+      const bar = makeHandProgressBar({
+        width: winW,
+        height: 14,
+        ratio: cat.total > 0 ? cat.have / cat.total : 0,
+        onReady: this._scheduleRelayout,
+      });
+      bar.node.position.set(winX, winY + winH + 50);
+      card.addChild(bar.node);
+
+      if (cat.unclaimed > 0) {
+        const seal = makeSealStamp(`新${cat.unclaimed}`, 52, 0.12);
+        seal.position.set(cardW - 30, 38);
+        card.addChild(seal);
+      }
+
+      card.eventMode = 'static';
+      card.cursor = 'pointer';
+      card.hitArea = new PIXI.Rectangle(0, 0, cardW, cardH);
+      card.on('pointertap', () => {
+        if (this._scroller.moved) return;
+        cat.onTap();
+      });
+      list.addChild(card);
+    });
+
+    return Math.ceil(cats.length / cols) * (cardH + gapY);
+  }
+
+  private _paintEntriesGrid(list: PIXI.Container): number {
+    const save = KitchenManager.save;
+    const isDish = this._view.kind === 'dish';
+    const entries: Array<{
+      id: string;
+      name: string;
+      blurb: string;
+      unlocked: boolean;
+      dish: boolean;
+      rarity: Rarity;
+    }> = this._view.kind === 'food'
+      ? foodsInCat(this._view.cat).map((it) => ({
+        id: it.id,
+        name: it.name,
+        blurb: it.blurb,
+        unlocked: isFoodUnlocked(save, it.id),
+        dish: false,
+        rarity: it.rarity,
+      }))
+      : this._view.kind === 'dish'
+        ? dishesInGroup(this._view.group, save.recipesFound).map((it) => ({
+          id: it.id,
+          name: it.name,
+          blurb: it.blurb,
+          unlocked: isDishUnlocked(save, it.id),
+          dish: true,
+          rarity: it.rarity,
+        }))
+        : [];
+
+    if (!entries.length) {
+      const empty = makeText('body', '这一页还空着，去菜场逛逛吧。', SCENE_INK.muted, { size: 26 });
+      empty.position.set(12, 24);
+      list.addChild(empty);
+      return 80;
+    }
+
+    const cols = 2;
+    const gapX = 20;
+    const gapY = 22;
+    const cardW = Math.floor((PAGE_W - gapX) / cols);
+    const cardH = 336;
+
+    entries.forEach((it, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = col * (cardW + gapX);
+      const y = row * (cardH + gapY);
+      const entryKind: DexEntryKind = it.dish ? 'dish' : 'food';
+      const unclaimed = it.unlocked && !isDexEntryClaimed(save, entryKind, it.id);
+
+      const card = new PIXI.Container();
+      card.pivot.set(cardW / 2, cardH / 2);
+      card.position.set(x + cardW / 2, y + cardH / 2);
+
+      if (it.unlocked) {
+        card.rotation = (i % 2 === 0 ? -1 : 1) * 0.014;
+        const photoTex = gameTexture(ART.photo);
+        if (isTextureReady(photoTex)) {
+          const frame = new PIXI.Sprite(photoTex);
+          frame.width = cardW;
+          frame.height = cardH;
+          card.addChild(frame);
+        } else {
+          const fb = new PIXI.Graphics();
+          fb.lineStyle(2.5, SCENE_INK.ink, 1);
+          fb.beginFill(0xFAF0DC, 1);
+          fb.drawRoundedRect(0, 12, cardW, cardH - 12, 10);
+          fb.endFill();
+          card.addChild(fb);
+        }
+
+        const winCx = cardW / 2;
+        const winCy = isDish ? 136 : 148;
+        if (it.rarity !== 'common') {
+          const flare = makeRarityFlare(it.rarity, 196);
+          flare.alpha = 0.5;
+          flare.position.set(winCx, winCy);
+          card.addChild(flare);
+        }
+
+        const tex = it.dish ? dishTexture(it.id) : itemTexture(it.id);
+        if (isTextureReady(tex)) {
+          const spr = new PIXI.Sprite(tex);
+          fitSpriteInBox(spr, 152, 152);
+          spr.anchor.set(0.5);
+          spr.position.set(winCx, winCy);
+          card.addChild(spr);
+        }
+
+        // 稀有度小印记写在相纸右上内角
+        if (it.rarity !== 'common') {
+          const rTag = makeText('caption', rarityLabel(it.rarity), RARITY_STYLE[it.rarity].ink, {
+            size: 20,
+            fontWeight: '700',
+            stroke: 0xFFFBF2,
+            strokeWidth: 4,
+          });
+          rTag.anchor.set(0, 0);
+          rTag.position.set(28, 46);
+          card.addChild(rTag);
+        }
+
+        if (it.dish && isRecipeId(it.id)) {
+          const mastery = recipeMasteryView(save, it.id);
+          const spoonSize = 28;
+          const spoonGap = 5;
+          const spoons = makeMasterySpoonRow({
+            stars: mastery.stars,
+            size: spoonSize,
+            gap: spoonGap,
+            onReady: this._scheduleRelayout,
+          });
+          const sw = spoonSize * 3 + spoonGap * 2;
+          spoons.position.set(Math.round((cardW - sw) / 2), 218);
+          card.addChild(spoons);
+        }
+
+        const name = makeText('title', it.name, SCENE_INK.ink, { size: 27 });
+        name.anchor.set(0.5);
+        name.position.set(cardW / 2, 294);
+        fitTextWidth(name, cardW - 44);
+        card.addChild(name);
+
+        if (unclaimed) {
+          const seal = makeSealStamp(`+${DEX_ENTRY_GOLD}金`, 54, 0.12);
+          seal.position.set(cardW - 30, 38);
+          card.addChild(seal);
+        }
+      } else {
+        // 未收录：和纸胶带 + 手绘剪影圆底斑，直接贴在手账点阵纸上
+        const washi = sceneSprite(ART.washi, 118, 22);
+        if (washi) {
+          washi.anchor.set(0.5);
+          washi.position.set(cardW / 2, 22);
+          washi.rotation = i % 2 === 0 ? -0.025 : 0.025;
+          card.addChild(washi);
+        }
+
+        const spot = sceneSprite(ART.spot, 186, 186);
+        if (spot) {
+          spot.anchor.set(0.5);
+          spot.position.set(cardW / 2, 134);
+          card.addChild(spot);
+        } else {
+          const g = new PIXI.Graphics();
+          g.lineStyle(2, 0xB89A74, 0.7);
+          g.beginFill(0xFFFBF0, 0.75);
+          g.drawCircle(cardW / 2, 134, 88);
+          g.endFill();
+          card.addChild(g);
+        }
+
+        const tex = it.dish ? dishTexture(it.id) : itemTexture(it.id);
+        if (isTextureReady(tex)) {
+          const spr = new PIXI.Sprite(tex);
+          fitSpriteInBox(spr, 126, 126);
+          spr.anchor.set(0.5);
+          spr.position.set(cardW / 2, 134);
+          applyGray(spr);
+          spr.alpha = 0.34;
+          card.addChild(spr);
+        }
+
+        const title = makeText('heading', it.dish ? '待寻菜谱' : '待寻食材', SCENE_INK.soft, { size: 26 });
+        title.anchor.set(0.5);
+        title.position.set(cardW / 2, 256);
+        card.addChild(title);
+
+        const hint = makeText('caption', '轻点看寻味线索 ›', SCENE_INK.muted, { size: 22, fontWeight: '600' });
+        hint.anchor.set(0.5);
+        hint.position.set(cardW / 2, 294);
+        card.addChild(hint);
+      }
+
+      card.eventMode = 'static';
+      card.cursor = 'pointer';
+      card.hitArea = new PIXI.Rectangle(0, 0, cardW, cardH);
+      card.on('pointertap', (e) => {
+        if (this._scroller.moved) return;
+        AudioManager.play('ui_click');
+        if (it.unlocked && unclaimed) {
+          const gold = KitchenManager.claimDexEntry(entryKind, it.id);
+          if (gold > 0) {
+            playRewardCollect({ gold, from: { x: e.global.x, y: e.global.y } });
+          }
+        }
+        this._detail = this._buildDetail(entryKind, it.id, it.unlocked);
+        this.relayout();
+      });
+      list.addChild(card);
+    });
+
+    return Math.ceil(entries.length / cols) * (cardH + gapY);
+  }
+
+  private _paintStampSets(
+    list: PIXI.Container,
+    toStage: (x: number, y: number) => { x: number; y: number },
+    listTop: number,
+  ): number {
+    const save = KitchenManager.save;
+    let y = 0;
+
+    DEX_STAMP_SETS.forEach((def, setIdx) => {
+      const st = dexStampSetStatus(save, def);
+      const sec = new PIXI.Container();
+      sec.position.set(0, y);
+
+      // 顶部和纸胶带 + 篇章标题
+      const washi = sceneSprite(ART.washi, 108, 20);
+      if (washi) {
+        washi.position.set(0, 2);
+        washi.alpha = 0.85;
+        sec.addChild(washi);
+      }
+
+      const title = makeText('title', `《${def.title}》`, SCENE_INK.ink, { size: 30 });
+      title.position.set(0, 24);
+      fitTextWidth(title, PAGE_W - 160);
+      sec.addChild(title);
+
+      const statusStr = st.claimed
+        ? '已盖章生效'
+        : st.readyToClaim
+          ? '已集齐 · 可盖章'
+          : `已集 ${st.have}/${st.total}`;
+      const statusCol = st.claimed
+        ? SCENE_INK.green
+        : st.readyToClaim
+          ? SCENE_INK.red
+          : SCENE_INK.muted;
+      const statusTxt = makeText('heading', statusStr, statusCol, { size: 24 });
+      statusTxt.anchor.set(1, 0.5);
+      statusTxt.position.set(PAGE_W, 42);
+      sec.addChild(statusTxt);
+
+      const sub = makeText('caption', def.subtitle, SCENE_INK.soft, { size: 22, fontWeight: '600' });
+      sub.position.set(2, 66);
+      fitTextWidth(sub, PAGE_W - 4);
+      sec.addChild(sub);
+
+      // 印章底斑网格（每行最多 4 个，告别拥挤单行小格）
+      const cols = 4;
+      const gapX = 12;
+      const cellW = Math.floor((PAGE_W - gapX * (cols - 1)) / cols);
+      const rowH = 136;
+      const gridTop = 104;
+
+      def.members.forEach((m, idx) => {
+        const unlocked = isStampMemberUnlocked(save, m);
+        const col = idx % cols;
+        const row = Math.floor(idx / cols);
+        const cx = col * (cellW + gapX) + cellW / 2;
+        const cy = gridTop + row * rowH;
+
+        const cell = new PIXI.Container();
+        cell.position.set(col * (cellW + gapX), cy);
+
+        const spot = sceneSprite(ART.spot, 94, 94);
+        if (spot) {
+          spot.anchor.set(0.5);
+          spot.position.set(cellW / 2, 48);
+          if (unlocked) spot.tint = 0xFFF6E0;
+          cell.addChild(spot);
+        } else {
+          const g = new PIXI.Graphics();
+          g.lineStyle(2, 0xB89A74, 0.8);
+          g.beginFill(0xFFFBF0, 0.85);
+          g.drawCircle(cellW / 2, 48, 44);
+          g.endFill();
+          cell.addChild(g);
+        }
+
+        const tex = m.kind === 'food' ? itemTexture(m.id) : dishTexture(m.id);
+        if (isTextureReady(tex)) {
+          const spr = new PIXI.Sprite(tex);
+          fitSpriteInBox(spr, 72, 72);
+          spr.anchor.set(0.5);
+          spr.position.set(cellW / 2, 48);
+          if (!unlocked) {
+            applyGray(spr);
+            spr.alpha = 0.36;
+          }
+          cell.addChild(spr);
+        }
+
+        const mName = stampMemberName(m);
+        const lbl = makeText(
+          'caption',
+          mName,
+          unlocked ? SCENE_INK.ink : SCENE_INK.muted,
+          { size: 22, fontWeight: unlocked ? '700' : '600' },
+        );
+        lbl.anchor.set(0.5, 0);
+        lbl.position.set(cellW / 2, 98);
+        fitTextWidth(lbl, cellW - 4);
+        cell.addChild(lbl);
+
+        cell.eventMode = 'static';
+        cell.cursor = 'pointer';
+        cell.hitArea = new PIXI.Rectangle(0, 0, cellW, rowH);
+        cell.on('pointertap', () => {
+          if (this._scroller.moved) return;
+          AudioManager.play('ui_click');
+          this._detail = this._buildDetail(m.kind, m.id, unlocked, `收录于《${def.title}》集章册`);
+          this.relayout();
+        });
+        void cx;
+        sec.addChild(cell);
+      });
+
+      const rows = Math.ceil(def.members.length / cols);
+      const footTop = gridTop + rows * rowH + 10;
+      const rightReserve = st.readyToClaim ? 182 : (st.claimed ? 136 : 12);
+
+      const buffText = `✦ ${def.buffLabel.replace(/^永久加成：/, '集齐加成：')}`;
+      const buffLbl = makeText(
+        'heading',
+        buffText,
+        st.claimed ? SCENE_INK.green : SCENE_INK.gold,
+        { size: 24 },
+      );
+      buffLbl.position.set(2, footTop);
+      fitTextWidth(buffLbl, PAGE_W - rightReserve);
+      sec.addChild(buffLbl);
+
+      const chips: Array<{ icon?: string; label: string }> = [
+        { icon: HUD_ICON.coin, label: `+${def.rewardGold}` },
+      ];
+      if (def.rewardTickets > 0) {
+        chips.push({ icon: HUD_ICON.ticket, label: `×${def.rewardTickets}` });
+      }
+      const rewLead = makeText('caption', '集齐礼：', SCENE_INK.soft, { size: 23, fontWeight: '700' });
+      rewLead.anchor.set(0, 0.5);
+      rewLead.position.set(2, footTop + 52);
+      sec.addChild(rewLead);
+
+      const rewInline = makeInlineRewards(chips, {
+        size: 24,
+        iconSize: 34,
+        color: SCENE_INK.ink,
+        goldColor: SCENE_INK.gold,
+        resolveItemIcon: resolveItemAssetPath,
+      });
+      rewInline.position.set(2 + rewLead.width + 4, footTop + 52);
+      sec.addChild(rewInline);
+
+      if (st.readyToClaim) {
+        const btnW = 168;
+        const btnH = 56;
+        const claimBtn = makeSlicedButton({
+          label: '盖章领赏',
+          width: btnW,
+          height: btnH,
+          skin: 'terracotta',
+          fontSize: 25,
+          onReady: this._scheduleRelayout,
+        });
+        claimBtn.position.set(PAGE_W - btnW, footTop + 8);
+        claimBtn.on('pointertap', (e) => {
+          e.stopPropagation();
+          if (this._scroller.moved) return;
+          const res = KitchenManager.claimStampSet(def.id);
+          if (!res.claimed) return;
+          const from = toStage(PAGE_X + PAGE_W - btnW / 2, listTop + y + footTop + 36 + this._scroller.y);
+          if (res.gold > 0) playRewardCollect({ gold: res.gold, from });
+          if (res.tickets > 0) playTicketCollect(from, kitchenGachaHudPos(), 0);
+          Platform.showToast(`《${def.title}》盖章！${res.buffLabel}`, 'success');
+          if (this._isOpen) this.relayout();
+        });
+        sec.addChild(claimBtn);
+      } else if (st.claimed) {
+        const stampWood = sceneSprite(P0_ART.dexStamp, 54, 54);
+        if (stampWood) {
+          stampWood.anchor.set(0.5);
+          stampWood.position.set(PAGE_W - 96, footTop + 36);
+          sec.addChild(stampWood);
+        }
+        const seal = makeSealStamp('已生效', 56, -0.14);
+        seal.position.set(PAGE_W - 34, footTop + 36);
+        sec.addChild(seal);
+      }
+
+      const secH = footTop + 86;
+      if (setIdx < DEX_STAMP_SETS.length - 1) {
+        drawInkDivider(sec, 0, secH, PAGE_W, 0.45, 10);
+      }
+      list.addChild(sec);
+      y += secH + 22;
+    });
+
+    return y;
+  }
+
+  private _buildDetail(
+    kind: DexEntryKind,
+    id: string,
+    unlocked: boolean,
+    extraNote?: string,
+  ): DexDetailModal {
+    const save = KitchenManager.save;
+    if (kind === 'food') {
+      const def = getItem(id);
+      if (!unlocked) {
+        return {
+          kind: 'food',
+          id,
+          unlocked: false,
+          title: '待收录食材',
+          subtitle: `${rarityLabel(def.rarity)} · ${def.zone === 'wet' ? '水产湿货' : '鲜蔬干货'}`,
+          metaLine: extraNote,
+          blurb: dexObtainHint('food', id),
+          rarity: def.rarity,
+        };
+      }
+      const price = sellPrice(id, 'common', true);
+      return {
+        kind: 'food',
+        id,
+        unlocked: true,
+        title: def.name,
+        subtitle: `${rarityLabel(def.rarity)} · ${def.zone === 'wet' ? '湿货' : '干货'} ${def.w}×${def.h}`,
+        metaLine: extraNote ?? (price > 0 ? `参考单价：${price} 金币` : undefined),
+        blurb: def.blurb,
+        rarity: def.rarity,
+      };
+    }
+
+    const recipe = isRecipeId(id) ? recipeById(id) : undefined;
+    const rarity: Rarity = recipe ? recipe.rarity : 'common';
+    if (!unlocked || !recipe) {
+      return {
+        kind: 'dish',
+        id,
+        unlocked: false,
+        title: '待领悟菜谱',
+        subtitle: `${rarityLabel(rarity)} · ${recipe?.group ?? '私房菜'}`,
+        metaLine: extraNote,
+        blurb: dexObtainHint('dish', id),
+        rarity,
+      };
+    }
+
+    const mastery = recipeMasteryView(save, recipe.id);
+    const sell = recipeSellPrice(recipe.id);
+    return {
+      kind: 'dish',
+      id,
+      unlocked: true,
+      title: recipe.name,
+      subtitle: `${rarityLabel(recipe.rarity)} · ${recipe.group} · 售价 ${sell} 金`,
+      metaLine: `${mastery.title}（已掌勺 ${mastery.cooked} 锅）${extraNote ? ` · ${extraNote}` : ''}`,
+      blurb: recipe.blurb,
+      eatLine: `✦ 食用风味：${recipeEatLabel(recipe.id)}`,
+      rarity: recipe.rarity,
+      stars: mastery.stars,
+    };
+  }
+
+  private _drawDetailModal(detail: DexDetailModal): void {
+    const sw = Game.designWidth;
+    const sh = Game.logicHeight;
+
+    const modalRoot = new PIXI.Container();
+    const dim = new PIXI.Graphics();
+    fillRect(dim, 0, 0, sw, sh, 0x160E08);
+    dim.alpha = 0.52;
+    dim.eventMode = 'static';
+    dim.on('pointertap', (e) => {
+      e.stopPropagation();
+      AudioManager.play('ui_close');
+      this._detail = null;
+      this.relayout();
+    });
+    modalRoot.addChild(dim);
+
+    const noteW = Math.min(620, sw - 40);
+    const blurbText = new PIXI.Text(detail.blurb, {
+      fontFamily: FONT,
+      fontSize: 25,
+      fill: SCENE_INK.ink,
+      fontWeight: '600',
+      wordWrap: true,
+      breakWords: true,
+      wordWrapWidth: noteW - 96,
+      lineHeight: 36,
+    });
+    blurbText.eventMode = 'none';
+
+    const topAreaH = 356;
+    const eatExtraH = detail.eatLine ? 48 : 0;
+    const noteH = Math.max(556, topAreaH + Math.ceil(blurbText.height) + eatExtraH + 128);
+
+    const card = new PIXI.Container();
+    card.eventMode = 'static';
+    card.hitArea = new PIXI.Rectangle(0, 0, noteW, noteH);
+    card.on('pointertap', (e) => e.stopPropagation());
+
+    drawStretchSheet(card, ART.note, 0, 0, noteW, noteH, 128, 125, 0xF7EAD0);
+
+    // 左侧拍立得实物照（避开顶部中央红图钉 y:0..98）
+    const photoW = 192;
+    const photoH = 264;
+    const photoWrap = new PIXI.Container();
+    photoWrap.pivot.set(photoW / 2, photoH / 2);
+    photoWrap.position.set(44 + photoW / 2, 108 + photoH / 2);
+    photoWrap.rotation = -0.028;
+
+    const pTex = gameTexture(ART.photo);
+    if (isTextureReady(pTex)) {
+      const pf = new PIXI.Sprite(pTex);
+      pf.width = photoW;
+      pf.height = photoH;
+      photoWrap.addChild(pf);
+    }
+    if (detail.unlocked && detail.rarity !== 'common') {
+      const flare = makeRarityFlare(detail.rarity, 150);
+      flare.alpha = 0.52;
+      flare.position.set(photoW / 2, 118);
+      photoWrap.addChild(flare);
+    }
+    const itemTex = detail.kind === 'dish' ? dishTexture(detail.id) : itemTexture(detail.id);
+    if (isTextureReady(itemTex)) {
+      const sp = new PIXI.Sprite(itemTex);
+      fitSpriteInBox(sp, 124, 124);
+      sp.anchor.set(0.5);
+      sp.position.set(photoW / 2, 118);
+      if (!detail.unlocked) {
+        applyGray(sp);
+        sp.alpha = 0.36;
+      }
+      photoWrap.addChild(sp);
+    }
+    if (detail.unlocked && detail.stars !== undefined) {
+      const spoons = makeMasterySpoonRow({
+        stars: detail.stars,
+        size: 26,
+        gap: 4,
+        onReady: this._scheduleRelayout,
+      });
+      spoons.position.set(Math.round((photoW - (26 * 3 + 8)) / 2), 182);
+      photoWrap.addChild(spoons);
+    }
+    const capLbl = makeText(
+      'caption',
+      detail.unlocked ? '已收录' : '未收录',
+      detail.unlocked ? SCENE_INK.green : SCENE_INK.muted,
+      { size: 22, fontWeight: '700' },
+    );
+    capLbl.anchor.set(0.5);
+    capLbl.position.set(photoW / 2, 232);
+    photoWrap.addChild(capLbl);
+    card.addChild(photoWrap);
+
+    // 右侧大字词条名 + 品质/掌勺信息
+    const infoX = 256;
+    const infoW = noteW - infoX - 42;
+    const title = makeText('display', detail.title, SCENE_INK.ink, { size: 34 });
+    title.position.set(infoX, 124);
+    fitTextWidth(title, infoW);
+    card.addChild(title);
+
+    const sub = makeText('heading', detail.subtitle, RARITY_STYLE[detail.rarity].ink, { size: 24 });
+    sub.position.set(infoX, 180);
+    fitTextWidth(sub, infoW);
+    card.addChild(sub);
+
+    if (detail.metaLine) {
+      const meta = new PIXI.Text(detail.metaLine, {
+        fontFamily: FONT,
+        fontSize: 22,
+        fill: SCENE_INK.soft,
+        fontWeight: '600',
+        wordWrap: true,
+        breakWords: true,
+        wordWrapWidth: infoW,
+        lineHeight: 30,
+      });
+      meta.eventMode = 'none';
+      meta.position.set(infoX, 222);
+      card.addChild(meta);
+    }
+
+    if (detail.unlocked) {
+      const seal = makeSealStamp(detail.kind === 'dish' ? '私房' : '鲜材', 58, 0.12);
+      seal.position.set(noteW - 64, 304);
+      card.addChild(seal);
+    }
+
+    drawInkDivider(card, 46, topAreaH + 16, noteW - 92, 0.5, 10);
+
+    blurbText.position.set(48, topAreaH + 38);
+    card.addChild(blurbText);
+
+    let nextY = topAreaH + 42 + Math.ceil(blurbText.height) + 12;
+    if (detail.eatLine) {
+      const eat = makeText('heading', detail.eatLine, SCENE_INK.green, { size: 24 });
+      eat.position.set(48, nextY);
+      fitTextWidth(eat, noteW - 96);
+      card.addChild(eat);
+      nextY += 44;
+    }
+
+    const closeBtnW = 228;
+    const closeBtnH = 56;
+    const okBtn = makeSlicedButton({
+      label: '合上便签',
+      width: closeBtnW,
+      height: closeBtnH,
+      skin: 'olive',
+      fontSize: 26,
+      onReady: this._scheduleRelayout,
+    });
+    okBtn.position.set(Math.round((noteW - closeBtnW) / 2), noteH - closeBtnH - 34);
+    okBtn.on('pointertap', () => {
+      this._detail = null;
+      this.relayout();
+    });
+    card.addChild(okBtn);
+
+    drawSceneClose(
+      card,
+      noteW - 44,
+      14,
+      () => {
+        AudioManager.play('ui_close');
+        this._detail = null;
+        this.relayout();
+      },
+      this._scheduleRelayout,
+    );
+
+    const fitScale = Math.min(1, (sh - Game.safeTop - 48) / noteH);
+    card.pivot.set(noteW / 2, noteH / 2);
+    card.position.set(sw / 2, Math.round(Game.safeTop + (sh - Game.safeTop) / 2));
+    card.scale.set(fitScale * 0.92);
+    TweenManager.to({
+      target: card.scale,
+      props: { x: fitScale, y: fitScale },
+      duration: 0.18,
+      ease: Ease.easeOutBack,
+    });
+    modalRoot.addChild(card);
+    this._root.addChild(modalRoot);
   }
 
   private _titleText(): string {
     const view = this._view;
     if (view.kind === 'food') {
-      return DEX_FOOD_CATS.find((c) => c.id === view.cat)?.label ?? '食材';
+      const label = DEX_FOOD_CATS.find((c) => c.id === view.cat)?.label ?? '食材';
+      return `${label}手账`;
     }
-    if (view.kind === 'dish') return view.group;
-    return this._tab === 'stamp' ? '烟火集章' : '图鉴';
+    if (view.kind === 'dish') return `${view.group}菜谱`;
+    return this._tab === 'stamp' ? '烟火集章册' : '烟火手账';
   }
 
   private _progress(s: KitchenSave): { have: number; total: number } {
@@ -347,641 +1354,5 @@ export class DexPanel extends PIXI.Container {
     }
     const items = dishGroups().flatMap((g) => dishesInGroup(g, s.recipesFound));
     return { have: items.filter((it) => isDishUnlocked(s, it.id)).length, total: items.length };
-  }
-
-  private _drawBody(
-    shell: PIXI.Container,
-    box: { x: number; y: number },
-    page: { x: number; y: number; w: number; h: number },
-    redraw: () => void,
-  ): void {
-    const top = this._view.kind === 'home' ? page.y + 124 : page.y + 66;
-    const bottom = page.y + page.h - (this._inspect ? 92 : 6);
-    const area = { x: page.x, y: top, w: page.w, h: Math.max(80, bottom - top) };
-    const list = new PIXI.Container();
-    let contentH = 0;
-    if (this._view.kind === 'home') {
-      if (this._tab === 'food') contentH = this._paintFoodCats(list, area.w, redraw);
-      else if (this._tab === 'dish') contentH = this._paintDishCats(list, area.w, redraw);
-      else contentH = this._paintStampSets(list, area.w, redraw);
-    } else {
-      contentH = this._paintGrid(list, area.w, redraw);
-    }
-    contentH += 24;
-
-    const mask = new PIXI.Graphics();
-    mask.beginFill(0xffffff);
-    mask.drawRect(area.x, area.y, area.w, area.h);
-    mask.endFill();
-    mask.eventMode = 'none';
-    const viewport = new PIXI.Container();
-    viewport.eventMode = 'static';
-    viewport.hitArea = new PIXI.Rectangle(area.x, area.y, area.w, area.h);
-    viewport.mask = mask;
-    list.position.set(area.x, area.y);
-    viewport.addChild(list);
-    this._scrollList = list;
-    this._scrollBaseY = area.y;
-    this._scrollMax = Math.max(0, contentH - area.h);
-    this._scrollHit = { x: box.x + area.x, y: box.y + area.y, w: area.w, h: area.h };
-    this._applyScroll(this._scrollY);
-    shell.addChild(mask, viewport);
-
-    if (this._inspect) {
-      const card = new PIXI.Graphics();
-      fillRect(card, page.x, page.y + page.h - 86, page.w, 82, 0xEFE6D6, 12);
-      shell.addChild(card);
-      const name = makeDexName(this._inspect.title, 22, true);
-      name.position.set(page.x + 12, page.y + page.h - 78);
-      shell.addChild(name);
-      const blurb = makeLabel(this._inspect.blurb, 17, MUTED, { wordWrap: true, wordWrapWidth: page.w - 24 });
-      blurb.position.set(page.x + 12, page.y + page.h - 48);
-      shell.addChild(blurb);
-    }
-  }
-
-  private _paintFoodCats(list: PIXI.Container, width: number, redraw: () => void): number {
-    const save = KitchenManager.save;
-    return this._paintCatGrid(
-      list,
-      width,
-      DEX_FOOD_CATS.map((cat) => {
-        const items = foodsInCat(cat.id);
-        const have = items.filter((it) => isFoodUnlocked(save, it.id)).length;
-        const unclaimed = unclaimedDexInFoodCat(save, cat.id);
-        return {
-          label: cat.label,
-          icon: cat.icon,
-          have,
-          total: items.length,
-          unclaimed,
-          ink: cat.ink,
-          bar: cat.bar,
-          onTap: () => {
-            this._view = { kind: 'food', cat: cat.id };
-            this._scrollY = 0;
-            this._inspect = null;
-            this.relayout();
-          },
-        };
-      }),
-      redraw,
-    );
-  }
-
-  private _paintDishCats(list: PIXI.Container, width: number, redraw: () => void): number {
-    const save = KitchenManager.save;
-    return this._paintCatGrid(
-      list,
-      width,
-      dishGroups().map((group) => {
-        const items = dishesInGroup(group, save.recipesFound);
-        const have = items.filter((it) => isDishUnlocked(save, it.id)).length;
-        const unclaimed = unclaimedDexInDishGroup(save, group);
-        return {
-          label: group,
-          icon: dishGroupCatIcon(group),
-          have,
-          total: items.length,
-          unclaimed,
-          ...dishGroupTheme(group),
-          onTap: () => {
-            this._view = { kind: 'dish', group };
-            this._scrollY = 0;
-            this._inspect = null;
-            this.relayout();
-          },
-        };
-      }),
-      redraw,
-    );
-  }
-
-  private _paintCatGrid(
-    list: PIXI.Container,
-    width: number,
-    cats: Array<{ label: string; icon: string; have: number; total: number; unclaimed: number; ink: number; bar: number; onTap: () => void }>,
-    redraw: () => void,
-  ): number {
-    const cols = 2;
-    const gap = 12;
-    const cardW = (width - gap) / cols;
-    const icon = Math.round(cardW * 0.72);
-    const cardH = icon + 6;
-    cats.forEach((cat, i) => {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      list.addChild(this._catCard(
-        col * (cardW + gap),
-        row * (cardH + gap),
-        cardW,
-        cardH,
-        icon,
-        cat,
-        redraw,
-      ));
-    });
-    return Math.ceil(cats.length / cols) * (cardH + gap);
-  }
-
-  private _catCard(
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    iconSize: number,
-    cat: { label: string; icon: string; have: number; total: number; unclaimed: number; ink: number; bar: number; onTap: () => void },
-    _redraw: () => void,
-  ): PIXI.Container {
-    const root = new PIXI.Container();
-    root.position.set(x, y);
-    const path = imgPath(`${cat.icon}.png`);
-    const tex = gameTexture(path);
-    const cx = width / 2;
-    const cy = 3 + iconSize / 2;
-    if (isTextureReady(tex)) {
-      const spr = new PIXI.Sprite(tex);
-      spr.anchor.set(0.5);
-      spr.position.set(cx, cy);
-      fitSpriteInBox(spr, iconSize, iconSize);
-      const clip = new PIXI.Graphics();
-      clip.eventMode = 'none';
-      const mw = Math.max(8, spr.width * 0.97);
-      const mh = Math.max(8, spr.height * 0.97);
-      clip.beginFill(0xffffff);
-      clip.drawRoundedRect(cx - mw / 2, cy - mh / 2, mw, mh, Math.min(mw, mh) * 0.2);
-      clip.endFill();
-      spr.mask = clip;
-      root.addChild(spr, clip);
-    }
-    const name = makeStrokeLabel(cat.label, 28, 0xFFF8F0, cat.ink, 6, { fontFamily: TITLE_FONT });
-    name.anchor.set(0.5);
-    name.position.set(cx, 3 + iconSize * 0.64);
-    root.addChild(name);
-
-    const barW = iconSize * 0.74;
-    const barH = 26;
-    const bx = cx - barW / 2;
-    const by = 3 + iconSize * 0.78;
-    const bar = new PIXI.Graphics();
-    bar.lineStyle(3.5, cat.ink, 1);
-    bar.beginFill(0x1A1410, 0.42);
-    bar.drawRoundedRect(bx, by, barW, barH, barH / 2);
-    bar.endFill();
-    const fillW = cat.total > 0 ? Math.max(0, barW * (cat.have / cat.total)) : 0;
-    if (fillW > 6) {
-      bar.beginFill(cat.bar);
-      bar.drawRoundedRect(bx, by, fillW, barH, barH / 2);
-      bar.endFill();
-    }
-    root.addChild(bar);
-    const count = makeStrokeLabel(`${cat.have}/${cat.total}`, 17, 0xFFF8F0, cat.ink, 3.5);
-    count.anchor.set(0.5);
-    count.position.set(cx, by + barH / 2);
-    root.addChild(count);
-
-    if (cat.unclaimed > 0) {
-      const badge = new PIXI.Container();
-      const txt = makeLabel(`新 ${cat.unclaimed}`, 15, 0xFFF8F0, { fontWeight: '700' });
-      const bw = Math.max(48, Math.ceil(txt.width) + 18);
-      const bh = 26;
-      const g = new PIXI.Graphics();
-      g.lineStyle(2, INK, 1);
-      g.beginFill(0xD94A3A, 1);
-      g.drawRoundedRect(0, 0, bw, bh, bh / 2);
-      g.endFill();
-      txt.anchor.set(0.5);
-      txt.position.set(bw / 2, bh / 2 + 0.5);
-      badge.addChild(g, txt);
-      badge.position.set(width - bw - 14, 6);
-      badge.eventMode = 'none';
-      root.addChild(badge);
-    }
-
-    root.eventMode = 'static';
-    root.cursor = 'pointer';
-    root.hitArea = new PIXI.Rectangle(0, 0, width, height);
-    root.on('pointertap', () => {
-      if (this._dragMoved) return;
-      cat.onTap();
-    });
-    return root;
-  }
-
-  private _paintStampSets(list: PIXI.Container, width: number, redraw: () => void): number {
-    const save = KitchenManager.save;
-    let y = 0;
-    const gap = 12;
-    for (const def of DEX_STAMP_SETS) {
-      const st = dexStampSetStatus(save, def);
-      const cardH = 184;
-      const card = new PIXI.Container();
-      card.position.set(0, y);
-
-      const bg = new PIXI.Graphics();
-      drawCraftCard(bg, 0, 0, width, cardH, {
-        radius: 16,
-        tone: st.claimed ? 'gold' : st.readyToClaim ? 'warm' : 'ivory',
-      });
-      // Left accent bar
-      bg.lineStyle(0);
-      bg.beginFill(def.accent, 0.92);
-      bg.drawRoundedRect(5, 8, 6, cardH - 16, 3);
-      bg.endFill();
-      card.addChild(bg);
-
-      const title = makeLabel(`《${def.title}》`, 22, INK, {
-        fontFamily: TITLE_FONT,
-        fontWeight: '700',
-      });
-      title.position.set(16, 11);
-      card.addChild(title);
-
-      const progBadge = makeSlotBadge(
-        st.claimed ? '✓ 已生效' : `${st.have}/${st.total}`,
-        st.claimed ? 'gold' : st.readyToClaim ? 'lack' : 'ink',
-        14,
-      );
-      progBadge.node.position.set(width - progBadge.w - 12, 12);
-      card.addChild(progBadge.node);
-
-      // Recessed tray holding the 6-7 member slots
-      const trayX = 16;
-      const trayY = 46;
-      const trayW = width - 32;
-      const trayH = 76;
-      const tray = new PIXI.Graphics();
-      drawSectionTray(tray, trayX, trayY, trayW, trayH, { radius: 12, tone: 'sand' });
-      card.addChild(tray);
-
-      const count = def.members.length;
-      const slotGap = 6;
-      const slotSize = Math.min(60, Math.floor((trayW - 14 - slotGap * (count - 1)) / count));
-      const rowW = count * slotSize + (count - 1) * slotGap;
-      const startX = trayX + Math.round((trayW - rowW) / 2);
-      const slotY = trayY + Math.round((trayH - slotSize) / 2);
-
-      def.members.forEach((m, idx) => {
-        const unlocked = isStampMemberUnlocked(save, m);
-        const rarity: Rarity = m.kind === 'food'
-          ? itemRarity(m.id)
-          : (isRecipeId(m.id) ? recipeRarity(m.id) : 'common');
-        const sx = startX + idx * (slotSize + slotGap);
-        const slot = new PIXI.Container();
-        slot.position.set(sx, slotY);
-        const sg = new PIXI.Graphics();
-        drawItemSlotBox(sg, 0, 0, slotSize, slotSize, {
-          radius: 10,
-          rarity,
-          dimmed: !unlocked,
-        });
-        slot.addChild(sg);
-
-        const tex = m.kind === 'food' ? itemTexture(m.id) : dishTexture(m.id);
-        if (isTextureReady(tex)) {
-          const spr = new PIXI.Sprite(tex);
-          fitSpriteInBox(spr, slotSize - 10, slotSize - 10);
-          spr.anchor.set(0.5);
-          spr.position.set(slotSize / 2, slotSize / 2);
-          if (!unlocked) applyGray(spr);
-          slot.addChild(spr);
-        }
-        slot.eventMode = 'static';
-        slot.cursor = 'pointer';
-        slot.hitArea = new PIXI.Rectangle(0, 0, slotSize, slotSize);
-        slot.on('pointertap', () => {
-          if (this._dragMoved) return;
-          const mName = stampMemberName(m);
-          this._inspect = unlocked
-            ? { title: mName, blurb: `已收录进《${def.title}》集章册。` }
-            : { title: `待收集 · ${mName}`, blurb: dexObtainHint(m.kind, m.id) };
-          this.relayout();
-        });
-        card.addChild(slot);
-      });
-
-      // Bottom buff + reward / claim button
-      const buffShort = def.buffLabel.replace(/^永久加成：/, '加成：');
-      const buffTxt = makeLabel(buffShort, 17, st.claimed ? 0x3D7A32 : 0x6A4A24, {
-        fontWeight: '700',
-      });
-      buffTxt.position.set(18, 130);
-      card.addChild(buffTxt);
-
-      const rewParts = [`+${def.rewardGold}金`];
-      if (def.rewardTickets > 0) rewParts.push(`菜谱券×${def.rewardTickets}`);
-      const rewTxt = makeLabel(`集齐礼：${rewParts.join(' · ')}`, 15, MUTED, { fontWeight: '700' });
-      rewTxt.position.set(18, 155);
-      card.addChild(rewTxt);
-
-      if (st.readyToClaim) {
-        const btnW = 126;
-        const btnH = 42;
-        const claimBtn = makeSlicedButton({
-          label: '盖章激活',
-          width: btnW,
-          height: btnH,
-          skin: 'terracotta',
-          textColor: 0xFFF8F0,
-          fontSize: 18,
-          onReady: redraw,
-        });
-        claimBtn.position.set(width - btnW - 14, 132);
-        claimBtn.on('pointertap', (e) => {
-          e.stopPropagation();
-          if (this._dragMoved) return;
-          const res = KitchenManager.claimStampSet(def.id);
-          if (!res.claimed) return;
-          const from = { x: e.global.x, y: e.global.y };
-          if (res.gold > 0) playRewardCollect({ gold: res.gold, from });
-          if (res.tickets > 0) playTicketCollect(from, kitchenGachaHudPos(), 0);
-          Platform.showToast(`《${def.title}》盖章！${res.buffLabel}`, 'success');
-          if (this.visible) this.relayout();
-        });
-        card.addChild(claimBtn);
-      } else if (st.claimed) {
-        const stampTex = gameTexture(P0_ART.dexStamp);
-        if (isTextureReady(stampTex)) {
-          const seal = new PIXI.Sprite(stampTex);
-          fitSpriteInBox(seal, 46, 46);
-          seal.anchor.set(0.5);
-          seal.rotation = -0.18;
-          seal.alpha = 0.9;
-          seal.position.set(width - 42, 152);
-          seal.eventMode = 'none';
-          card.addChild(seal);
-        }
-      }
-
-      list.addChild(card);
-      y += cardH + gap;
-    }
-    return y;
-  }
-
-  private _paintGrid(list: PIXI.Container, width: number, redraw: () => void): number {
-    const save = KitchenManager.save;
-    const cols = 3;
-    const gap = 10;
-    const cellW = (width - gap * (cols - 1)) / cols;
-    const dish = this._view.kind === 'dish';
-    const cellH = dish ? 182 : 148;
-    const iconH = dish ? 112 : 88;
-    let entries: Array<{ id: string; name: string; blurb: string; unlocked: boolean; dish: boolean; rarity: Rarity }>;
-    if (this._view.kind === 'food') {
-      entries = foodsInCat(this._view.cat).map((it) => ({
-        id: it.id,
-        name: it.name,
-        blurb: it.blurb,
-        unlocked: isFoodUnlocked(save, it.id),
-        dish: false,
-        rarity: it.rarity,
-      }));
-    } else if (this._view.kind === 'dish') {
-      entries = dishesInGroup(this._view.group, save.recipesFound).map((it) => ({
-        id: it.id,
-        name: it.name,
-        blurb: it.blurb,
-        unlocked: isDishUnlocked(save, it.id),
-        dish: true,
-        rarity: it.rarity,
-      }));
-    } else {
-      entries = [];
-    }
-    if (!entries.length) {
-      const empty = makeLabel('这类还没收过货。', 22, MUTED);
-      empty.position.set(12, 16);
-      list.addChild(empty);
-      return 48;
-    }
-    entries.forEach((it, i) => {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const card = new PIXI.Container();
-      card.position.set(col * (cellW + gap), row * (cellH + gap));
-      const footerH = dish ? 42 : 38;
-      const g = new PIXI.Graphics();
-      drawItemSlotBox(g, 0, 0, cellW, cellH, {
-        radius: 13,
-        rarity: it.rarity,
-        dimmed: !it.unlocked,
-        footerH,
-      });
-      card.addChild(g);
-      const tex = it.dish ? dishTexture(it.id) : itemTexture(it.id);
-      if (isTextureReady(tex)) {
-        const spr = new PIXI.Sprite(tex);
-        spr.anchor.set(0.5);
-        spr.position.set(cellW / 2, dish ? 52 : 50);
-        fitSpriteInBox(spr, cellW - (dish ? 14 : 22), iconH - 6);
-        if (!it.unlocked) applyGray(spr);
-        card.addChild(spr);
-      }
-      const label = makeDexName(it.unlocked ? it.name : '未解锁', dish ? 18 : 17, it.unlocked, cellW - 8);
-      label.anchor.set(0.5);
-      label.position.set(cellW / 2, cellH - footerH / 2 - 1);
-      card.addChild(label);
-
-      const entryKind: DexEntryKind = it.dish ? 'dish' : 'food';
-      const unclaimed = it.unlocked && !isDexEntryClaimed(save, entryKind, it.id);
-      if (it.dish && it.unlocked && isRecipeId(it.id)) {
-        const mastery = recipeMasteryView(save, it.id);
-        const spoons = makeMasterySpoonRow({
-          stars: mastery.stars,
-          size: 20,
-          gap: 2,
-          onReady: redraw,
-        });
-        spoons.position.set(Math.round((cellW - (20 * 3 + 4)) / 2), 114);
-        card.addChild(spoons);
-      }
-      if (unclaimed) {
-        const tag = new PIXI.Container();
-        const txt = makeLabel(`新 +${DEX_ENTRY_GOLD}金`, 14, 0xFFF8F0, { fontWeight: '700' });
-        const tw = Math.ceil(txt.width) + 16;
-        const th = 24;
-        const bg = new PIXI.Graphics();
-        bg.lineStyle(1.8, INK, 1);
-        bg.beginFill(0xD94A3A, 1);
-        bg.drawRoundedRect(0, 0, tw, th, th / 2);
-        bg.endFill();
-        txt.anchor.set(0.5);
-        txt.position.set(tw / 2, th / 2 + 0.5);
-        tag.addChild(bg, txt);
-        tag.position.set(cellW - tw - 4, 4);
-        tag.eventMode = 'none';
-        card.addChild(tag);
-      }
-
-      card.eventMode = 'static';
-      card.cursor = 'pointer';
-      card.hitArea = new PIXI.Rectangle(0, 0, cellW, cellH);
-      card.on('pointertap', (e) => {
-        if (this._dragMoved) return;
-        if (!it.unlocked) {
-          this._inspect = {
-            title: `未解锁 · ${it.dish ? '待寻菜谱' : '待寻食材'}`,
-            blurb: dexObtainHint(entryKind, it.id),
-          };
-          this.relayout();
-          return;
-        }
-        if (unclaimed) {
-          const gold = KitchenManager.claimDexEntry(entryKind, it.id);
-          if (gold > 0) {
-            const p = e.global;
-            playRewardCollect({ gold, from: { x: p.x, y: p.y } });
-          }
-        }
-        let blurb = it.blurb;
-        if (it.dish && isRecipeId(it.id)) {
-          const m = recipeMasteryView(KitchenManager.save, it.id);
-          blurb = `${it.blurb}  ${recipeEatLabel(it.id)}（${m.title} · 已做${m.cooked}锅）`;
-        }
-        this._inspect = {
-          title: it.name,
-          blurb,
-        };
-        this.relayout();
-      });
-      list.addChild(card);
-    });
-    return Math.ceil(entries.length / cols) * (cellH + gap);
-  }
-
-  private _drawFooter(shell: PIXI.Container, bw: number, bh: number, page: { x: number; w: number }): void {
-    if (this._view.kind === 'home') return;
-    const btn = makeSlicedButton({
-      label: '返回',
-      width: Math.min(220, page.w),
-      height: 52,
-      skin: 'terracotta',
-      onReady: this._scheduleRelayout,
-    });
-    btn.position.set(page.x + (page.w - Math.min(220, page.w)) / 2, bh - 83);
-    btn.on('pointertap', () => {
-      this._view = { kind: 'home' };
-      this._scrollY = 0;
-      this._inspect = null;
-      this.relayout();
-    });
-    shell.addChild(btn);
-    void bw;
-  }
-
-  private _warmView(): void {
-    const view = this._view.kind === 'home'
-      ? { kind: 'home' as const, tab: this._tab }
-      : this._view;
-    watchTextures(
-      [...dexViewPaths(KitchenManager.save, view), P0_ART.dexStamp, ...P0_ART.spoons],
-      this._scheduleRelayout,
-    );
-  }
-
-  private _scheduleRelayout = (): void => {
-    if (!this.visible || this._paintQueued) return;
-    this._paintQueued = true;
-    const later = typeof requestAnimationFrame === 'function'
-      ? requestAnimationFrame
-      : (cb: () => void) => setTimeout(cb, 0);
-    later(() => {
-      this._paintQueued = false;
-      if (this.visible) this.relayout();
-    });
-  };
-
-  private _applyScroll(y: number): void {
-    this._scrollY = this._scrollMax <= 0 ? 0 : Math.max(-this._scrollMax, Math.min(0, y));
-    if (this._scrollList) this._scrollList.y = this._scrollBaseY + this._scrollY;
-  }
-
-  private _inScroll(p: { x: number; y: number }): boolean {
-    const r = this._scrollHit;
-    return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
-  }
-
-  private _wxPoint(res: { touches?: Array<{ clientX?: number; clientY?: number; x?: number; y?: number }>; changedTouches?: Array<{ clientX?: number; clientY?: number; x?: number; y?: number }> }): { x: number; y: number } | null {
-    const t = res.touches?.[0] ?? res.changedTouches?.[0];
-    if (!t) return null;
-    const scale = Game.contentScale || 1;
-    return {
-      x: (t.clientX ?? t.x ?? 0) / scale,
-      y: (t.clientY ?? t.y ?? 0) / scale,
-    };
-  }
-
-  private _beginDrag(y: number): void {
-    this._dragging = true;
-    this._dragMoved = false;
-    this._dragY = y;
-    this._dragStart = this._scrollY;
-  }
-
-  private _moveDrag(y: number): void {
-    if (!this._dragging) return;
-    const dy = y - this._dragY;
-    if (Math.abs(dy) > 6) this._dragMoved = true;
-    this._applyScroll(this._dragStart + dy);
-  }
-
-  private _onPtrDown = (e: PIXI.FederatedPointerEvent): void => {
-    if (!this.visible) return;
-    const p = this.toLocal(e.global);
-    if (!this._inScroll(p)) return;
-    this._beginDrag(p.y);
-  };
-
-  private _onPtrMove = (e: PIXI.FederatedPointerEvent): void => {
-    if (!this.visible) return;
-    this._moveDrag(this.toLocal(e.global).y);
-  };
-
-  private _onPtrUp = (): void => {
-    this._dragging = false;
-  };
-
-  private _onWheel = (e: PIXI.FederatedWheelEvent): void => {
-    if (!this.visible || this._scrollMax <= 0) return;
-    const p = this.toLocal(e.global);
-    if (!this._inScroll(p)) return;
-    this._applyScroll(this._scrollY - e.deltaY);
-  };
-
-  private _onWxStart = (res: { touches?: Array<{ clientX?: number; clientY?: number; x?: number; y?: number }> }): void => {
-    if (!this.visible) return;
-    const p = this._wxPoint(res);
-    if (!p || !this._inScroll(p)) return;
-    this._beginDrag(p.y);
-  };
-
-  private _onWxMove = (res: { touches?: Array<{ clientX?: number; clientY?: number; x?: number; y?: number }> }): void => {
-    if (!this.visible) return;
-    const p = this._wxPoint(res);
-    if (!p) return;
-    this._moveDrag(p.y);
-  };
-
-  private _onWxEnd = (): void => {
-    this._dragging = false;
-  };
-
-  private _bindWx(on: boolean): void {
-    const api = Platform.api;
-    if (!api?.onTouchMove) return;
-    if (on && !this._wxBound) {
-      try { api.onTouchStart?.(this._onWxStart); } catch (_) {}
-      try { api.onTouchMove?.(this._onWxMove); } catch (_) {}
-      try { api.onTouchEnd?.(this._onWxEnd); } catch (_) {}
-      try { api.onTouchCancel?.(this._onWxEnd); } catch (_) {}
-      this._wxBound = true;
-    } else if (!on && this._wxBound) {
-      try { api.offTouchStart?.(this._onWxStart); } catch (_) {}
-      try { api.offTouchMove?.(this._onWxMove); } catch (_) {}
-      try { api.offTouchEnd?.(this._onWxEnd); } catch (_) {}
-      try { api.offTouchCancel?.(this._onWxEnd); } catch (_) {}
-      this._wxBound = false;
-    }
   }
 }

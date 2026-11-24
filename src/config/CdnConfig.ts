@@ -48,6 +48,7 @@ export const CDN_CONFIG: CdnConfig = {
     'subpkg_images/special_',
     'subpkg_images/dish_',
     'subpkg_images/npc_',
+    'subpkg_images/scene_',
     'subpkg_audio/',
   ],
   bundledDirs: [

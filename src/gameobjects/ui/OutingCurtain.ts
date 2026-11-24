@@ -1,8 +1,18 @@
 import * as PIXI from 'pixi.js';
 import { Game } from '@/core/Game';
-import { applyFit, fitCover, gameTexture, isTextureReady, isTextureSettled, preloadTextures, whenTextureReady } from '@/utils/assets';
+import { Ease, TweenManager } from '@/core/TweenManager';
+import { applyFit, fitCover, gameTexture, isTextureReady, isTextureSettled, preloadTextures, watchTextures, whenTextureReady } from '@/utils/assets';
 import { OUTING_CURTAIN } from '@/utils/outingAssets';
-import { fillRect } from '@/utils/ui';
+import { fillRect, makeText } from '@/utils/ui';
+import {
+  SCENE_ART,
+  SCENE_INK,
+  drawInkDivider,
+  drawPlaqueTitle,
+  drawStretchSheet,
+  makeSealStamp,
+  sceneArtPaths,
+} from './scenePanel';
 
 const MAX_WAIT = 8;
 const CELL = 62;
@@ -12,12 +22,13 @@ const STAGGER = 0.58;
 type Dot = { x: number; y: number; maxR: number; delay: number };
 
 /**
- * 出门过场：只在下一页图还没齐时挡住。已经在缓存里就直接进。
- * 齐了用圆点网格缩小露出底图。
+ * 出门/归家转场幕布：只在下一页贴图尚未就绪时遮挡过渡，已在缓存则零延迟直入；
+ * 加载期间展示木牌匾 + 宣纸出行纸签与轻柔呼吸律动，就绪后圆点网格退散。
  */
 class OutingCurtainClass {
   readonly container = new PIXI.Container();
   private _sheet = new PIXI.Container();
+  private _centerCard: PIXI.Container | null = null;
   private _maskG = new PIXI.Graphics();
   private _dots: Dot[] = [];
   private _busy = false;
@@ -73,6 +84,7 @@ class OutingCurtainClass {
   }
 
   private _paint(): void {
+    this._stopCardAnim();
     this.container.removeChildren();
     this._sheet.removeChildren();
     this.container.alpha = 1;
@@ -83,32 +95,107 @@ class OutingCurtainClass {
     const w = Game.designWidth;
     const h = Game.logicHeight;
     this.container.hitArea = new PIXI.Rectangle(0, 0, w, h);
+    this.container.removeAllListeners();
     this.container.on('pointertap', (e: PIXI.FederatedPointerEvent) => {
       e.stopPropagation();
     });
 
+    const bgLayer = new PIXI.Container();
     const paper = new PIXI.Graphics();
     fillRect(paper, 0, 0, w, h, 0xF3E2C6);
-    this._sheet.addChild(paper);
+    bgLayer.addChild(paper);
+    this._sheet.addChild(bgLayer);
 
     const paintCover = (): void => {
       if (!this.container.visible || this.container.destroyed) return;
       const tex = gameTexture(OUTING_CURTAIN);
       if (!isTextureReady(tex)) return;
-      const old = this._sheet.children.find((c) => c instanceof PIXI.Sprite);
-      if (old) this._sheet.removeChild(old);
+      const old = bgLayer.children.find((c) => c instanceof PIXI.Sprite);
+      if (old) bgLayer.removeChild(old);
       const sp = new PIXI.Sprite(tex);
       applyFit(sp, fitCover(tex.width, tex.height, w, h));
-      this._sheet.addChild(sp);
+      bgLayer.addChild(sp);
     };
     whenTextureReady(OUTING_CURTAIN, paintCover);
     paintCover();
+
+    // 中心木牌匾 + 宣纸路引签（带呼吸动效）
+    const cardHost = new PIXI.Container();
+    cardHost.position.set(w / 2, Math.round(h * 0.46));
+    this._sheet.addChild(cardHost);
+    this._centerCard = cardHost;
+
+    const rebuildSign = (): void => {
+      if (!this.container.visible || cardHost.destroyed) return;
+      cardHost.removeChildren();
+
+      const noteW = 508;
+      const noteH = 224;
+      const noteTop = -32;
+      const shadow = new PIXI.Graphics();
+      shadow.beginFill(0x2A1A0E, 0.22);
+      shadow.drawRoundedRect(-noteW / 2 + 6, noteTop + 6, noteW - 4, noteH + 4, 18);
+      shadow.endFill();
+      cardHost.addChild(shadow);
+
+      drawStretchSheet(cardHost, SCENE_ART.sheet, -noteW / 2, noteTop, noteW, noteH, 86, 74);
+      drawPlaqueTitle(cardHost, '市井烟火路', 0, -228, 352);
+
+      const line1 = makeText('title', '提着竹篮 · 寻味街巷', SCENE_INK.ink, { size: 30 });
+      line1.anchor.set(0.5);
+      line1.position.set(0, noteTop + 68);
+      cardHost.addChild(line1);
+
+      drawInkDivider(cardHost, -noteW / 2 + 56, noteTop + 108, noteW - 112, 0.45, 9);
+
+      const line2 = makeText('body', '正在铺开热气腾腾的摊头…', SCENE_INK.soft, { size: 24, fontWeight: '600' });
+      line2.anchor.set(0.5);
+      line2.position.set(0, noteTop + 152);
+      cardHost.addChild(line2);
+
+      const seal = makeSealStamp('赶集', 46, 0.09);
+      seal.position.set(noteW / 2 - 76, noteTop + 68);
+      cardHost.addChild(seal);
+    };
+    watchTextures(sceneArtPaths(), rebuildSign);
+    rebuildSign();
+    this._breatheCard(cardHost, cardHost.y);
 
     this._dots = this._makeDots(w, h);
     this._drawMask(0);
     this._sheet.mask = this._maskG;
     this.container.addChild(this._sheet);
     this.container.addChild(this._maskG);
+  }
+
+  private _breatheCard(card: PIXI.Container, baseY: number): void {
+    const floatUp = (): void => {
+      if (!this._busy || card.destroyed) return;
+      TweenManager.to({
+        target: card,
+        props: { y: baseY - 6 },
+        duration: 0.9,
+        ease: Ease.easeInOutQuad,
+        onComplete: () => {
+          if (!this._busy || card.destroyed) return;
+          TweenManager.to({
+            target: card,
+            props: { y: baseY + 6 },
+            duration: 0.9,
+            ease: Ease.easeInOutQuad,
+            onComplete: floatUp,
+          });
+        },
+      });
+    };
+    floatUp();
+  }
+
+  private _stopCardAnim(): void {
+    if (this._centerCard) {
+      TweenManager.cancelTarget(this._centerCard);
+      this._centerCard = null;
+    }
   }
 
   private _makeDots(w: number, h: number): Dot[] {
@@ -152,6 +239,7 @@ class OutingCurtainClass {
 
   private _clear(): void {
     Game.ticker.remove(this._boundTick);
+    this._stopCardAnim();
     this._revealT = -1;
     this._sheet.mask = null;
     this.container.removeAllListeners();

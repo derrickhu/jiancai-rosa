@@ -10,27 +10,30 @@ import { EventPanel } from '@/gameobjects/ui/EventPanel';
 import { ensureRecipeUnlockPanel } from '@/gameobjects/ui/RecipeUnlockPanel';
 import {
   GOD_PICK,
+  MARKET_ART,
+  RARITY_STYLE,
+  buffIconPath,
+  cardName,
   displayName,
   getItem,
-  itemsForStall,
-  pileToBasketDraft,
-  isBasketFull,
-  tryAutoPlace,
-  visibleDefId,
-  type PileItem,
-  type RunEventLog,
-  type StallId,
   getSpecialty,
-  MARKET_ART,
+  isBasketFull,
+  isRummageNode,
+  itemsForStall,
+  liveHudBuffs,
+  marketWeatherById,
   nodeEncounter,
-  RARITY_STYLE,
+  pileToBasketDraft,
   sceneBg,
   stallPileArt,
   stallRummageArt,
-  liveHudBuffs,
+  tryAutoPlace,
   urgentTaskFoodIds,
-  cardName,
-  marketWeatherById,
+  visibleDefId,
+  type ExtractResult,
+  type PileItem,
+  type RunEventLog,
+  type StallId,
 } from '@/sim';
 import { ensureHudBuffPanel } from '@/gameobjects/ui/HudBuffPanel';
 import { DuskExtendPanel } from '@/gameobjects/ui/DuskExtendPanel';
@@ -38,22 +41,59 @@ import { SteelyardPanel, type SteelyardEnterResult } from '@/gameobjects/ui/Stee
 import { MysterySackPanel } from '@/gameobjects/ui/MysterySackPanel';
 import { layoutRouteMap, type RouteCell, type RouteMapView } from '@/gameobjects/market/MapView';
 import { AudioManager } from '@/core/AudioManager';
-import { FONT, HUD_BUFF, HUD_ICON, bindUiClick, fillRect, makeHudBuffRow, makeLabel, makeNewFoodTag, makeRarityFlare, makeSlicedButton, makeStallNameTag, makeStatPill, makeUrgentFoodTag } from '@/utils/ui';
+import {
+  FONT,
+  HUD_ICON,
+  UI_PALETTE,
+  bindUiClick,
+  fillRect,
+  fitTextWidth,
+  makeHandProgressBar,
+  makeLabel,
+  makeNewFoodTag,
+  makeRarityFlare,
+  makeSlicedButton,
+  makeText,
+  makeUrgentFoodTag,
+  uiBarPaths,
+} from '@/utils/ui';
 import { Platform } from '@/core/PlatformService';
-import { TweenManager, Ease } from '@/core/TweenManager';
-import { applyFit, fitCover, fitSpriteInBox, fitWidthBottom, gameTexture, isTextureFailed, isTextureReady, itemLookTexture, itemTexture, whenTextureReady } from '@/utils/assets';
+import { Ease, TweenManager } from '@/core/TweenManager';
+import {
+  applyFit,
+  fitCover,
+  fitSpriteInBox,
+  fitWidthBottom,
+  gameTexture,
+  isTextureFailed,
+  isTextureReady,
+  itemLookTexture,
+  itemTexture,
+  resolveItemAssetPath,
+  watchTextures,
+  whenTextureReady,
+} from '@/utils/assets';
 import type { Scene } from '@/core/SceneManager';
-import type { ExtractResult } from '@/sim';
-import { isRummageNode } from '@/sim';
 import { TutorialManager, TutorialStep } from '@/managers/TutorialManager';
 import { TutorialOverlay, stageRectOf, type TutorialTarget } from '@/gameobjects/ui/TutorialOverlay';
 import { TutorialGuard } from '@/systems/TutorialGuard';
+
 const REVEAL_FACE = 188;
 const REVEAL_POP = 0.14;
 const REVEAL_FLY = 0.26;
 const REVEAL_LAND = 0.08;
 const TITLE_FONT = 'Songti SC, STSong, PingFang SC, serif';
 const GOD_FISH = 'subpkg_images/wild_yellowfish.png';
+
+const MARKET_SCENE_ART = {
+  plaque: 'subpkg_images/scene_pk_plaque.png',
+  tag: 'subpkg_images/scene_pk_tag_h.png',
+  seal: 'subpkg_images/scene_pk_seal.png',
+} as const;
+
+const INK = 0x2A2018;
+const RED_INK = 0xB8361F;
+const CREAM = 0xFFF8EC;
 
 export class MarketScene implements Scene {
   readonly name = 'market';
@@ -110,6 +150,66 @@ export class MarketScene implements Scene {
   private _backBtn: PIXI.Container | null = null;
   private _urgentFoods = new Set<string>();
   private _coinHud = { x: 120, y: 220 };
+  private _syncQueued = false;
+  private _hudQueued = false;
+  private _duskClearQueued = false;
+  private _watchedSync = new Set<string>();
+  private _watchedHud = new Set<string>();
+
+  private _scheduleSync = (): void => {
+    if (this._syncQueued || !this.container.parent) return;
+    this._syncQueued = true;
+    const defer = typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame
+      : (cb: () => void) => setTimeout(cb, 0);
+    defer(() => {
+      this._syncQueued = false;
+      if (this.container.parent && !this._walking) this._sync(true);
+    });
+  };
+
+  private _scheduleHud = (): void => {
+    if (this._hudQueued || !this.container.parent) return;
+    this._hudQueued = true;
+    const defer = typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame
+      : (cb: () => void) => setTimeout(cb, 0);
+    defer(() => {
+      this._hudQueued = false;
+      if (!this.container.parent) return;
+      if (this._duskClearQueued) {
+        this._duskClearQueued = false;
+        this._clearDusk();
+      }
+      this._drawHud();
+    });
+  };
+
+  private _watchSyncOnce(path: string): void {
+    if (!path) return;
+    const tex = gameTexture(path);
+    if (isTextureReady(tex)) return;
+    if (this._watchedSync.has(path)) return;
+    this._watchedSync.add(path);
+    whenTextureReady(path, () => {
+      this._watchedSync.delete(path);
+      this._scheduleSync();
+    });
+  }
+
+  private _watchHudOnce(path: string, clearDusk = false): void {
+    if (!path) return;
+    const tex = gameTexture(path);
+    if (isTextureReady(tex)) return;
+    const key = clearDusk ? `dusk:${path}` : path;
+    if (this._watchedHud.has(key)) return;
+    this._watchedHud.add(key);
+    whenTextureReady(path, () => {
+      this._watchedHud.delete(key);
+      if (clearDusk) this._duskClearQueued = true;
+      this._scheduleHud();
+    });
+  }
 
   constructor() {
     this.container.addChild(this._bg);
@@ -134,6 +234,7 @@ export class MarketScene implements Scene {
     this._shownEvent = RunManager.run?.lastEvent?.nodeId ?? '';
     AudioManager.playMarketBgm(RunManager.run?.marketId ?? 'xiangko');
     TutorialOverlay.register('market', () => this.tutorialRect());
+    watchTextures([...Object.values(MARKET_SCENE_ART), ...uiBarPaths()], this._scheduleSync);
     this._sync(true);
     if (!TutorialManager.isActive) ensureRecipeUnlockPanel().present();
   }
@@ -142,6 +243,9 @@ export class MarketScene implements Scene {
     EventBus.off(EV.runChanged, this._onRun);
     EventBus.off(EV.runExtracted, this._onExtract);
     EventBus.off(EV.runDuskPrompt, this._onDuskPrompt);
+    this._syncQueued = false;
+    this._hudQueued = false;
+    this._duskClearQueued = false;
     this._clearDuskWait();
     this._walking = false;
     this._mapView = null;
@@ -201,7 +305,6 @@ export class MarketScene implements Scene {
     if (step === TutorialStep.RETURN_MAP) return this._aim(this._backBtn, 6, { speech: 'bottom' });
     if (step === TutorialStep.GO_HOME) return this._aim(this._leaveBtn, 6, { speech, speechY: top });
     if (step === TutorialStep.FREE_WALK) {
-      // 任何弹窗打开时自动避让，不叠字挡按钮
       if (
         this._basket._isOpen
         || this._event._isOpen
@@ -385,17 +488,21 @@ export class MarketScene implements Scene {
   }
 
   private _hudTop(): number {
-    return Math.max(4, (Number.isFinite(Game.safeTop) ? Game.safeTop : 96) - 8);
+    return Math.max(6, (Number.isFinite(Game.safeTop) ? Game.safeTop : 96) - 4);
   }
 
   private _pillY(): number {
-    return this._hudTop() + 164;
+    return this._hudTop() + 132;
   }
 
   private _hudFloor(): number {
-    const extra = liveHudBuffs(KitchenManager.save).length ? HUD_BUFF.size + HUD_BUFF.pad + 4 : 0;
-    return this._pillY() + 52 + extra;
+    const extra = liveHudBuffs(KitchenManager.save).length ? 48 : 0;
+    return this._pillY() + 62 + extra;
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 菜市场探索 HUD：天色剩余步数木匾 + 天时挂签 + 金币宣纸签 + 菜篮手绘容量进度牌 + 回家木章
+  // ═══════════════════════════════════════════════════════════════════════════
 
   private _drawHud(): void {
     this._res.removeChildren();
@@ -409,70 +516,77 @@ export class MarketScene implements Scene {
     }
 
     this._syncDusk(run, w);
-    const redraw = () => {
-      if (this.container.parent) this._drawHud();
-    };
+    const redraw = this._scheduleHud;
+
     const pillY = this._pillY();
-    const coinW = 156;
-    const bagW = 168;
-    const gap = 16;
+    const coinW = 160;
+    const bagW = 316;
+    const gap = 14;
     const rowX = Math.round((w - coinW - gap - bagW) / 2);
 
-    const money = makeStatPill({
-      icon: HUD_ICON.coin,
-      text: `${KitchenManager.save.money}`,
-      width: coinW,
-      onIconReady: redraw,
-    });
-    money.position.set(rowX, pillY);
-    this._coinHud = { x: rowX + 22, y: pillY + 22 };
+    // 1. 金币宣纸签（25pt）
+    const money = this._makeCoinHudSlip(coinW, `${KitchenManager.save.money}`);
+    money.position.set(rowX, pillY + 3);
+    this._coinHud = { x: rowX + 24, y: pillY + 27 };
     this._res.addChild(money);
 
-    const bag = RunManager.basket.items;
-    const bagWet = bag.filter((it) => {
-      try {
-        return getItem(it.defId).zone === 'wet';
-      } catch {
-        return false;
-      }
-    }).length;
-    const room = KitchenManager.fridgeRoom();
-    const bagNeed = KitchenManager.fridgeSlotsNeeded(bag);
-    this._basketBtn = makeStatPill({
-      icon: HUD_ICON.basket,
-      text: `干${bag.length - bagWet} 湿${bagWet}`,
-      width: bagW,
-      ...(bagNeed > room ? { fill: 1, fillColor: 0xE07A5F } : {}),
-      onIconReady: redraw,
-    });
-    this._basketBtn.eventMode = 'static';
-    this._basketBtn.cursor = 'pointer';
-    this._basketBtn.hitArea = new PIXI.Rectangle(0, 0, bagW, 44);
+    // 2. 菜篮容量手绘进度牌（点击即开菜篮，带实时占格进度条）
+    this._basketBtn = this._makeBasketHudPlaque(bagW, redraw);
     this._basketBtn.position.set(rowX + coinW + gap, pillY);
     this._basketBtn.on('pointertap', () => {
       if (TutorialGuard.block('openBasket')) return;
+      AudioManager.play('ui_click');
       this._basket.open();
       TutorialManager.advanceIf(TutorialStep.OPEN_BASKET);
     });
     this._res.addChild(this._basketBtn);
 
+    // 3. 增益 Buff 挂章行
     const buffs = liveHudBuffs(KitchenManager.save);
     if (buffs.length) {
-      const row = makeHudBuffRow({
-        buffs,
-        onReady: redraw,
-        onTap: () => ensureHudBuffPanel().open(),
+      const buffRow = new PIXI.Container();
+      const bSize = 40;
+      buffs.forEach((buff, i) => {
+        const path = buffIconPath(buff.icon);
+        this._watchHudOnce(path);
+        const cell = new PIXI.Container();
+        const bg = new PIXI.Graphics();
+        bg.lineStyle(2.2, INK, 0.95);
+        bg.beginFill(0xFFF6E2, 0.98);
+        bg.drawCircle(bSize / 2, bSize / 2, bSize / 2 - 1);
+        bg.endFill();
+        cell.addChild(bg);
+        const bTex = gameTexture(path);
+        if (isTextureReady(bTex)) {
+          const sp = new PIXI.Sprite(bTex);
+          fitSpriteInBox(sp, bSize - 8, bSize - 8);
+          sp.anchor.set(0.5);
+          sp.position.set(bSize / 2, bSize / 2);
+          cell.addChild(sp);
+        }
+        cell.position.set(i * (bSize + 8), 0);
+        cell.eventMode = 'static';
+        cell.cursor = 'pointer';
+        cell.hitArea = new PIXI.Rectangle(0, 0, bSize, bSize);
+        cell.on('pointertap', (e) => {
+          e.stopPropagation();
+          AudioManager.play('ui_click');
+          ensureHudBuffPanel().open();
+        });
+        buffRow.addChild(cell);
       });
-      row.position.set(rowX, pillY + 44 + HUD_BUFF.pad);
-      this._res.addChild(row);
+      buffRow.position.set(rowX + 20, pillY + 60);
+      this._res.addChild(buffRow);
     }
 
-    const side = 104;
+    // 4. 左上角：返回菜场木牌钮（摊位内）或 今日天时氛围挂牌（路线图内）
+    const side = 96;
     const y = this._hudTop();
     const hintExit = run.mode === 'rummage'
       && !TutorialManager.usesMask()
       && !RunManager.crateLeft().length;
     const basketFull = isBasketFull(RunManager.basket);
+
     if (run.mode === 'rummage' || run.mode === 'play') {
       const duskOut = run.stepsLeft <= 0 && !TutorialManager.isActive;
       const back = this._roundIconBtn(
@@ -487,96 +601,276 @@ export class MarketScene implements Scene {
         redraw,
         hintExit && !basketFull,
       );
-      back.position.set(16, y);
+      back.position.set(14, y);
       this._backBtn = back;
       this._res.addChild(back);
     } else if (run.weatherId && !TutorialManager.isActive) {
       const weather = marketWeatherById(run.weatherId);
       if (weather) {
         const wChip = new PIXI.Container();
-        wChip.position.set(16, y + 10);
-        const w1 = makeLabel(weather.badge, 17, weather.pillInk, { fontWeight: '700' });
+        wChip.position.set(14, y + 8);
+        const w1 = makeText('heading', weather.name, weather.pillInk, { size: 22 });
         const subLine = weather.freeFirstPaidStall && !run.weatherFreePaidLeft
           ? '首摊免单已享'
           : weather.shortDesc;
-        const w2 = makeLabel(subLine, 14, 0x5C4632, { fontWeight: '700' });
-        const cw = Math.max(146, Math.ceil(Math.max(w1.width, w2.width)) + 26);
-        const ch = 54;
+        const w2 = makeText('caption', subLine, 0x5A422D, { size: 20, fontWeight: '700' });
+        const maxChipW = Math.round(w / 2 - 146);
+        fitTextWidth(w1, maxChipW - 28);
+        fitTextWidth(w2, maxChipW - 28);
+        const cw = Math.min(maxChipW, Math.max(164, Math.ceil(Math.max(w1.width, w2.width)) + 28));
+        const ch = 68;
         const cbg = new PIXI.Graphics();
-        cbg.beginFill(0x160E08, 0.22);
-        cbg.drawRoundedRect(0, 3, cw, ch, 15);
+        cbg.beginFill(0x160E08, 0.26);
+        cbg.drawRoundedRect(0, 4, cw, ch, 12);
         cbg.endFill();
-        cbg.lineStyle(2.2, weather.pillInk, 0.95);
-        cbg.beginFill(weather.pillFill, 0.96);
-        cbg.drawRoundedRect(0, 0, cw, ch, 15);
+        cbg.lineStyle(2.4, weather.pillInk, 0.95);
+        cbg.beginFill(weather.pillFill, 0.98);
+        cbg.drawRoundedRect(0, 0, cw, ch, 12);
         cbg.endFill();
-        w1.position.set(13, 6);
-        w2.position.set(13, 29);
+        // Brass tack at top-left
+        cbg.lineStyle(1.2, INK, 0.85);
+        cbg.beginFill(0xE8BE66, 1);
+        cbg.drawCircle(11, 11, 3.5);
+        cbg.endFill();
+        w1.position.set(20, 8);
+        w2.position.set(14, 38);
         wChip.addChild(cbg, w1, w2);
         wChip.eventMode = 'none';
         this._res.addChild(wChip);
       }
     }
+
+    // 5. 右上角：回家木章钮
     const tutReadyHome = TutorialManager.isStep(TutorialStep.FREE_WALK)
       && (run.visited.length >= 2);
     const leave = this._roundIconBtn(HUD_ICON.leave, '回家', () => {
       if (TutorialGuard.block('extract')) return;
       RunManager.extract(true);
     }, redraw, (hintExit && basketFull) || tutReadyHome);
-    leave.position.set(w - 16 - side, y);
+    leave.position.set(w - 14 - side, y);
     this._leaveBtn = leave;
     this._res.addChild(leave);
   }
 
+  private _makeCoinHudSlip(width: number, text: string): PIXI.Container {
+    const root = new PIXI.Container();
+    root.eventMode = 'none';
+    const h = 48;
+    const barX = 20;
+    const barW = width - barX;
+    const bg = new PIXI.Graphics();
+    bg.beginFill(0x160E08, 0.26);
+    bg.drawRoundedRect(barX, 4, barW, h, 10);
+    bg.endFill();
+    bg.lineStyle(2.5, INK, 1);
+    bg.beginFill(0xFAF0DA, 0.98);
+    bg.drawRoundedRect(barX, 0, barW, h, 10);
+    bg.endFill();
+    bg.lineStyle(2, INK, 1);
+    bg.beginFill(0x7A4B24, 1);
+    bg.drawRoundedRect(barX + barW - 8, -1, 8, h + 2, 4);
+    bg.endFill();
+    root.addChild(bg);
+
+    const num = makeText('number', text, INK, {
+      size: 25,
+      stroke: 0xFFFDF8,
+      strokeWidth: 4,
+    });
+    num.anchor.set(0.5);
+    fitTextWidth(num, barW - 30);
+    num.position.set(barX + 18 + (barW - 30) / 2, h / 2 - 0.5);
+    root.addChild(num);
+
+    this._watchHudOnce(HUD_ICON.coin);
+    const cTex = gameTexture(HUD_ICON.coin);
+    if (isTextureReady(cTex)) {
+      const sp = new PIXI.Sprite(cTex);
+      fitSpriteInBox(sp, 52, 52);
+      sp.anchor.set(0.5);
+      sp.position.set(22, h / 2);
+      root.addChild(sp);
+    }
+    return root;
+  }
+
+  /** 菜篮容量手绘木牌：大菜篮图标 + 干湿件数 + 实时占格手绘进度条。 */
+  private _makeBasketHudPlaque(width: number, onReady: () => void): PIXI.Container {
+    const root = new PIXI.Container();
+    const h = 54;
+    const barX = 24;
+    const barW = width - barX;
+
+    const bState = RunManager.basket;
+    const bag = bState.items;
+    let bagWet = 0;
+    let usedCells = 0;
+    for (const it of bag) {
+      try {
+        const def = getItem(it.defId);
+        if (def.zone === 'wet') bagWet += 1;
+        usedCells += def.w * def.h;
+      } catch {
+        usedCells += 1;
+      }
+    }
+    const dryCount = bag.length - bagWet;
+    const dryCap = (bState.cols - bState.wetCols) * bState.dryRows + (bState.pocketDry ? 1 : 0);
+    const wetCap = bState.wetCols * bState.wetRows + (bState.pocketWet ? 1 : 0);
+    const flexCap = bState.flexUnlocked ? bState.cols : 0;
+    const totalCap = Math.max(1, dryCap + wetCap + flexCap);
+    const ratio = Math.min(1, usedCells / totalCap);
+    const full = isBasketFull(bState) || KitchenManager.fridgeSlotsNeeded(bag) > KitchenManager.fridgeRoom();
+
+    const bg = new PIXI.Graphics();
+    bg.beginFill(0x160E08, 0.28);
+    bg.drawRoundedRect(barX, 4, barW, h, 12);
+    bg.endFill();
+    bg.lineStyle(2.5, full ? RED_INK : INK, 1);
+    bg.beginFill(full ? 0xFCE8E2 : 0xFAF0DA, 0.98);
+    bg.drawRoundedRect(barX, 0, barW, h, 12);
+    bg.endFill();
+    bg.lineStyle(2, INK, 1);
+    bg.beginFill(0x7A4B24, 1);
+    bg.drawRoundedRect(barX + barW - 8, -1, 8, h + 2, 4);
+    bg.endFill();
+    root.addChild(bg);
+
+    const innerX = barX + 34;
+    const innerW = barW - 50;
+    const titleCopy = full
+      ? `篮满 · 干${dryCount} 湿${bagWet}`
+      : `菜篮 · 干${dryCount} 湿${bagWet}`;
+    const lbl = makeText('caption', titleCopy, full ? RED_INK : INK, {
+      size: 21,
+      fontWeight: '700',
+    });
+    lbl.position.set(innerX, 4);
+    fitTextWidth(lbl, innerW);
+    root.addChild(lbl);
+
+    const bar = makeHandProgressBar({
+      width: innerW,
+      height: 15,
+      ratio: bag.length > 0 ? Math.max(0.08, ratio) : 0,
+      onReady,
+    });
+    bar.node.position.set(innerX, 32);
+    root.addChild(bar.node);
+
+    this._watchHudOnce(HUD_ICON.basket);
+    const bTex = gameTexture(HUD_ICON.basket);
+    if (isTextureReady(bTex)) {
+      const sp = new PIXI.Sprite(bTex);
+      fitSpriteInBox(sp, 58, 58);
+      sp.anchor.set(0.5);
+      sp.position.set(28, h / 2);
+      sp.eventMode = 'none';
+      root.addChild(sp);
+    }
+
+    root.eventMode = 'static';
+    root.cursor = 'pointer';
+    root.hitArea = new PIXI.Rectangle(0, -4, width, h + 8);
+    return root;
+  }
+
+  /** 中央悬挂天色剩余步数木匾（保留弹跳与天黑频闪动效）。 */
   private _syncDusk(run: NonNullable<typeof RunManager.run>, w: number): void {
     const urgent = run.stepsLeft <= 2;
     const top = this._hudTop();
     const cx = w / 2;
     if (!this._dusk.getChildByName('duskClock')) this._clearDusk();
     if (!this._duskNum) {
+      const plaqueHost = new PIXI.Container();
+      plaqueHost.name = 'duskPlaque';
+      const pw = 244;
+      const ph = 122;
+      const pTex = gameTexture(MARKET_SCENE_ART.plaque);
+      if (isTextureReady(pTex)) {
+        const sp = new PIXI.Sprite(pTex);
+        sp.width = pw;
+        sp.height = ph;
+        sp.anchor.set(0.5, 0);
+        sp.position.set(cx, top - 16);
+        plaqueHost.addChild(sp);
+      } else {
+        const g = new PIXI.Graphics();
+        g.beginFill(0x160E08, 0.3);
+        g.drawRoundedRect(cx - pw / 2 + 2, top + 10, pw - 4, 96, 16);
+        g.endFill();
+        g.lineStyle(2.8, INK, 1);
+        g.beginFill(0x8B5A2B, 1);
+        g.drawRoundedRect(cx - pw / 2, top + 6, pw, 96, 16);
+        g.endFill();
+        g.lineStyle(1.4, 0xF3D49B, 0.85);
+        g.beginFill(0xB8824C, 1);
+        g.drawRoundedRect(cx - pw / 2 + 6, top + 12, pw - 12, 84, 12);
+        g.endFill();
+        plaqueHost.addChild(g);
+      }
+      plaqueHost.eventMode = 'none';
+      this._dusk.addChild(plaqueHost);
+
       const clock = new PIXI.Sprite(gameTexture(HUD_ICON.clock));
       clock.name = 'duskClock';
       clock.anchor.set(0.5);
       clock.eventMode = 'none';
-      whenTextureReady(HUD_ICON.clock, () => {
-        if (this.container.parent) this._drawHud();
-      });
+      this._watchHudOnce(HUD_ICON.clock, true);
+      this._watchHudOnce(MARKET_SCENE_ART.plaque, true);
       this._dusk.addChild(clock);
-      const cap = makeLabel('天色', 36, 0xFFF6E8, {
-        fontFamily: TITLE_FONT,
-        fontWeight: '700',
-        stroke: '#2A2018',
-        strokeThickness: 6,
+
+      const cap = makeText('heading', '天色', CREAM, {
+        size: 24,
+        stroke: 0x2A180C,
+        strokeWidth: 5,
       });
-      cap.anchor.set(0.5, 0);
+      cap.anchor.set(0.5);
       cap.name = 'duskCap';
       this._dusk.addChild(cap);
-      const num = makeLabel(`${run.stepsLeft}`, 88, 0xF2C14D, {
+
+      const num = makeLabel(`${run.stepsLeft}`, 60, 0xFFE074, {
         fontFamily: TITLE_FONT,
         fontWeight: '700',
-        stroke: '#2A2018',
-        strokeThickness: 8,
+        stroke: '#2A180C',
+        strokeThickness: 7,
       });
-      num.anchor.set(0.5, 0);
+      num.anchor.set(0.5);
       this._dusk.addChild(num);
       this._duskNum = num;
+
+      const unit = makeText('caption', '步', CREAM, {
+        size: 22,
+        fontWeight: '700',
+        stroke: 0x2A180C,
+        strokeWidth: 4,
+      });
+      unit.anchor.set(0, 0.5);
+      unit.name = 'duskUnit';
+      this._dusk.addChild(unit);
     }
+
     const clock = this._dusk.getChildByName('duskClock') as PIXI.Sprite | null;
     const cap = this._dusk.getChildByName('duskCap') as PIXI.Text | null;
-    const clockSide = 48;
-    if (clock && isTextureReady(clock.texture)) fitSpriteInBox(clock, clockSide, clockSide);
-    if (clock && cap) {
-      const rowW = clockSide + 10 + cap.width;
-      clock.position.set(cx - rowW / 2 + clockSide / 2, top + 22);
-      cap.position.set(cx - rowW / 2 + clockSide + 10 + cap.width / 2, top + 4);
-    } else if (cap) {
-      cap.position.set(cx, top + 4);
+    const unit = this._dusk.getChildByName('duskUnit') as PIXI.Text | null;
+    const faceCy = top + 60;
+
+    if (clock && isTextureReady(clock.texture)) {
+      fitSpriteInBox(clock, 42, 42);
+      clock.position.set(cx - 72, faceCy - 12);
+    }
+    if (cap) {
+      cap.position.set(cx - 72, faceCy + 20);
     }
     const num = this._duskNum;
-    num.position.set(cx, top + 48);
+    num.position.set(cx + 16, faceCy + 2);
     if (num.text !== `${run.stepsLeft}`) num.text = `${run.stepsLeft}`;
+    if (unit) {
+      unit.position.set(cx + 16 + num.width / 2 + 4, faceCy + 10);
+    }
+
     if (urgent !== this._duskUrgent) {
-      num.style.fill = urgent ? 0xE24B3A : 0xF2C14D;
+      num.style.fill = urgent ? 0xF0503E : 0xFFE074;
       this._duskUrgent = urgent;
       this._setDuskBlink(urgent);
     }
@@ -646,6 +940,7 @@ export class MarketScene implements Scene {
     this._duskUrgent = false;
   }
 
+  /** 返回菜场 / 回家胡桃木圆章按钮（22pt 铭牌）。 */
   private _roundIconBtn(
     icon: string,
     label: string,
@@ -653,11 +948,11 @@ export class MarketScene implements Scene {
     onReady: () => void,
     highlight = false,
   ): PIXI.Container {
-    const size = 104;
+    const size = 96;
     const root = new PIXI.Container();
     if (highlight) {
       const halo = new PIXI.Graphics();
-      halo.beginFill(0xF2C14D, 0.34);
+      halo.beginFill(0xF2C14D, 0.36);
       halo.drawCircle(size / 2, size / 2, size / 2 + 12);
       halo.endFill();
       halo.eventMode = 'none';
@@ -684,39 +979,55 @@ export class MarketScene implements Scene {
       pulse();
     }
     const plate = new PIXI.Graphics();
-    plate.beginFill(0x2A2018, 0.18);
-    plate.drawCircle(size / 2 + 2, size / 2 + 3, size / 2);
+    plate.beginFill(0x180F07, 0.28);
+    plate.drawCircle(size / 2 + 1, size / 2 + 3.5, size / 2);
     plate.endFill();
-    plate.lineStyle(4, 0x2A2018, 1);
-    plate.beginFill(highlight ? 0xE07A3A : 0xC46A3A);
+    plate.lineStyle(3.2, INK, 1);
+    plate.beginFill(highlight ? 0xE2843A : 0xC46A3A);
     plate.drawCircle(size / 2, size / 2, size / 2 - 2);
     plate.endFill();
-    plate.lineStyle(highlight ? 4 : 2, 0xF2C14D, highlight ? 1 : 0.85);
-    plate.drawCircle(size / 2, size / 2, size / 2 - 10);
+    plate.lineStyle(highlight ? 3.5 : 2, 0xF5CB68, highlight ? 1 : 0.88);
+    plate.drawCircle(size / 2, size / 2, size / 2 - 8);
     root.addChild(plate);
 
-    whenTextureReady(icon, onReady);
+    this._watchHudOnce(icon);
     const spr = new PIXI.Sprite(gameTexture(icon));
     if (isTextureReady(spr.texture)) {
-      fitSpriteInBox(spr, 78, 78);
+      fitSpriteInBox(spr, 68, 68);
       spr.anchor.set(0.5);
-      spr.position.set(size / 2, size / 2 - 1);
+      spr.position.set(size / 2, size / 2 - 4);
       spr.eventMode = 'none';
       root.addChild(spr);
     }
-    const tag = makeLabel(label, 20, 0xFFF6E8, {
-      fontFamily: TITLE_FONT,
+
+    // Carved walnut nameplate at bottom
+    const pw = Math.max(size + 8, label.length * 22 + 20);
+    const ph = 30;
+    const px = Math.round((size - pw) / 2);
+    const py = size - 14;
+    const namePlate = new PIXI.Graphics();
+    namePlate.lineStyle(2.4, INK, 1);
+    namePlate.beginFill(UI_PALETTE.walnutDark, 1);
+    namePlate.drawRoundedRect(px, py, pw, ph, 10);
+    namePlate.endFill();
+    namePlate.lineStyle(1, 0xD6A660, 0.8);
+    namePlate.drawRoundedRect(px + 2.5, py + 2.5, pw - 5, ph - 5, 8);
+    root.addChild(namePlate);
+
+    const tag = makeText('caption', label, CREAM, {
+      size: 22,
       fontWeight: '700',
-      stroke: '#2A2018',
-      strokeThickness: 5,
+      stroke: 0x241408,
+      strokeWidth: 3,
     });
-    tag.anchor.set(0.5, 0);
-    tag.position.set(size / 2, size - 4);
+    tag.anchor.set(0.5);
+    fitTextWidth(tag, pw - 12);
+    tag.position.set(size / 2, py + ph / 2 - 0.5);
     root.addChild(tag);
 
     root.eventMode = 'static';
     root.cursor = 'pointer';
-    root.hitArea = new PIXI.Circle(size / 2, size / 2, size / 2 + 8);
+    root.hitArea = new PIXI.Rectangle(-8, -6, size + 16, size + 28);
     bindUiClick(root);
     root.on('pointertap', onTap);
     return root;
@@ -729,10 +1040,7 @@ export class MarketScene implements Scene {
     const art = MARKET_ART[run.marketId];
     this._paintScene(sceneBg(run.marketId, run.sceneId) || art.routeBg, 'cover');
 
-    const redraw = () => {
-      if (this.container.parent) this._sync(true);
-    };
-    // 当前那排落在居中稍靠下，下方留出的路面是走路过渡的去处
+    const redraw = this._scheduleSync;
     const cardsBottom = Math.round(h * 0.72);
     const blocked = RunManager.allBlocked();
     const view = layoutRouteMap({
@@ -758,20 +1066,19 @@ export class MarketScene implements Scene {
 
     if (blocked) {
       const bypass = makeSlicedButton({
-        label: '都进不去 · 绕过去（耗 1 步）',
-        width: 380,
-        height: 58,
+        label: '都进不去 · 绕道前行（耗1步）',
+        width: 400,
+        height: 62,
         skin: 'terracotta',
+        fontSize: 26,
         onReady: redraw,
       });
-      bypass.position.set(Math.round((w - 380) / 2), cardsBottom + 40);
+      bypass.position.set(Math.round((w - 400) / 2), cardsBottom + 36);
       bypass.on('pointertap', () => this._walkBypass());
       this._body.addChild(bypass);
     }
-
   }
 
-  /** 点卡不立刻结算：先演一段往前走，脚下的卡迎面掠过，后排下移接位。 */
   private _walkTo(nodeId: string): void {
     if (TutorialManager.isActive && TutorialManager.isStep(TutorialStep.CLICK_CARD)) {
       if (nodeId !== TutorialManager.allowedCardId) {
@@ -830,7 +1137,6 @@ export class MarketScene implements Scene {
     if (node && isRummageNode(node)) TutorialManager.advanceIf(TutorialStep.CLICK_CARD);
   }
 
-  /** 绕过去也是走一步：新的一排就是当前所有卡的下一层，动画照用。 */
   private _walkBypass(): void {
     if (TutorialManager.isActive && !TutorialManager.isStep(TutorialStep.FREE_WALK)) {
       TutorialGuard.block('walkOtherCard');
@@ -855,10 +1161,6 @@ export class MarketScene implements Scene {
     });
   }
 
-  /**
-   * keepIds 是走完这步还留在路上的卡。它们顺着自己那条道下移放大接位，
-   * 够不着的原地淡出——方向约束在动画里也说得清。
-   */
   private _walkForward(keepIds: string[], picked: RouteCell | null, done: () => void): void {
     const run = RunManager.run!;
     const view = this._mapView!;
@@ -870,7 +1172,6 @@ export class MarketScene implements Scene {
 
     view.rows[0].forEach((cell) => {
       const chosen = cell === picked;
-      // 进摊的卡放得更大，像整个人钻进摊子里
       const grow = chosen ? (cell.option.node.encounter?.type === 'rummage' || cell.option.node.stall ? 1.8 : 1.45) : 1.1;
       TweenManager.to({
         target: cell.card,
@@ -906,7 +1207,6 @@ export class MarketScene implements Scene {
       stay = next;
     }
 
-    // 单独一条空 tween 收尾，免得挂在某张卡上被销毁带走
     TweenManager.to({
       target: this._walkTimer,
       props: { t: 1 },
@@ -921,7 +1221,6 @@ export class MarketScene implements Scene {
     });
   }
 
-  /** 走完一步：对话弹窗，白捡直接把菜弹出来飞进顶栏篮子。 */
   private _afterStep(): void {
     const run = RunManager.run;
     if (run?.pendingMysterySack) {
@@ -931,61 +1230,71 @@ export class MarketScene implements Scene {
     const ev = run?.lastEvent;
     if (!run || run.ended || !ev) return;
     if (run.mode === 'rummage' || run.mode === 'play') return;
-    // 采集会改 lastEvent，进摊时别把上一颗菜再弹一遍。
     if (ev.nodeId !== run.atNodeId || ev.kind === 'gather') return;
     if (ev.nodeId === this._shownEvent) return;
     this._shownEvent = ev.nodeId;
     if (ev.gain) this._popFreebie(ev);
     else if (ev.kind === 'recipe' && KitchenManager.peekRecipeUnlock()) {
       ensureRecipeUnlockPanel().present(true);
-    }
-    else if (ev.choices?.length) {
+    } else if (ev.choices?.length) {
       this._event.open(ev, (index) => {
         if (!RunManager.chooseTalk(index)) return false;
         const after = RunManager.run?.lastEvent;
         if (after?.gain) this._popFreebie(after);
       });
+    } else {
+      this._event.open(ev);
     }
-    else this._event.open(ev);
   }
 
-  /**
-   * 白捡不走面板：菜从路中间冒出来，停一下，再飞进顶栏篮子。
-   * 篮子满了就灰掉淡出，不硬塞。
-   */
+  /** 白捡鲜货弹出：光晕 + 实物 + 温润宣纸名签飞入菜篮。 */
   private _popFreebie(ev: RunEventLog): void {
     const gain = ev.gain;
     if (!gain) return;
-    const path = `subpkg_images/${gain.defId}.png`;
-    whenTextureReady(path, () => {
-      const now = RunManager.run;
-      if (!now || now.mode === 'rummage') return;
-      if (now.lastEvent?.nodeId !== ev.nodeId || now.lastEvent.gain?.defId !== ev.gain?.defId) return;
-      this._popFreebie(ev);
-    });
+    const path = resolveItemAssetPath(gain.defId);
     const tex = itemTexture(gain.defId);
-    if (!isTextureReady(tex)) return;
+    if (!isTextureReady(tex)) {
+      if (!isTextureFailed(path)) {
+        const key = `freebie:${ev.nodeId}:${path}`;
+        if (!this._watchedSync.has(key)) {
+          this._watchedSync.add(key);
+          whenTextureReady(path, () => {
+            this._watchedSync.delete(key);
+            const now = RunManager.run;
+            if (!now || now.mode === 'rummage') return;
+            if (now.lastEvent?.nodeId !== ev.nodeId || now.lastEvent.gain?.defId !== ev.gain?.defId) return;
+            this._popFreebie(ev);
+          });
+        }
+      }
+      return;
+    }
 
     const wrap = new PIXI.Container();
     const glow = makeRarityFlare(getItem(gain.defId).rarity, 400);
     const sprite = new PIXI.Sprite(tex);
     sprite.anchor.set(0.5);
-    fitSpriteInBox(sprite, 220, 220);
+    fitSpriteInBox(sprite, 224, 224);
     if (!gain.taken) sprite.tint = 0x9A9086;
-    const name = makeLabel(displayName(gain.defId, false, gain.quality), 26, 0xFFF8F0, {
-      fontWeight: '700',
-      dropShadow: true,
-      dropShadowColor: 0x2A2018,
-      dropShadowDistance: 2,
-      dropShadowBlur: 3,
-      dropShadowAlpha: 0.7,
-    });
-    name.anchor.set(0.5, 0);
-    name.position.set(0, 118);
-    wrap.addChild(glow, sprite, name);
+
+    // 宣纸木钉名签承载拾取品名（28pt）
+    const nameSlip = new PIXI.Container();
+    const name = makeText('title', displayName(gain.defId, false, gain.quality), INK, { size: 28 });
+    name.anchor.set(0.5);
+    const nw = Math.max(180, Math.ceil(name.width) + 44);
+    const nh = 52;
+    const nbg = new PIXI.Graphics();
+    nbg.lineStyle(2.4, INK, 1);
+    nbg.beginFill(0xFAF0DA, 0.98);
+    nbg.drawRoundedRect(-nw / 2, -nh / 2, nw, nh, 10);
+    nbg.endFill();
+    nameSlip.addChild(nbg, name);
+    nameSlip.position.set(0, 140);
+
+    wrap.addChild(glow, sprite, nameSlip);
     if (gain.firstSeen && gain.quality !== 'rotten') {
       const badge = makeNewFoodTag(26);
-      badge.position.set(0, -132);
+      badge.position.set(0, -136);
       wrap.addChild(badge);
     }
     wrap.position.set(Game.designWidth / 2, Math.round(Game.logicHeight * 0.46));
@@ -996,8 +1305,8 @@ export class MarketScene implements Scene {
 
     const land = this._basketBtn
       ? {
-        x: this._basketBtn.x + 62,
-        y: this._basketBtn.y + 22,
+        x: this._basketBtn.x + 36,
+        y: this._basketBtn.y + 26,
       }
       : { x: 528, y: Game.safeTop + 28 };
 
@@ -1053,7 +1362,7 @@ export class MarketScene implements Scene {
     });
   }
 
-  /** 山洞采菌：石壁上看得见的菌，点一下摘一朵，限次数。 */
+  /** 山洞采菌：石壁上看得见的菌，点一下摘一朵，附宣纸提示牌。 */
   private _drawPlay(w: number, h: number): void {
     const run = RunManager.run!;
     const play = run.play;
@@ -1063,20 +1372,24 @@ export class MarketScene implements Scene {
     }
 
     const gatherBg = play.bg || sceneBg(run.marketId, run.sceneId);
-    whenTextureReady(gatherBg, () => {
-      if (this.container.parent) this._sync(true);
-    });
+    this._watchSyncOnce(gatherBg);
     this._paintScene(
       isTextureFailed(gatherBg) ? sceneBg(run.marketId, run.sceneId) : gatherBg,
       'cover',
     );
 
+    // 采摘剩余次数宣纸提示签
+    const note = this._makeSceneSlip(
+      play.picksLeft > 0 ? `点石壁鲜货采摘 · 还能摘 ${play.picksLeft} 朵` : '这处已经采够啦，返回继续逛吧',
+      play.picksLeft > 0 ? INK : RED_INK,
+    );
+    note.position.set(w / 2, h - Math.max(48, Game.safeBottom + 36) - 36);
+    this._body.addChild(note);
+
     play.spots.forEach((spot) => {
       if (spot.taken) return;
-      const path = `subpkg_images/${spot.defId}.png`;
-      whenTextureReady(path, () => {
-        if (this.container.parent) this._sync(true);
-      });
+      const path = resolveItemAssetPath(spot.defId);
+      this._watchSyncOnce(path);
       const tex = itemTexture(spot.defId);
       const x = Math.round(w * spot.x);
       const y = Math.round(h * spot.y);
@@ -1084,11 +1397,11 @@ export class MarketScene implements Scene {
       wrap.position.set(x, y);
       wrap.eventMode = 'static';
       wrap.cursor = play.picksLeft > 0 ? 'pointer' : 'default';
-      wrap.hitArea = new PIXI.Rectangle(-56, -56, 112, 112);
+      wrap.hitArea = new PIXI.Rectangle(-58, -58, 116, 116);
       if (isTextureReady(tex)) {
         const sp = new PIXI.Sprite(tex);
         sp.anchor.set(0.5);
-        fitSpriteInBox(sp, 110, 110);
+        fitSpriteInBox(sp, 112, 112);
         wrap.addChild(sp);
       } else {
         const fallback = new PIXI.Graphics();
@@ -1123,6 +1436,34 @@ export class MarketScene implements Scene {
     });
   }
 
+  /** 手绘宣纸横签（彻底替代原半透明黑框提示条）。 */
+  private _makeSceneSlip(copy: string, inkColor = INK): PIXI.Container {
+    const wrap = new PIXI.Container();
+    wrap.eventMode = 'none';
+    const lbl = makeText('heading', copy, inkColor, { size: 24 });
+    lbl.anchor.set(0.5);
+    const pw = Math.max(296, Math.ceil(lbl.width) + 56);
+    const ph = 54;
+    const bg = new PIXI.Graphics();
+    bg.beginFill(0x160E08, 0.3);
+    bg.drawRoundedRect(-pw / 2, -ph / 2 + 4, pw, ph, 10);
+    bg.endFill();
+    bg.lineStyle(2.5, INK, 1);
+    bg.beginFill(0xFAF0DA, 0.96);
+    bg.drawRoundedRect(-pw / 2, -ph / 2, pw, ph, 10);
+    bg.endFill();
+    bg.lineStyle(1.2, 0xC6A87E, 0.72);
+    bg.drawRoundedRect(-pw / 2 + 12, -ph / 2 + 5, pw - 24, ph - 10, 6);
+    for (const side of [-1, 1] as const) {
+      bg.lineStyle(2, INK, 1);
+      bg.beginFill(0x7A4B24, 1);
+      bg.drawRoundedRect(side < 0 ? -pw / 2 : pw / 2 - 9, -ph / 2 - 2, 9, ph + 4, 4);
+      bg.endFill();
+    }
+    wrap.addChild(bg, lbl);
+    return wrap;
+  }
+
   private _drawRummage(w: number, h: number): void {
     const run = RunManager.run!;
     const nodeId = run.currentNodeId!;
@@ -1143,7 +1484,6 @@ export class MarketScene implements Scene {
     if (stallId === 'fish') gameTexture(GOD_FISH);
     this._paintScene(stallRummageArt(run.marketId, stallId, specialty), 'cover');
 
-    // 河沿蛋豆摊底图上沿有蛋筐/蛋托，桌上菜要比默认再靠下一截。
     const tableTop = run.marketId === 'heyan' && stallId === 'egg' ? 0.36 : 0.26;
     const table = {
       x: 24,
@@ -1196,9 +1536,7 @@ export class MarketScene implements Scene {
     const fromRatio = left < max && kick > 0 ? Math.min(1, (left + kick) / max) : ratio;
     const path = stallPileArt(RunManager.run!.marketId, stallId, specialty);
     const tex = gameTexture(path);
-    whenTextureReady(path, () => {
-      if (this.container.parent) this._sync(true);
-    });
+    this._watchSyncOnce(path);
     const boxW = 560;
     const boxH = 500;
     if (isTextureReady(tex) && (left > 0 || fromRatio > 0)) {
@@ -1220,20 +1558,15 @@ export class MarketScene implements Scene {
       root.addChild(sprite);
     }
     if (left > 0) {
-      const tag = makeLabel(`点遮挡堆抽取  ${left}`, 24, 0xFFF8F0);
-      tag.anchor.set(0.5);
-      const tagY = cy + (boxH * ratio) * 0.42 + 8;
-      const tagBg = new PIXI.Graphics();
-      fillRect(tagBg, cx - 150, tagY - 23, 300, 46, 0x2A2018, 12);
-      tagBg.alpha = 0.72;
-      tag.position.set(cx, tagY);
-      root.addChild(tagBg);
-      root.addChild(tag);
+      const tagY = cy + (boxH * ratio) * 0.42 + 16;
+      const slip = this._makeSceneSlip(`点此翻找鲜货 · 剩 ${left} 件`, INK);
+      slip.position.set(cx, tagY);
+      root.addChild(slip);
     }
-    const hit = Math.max(120, boxW * Math.max(ratio, 0.28));
+    const hit = Math.max(140, boxW * Math.max(ratio, 0.32));
     root.eventMode = 'static';
     root.cursor = left > 0 ? 'pointer' : 'default';
-    root.hitArea = new PIXI.Rectangle(cx - hit / 2, cy - hit / 2, hit, hit + 36);
+    root.hitArea = new PIXI.Rectangle(cx - hit / 2, cy - hit / 2, hit, hit + 52);
     root.on('pointertap', () => this._drawOne());
     return root;
   }
@@ -1312,11 +1645,11 @@ export class MarketScene implements Scene {
     this._revealLayer.addChild(wrap);
     flight.wrap = wrap;
 
-    const name = makeLabel(
+    const name = makeText(
+      'heading',
       displayName(defId, item.inspected, item.quality === 'god' ? 'common' : item.quality),
-      22,
-      item.quality === 'rotten' ? 0xE07A5F : 0xFFF8F0,
-      { fontWeight: '700' },
+      item.quality === 'rotten' ? 0xFFA58E : 0xFFF8F0,
+      { size: 26, stroke: 0x241408, strokeWidth: 5 },
     );
     name.anchor.set(0.5, 1);
     name.alpha = 0;
@@ -1326,7 +1659,7 @@ export class MarketScene implements Scene {
     if (item.firstSeen && item.quality !== 'rotten') {
       badge = makeNewFoodTag(24);
       badge.alpha = 0;
-      badge.position.set(0, -REVEAL_FACE * 0.48 - 26);
+      badge.position.set(0, -REVEAL_FACE * 0.48 - 32);
       wrap.addChild(badge);
     }
 
@@ -1400,7 +1733,6 @@ export class MarketScene implements Scene {
     this._pileKick = 0;
   }
 
-  /** 进抽堆时清掉上一场捡菜还停在层上的弹出，不打断本摊正在飞的抽取。 */
   private _clearStalePops(): void {
     const keep = new Set(
       [...this._flying.values()].map((flight) => flight.wrap).filter((wrap): wrap is PIXI.Container => !!wrap),
@@ -1425,9 +1757,7 @@ export class MarketScene implements Scene {
     fillRect(fallback, 0, 0, w, h, 0x3A3228);
     this._bg.addChild(fallback);
     const tex = gameTexture(path);
-    whenTextureReady(path, () => {
-      if (this.container.parent) this._sync(true);
-    });
+    this._watchSyncOnce(path);
     if (isTextureReady(tex)) {
       const scene = new PIXI.Sprite(tex);
       const fit = mode === 'cover'
@@ -1499,6 +1829,7 @@ export class MarketScene implements Scene {
     return out;
   }
 
+  /** 摊桌上的鲜货：清晰大描边品名（22pt）+ 新食材/急需角标。 */
   private _pileToken(
     item: PileItem,
     x: number,
@@ -1512,34 +1843,40 @@ export class MarketScene implements Scene {
 
     const look = item.quality === 'rotten' ? 'rotten' : 'clean';
     const icon = new PIXI.Sprite(itemLookTexture(visibleDefId(item), look));
-    whenTextureReady(`subpkg_images/${visibleDefId(item)}${look === 'clean' ? '' : `_${look}`}.png`, () => {
-      if (this.container.parent) this._sync(true);
-    });
+    this._watchSyncOnce(resolveItemAssetPath(visibleDefId(item), look === 'rotten'));
     const rotten = item.quality === 'rotten';
     const rawLabel = RunManager.labelFor(item);
-    const tag = makeStallNameTag(
+    const tag = makeText(
+      'body',
       rotten ? `✕ ${rawLabel}` : rawLabel,
-      rotten ? 0xE07058 : RARITY_STYLE[def.rarity].float,
-      { maxWidth: Math.max(96, tw + 8) },
+      rotten ? 0xFFA088 : RARITY_STYLE[def.rarity].float,
+      {
+        size: 23,
+        fontWeight: '700',
+        stroke: 0x241408,
+        strokeWidth: 5,
+      },
     );
     tag.anchor.set(0.5, 1);
+    fitTextWidth(tag, Math.max(106, tw + 12));
     const tagH = tag.height;
-    fitSpriteInBox(icon, tw * 0.86, Math.max(48, th - tagH - 4));
+    fitSpriteInBox(icon, tw * 0.88, Math.max(48, th - tagH - 2));
     icon.anchor.set(0.5);
     icon.position.set(tw / 2, (th - tagH) / 2);
     if (rotten) icon.alpha = 0.72;
     if (look === 'rotten' && !isTextureReady(gameTexture(`subpkg_images/${def.id}_rotten.png`))) icon.tint = 0x6B4A32;
     root.addChild(icon);
-    tag.position.set(tw / 2, th - 1);
+    tag.position.set(tw / 2, th);
     root.addChild(tag);
+
     const isUrgent = item.quality !== 'rotten' && this._urgentFoods.has(def.id);
     if (item.firstSeen && item.quality !== 'rotten') {
       const badge = makeNewFoodTag(24);
       badge.position.set(tw / 2, icon.y - icon.height * 0.5 + 6);
       root.addChild(badge);
       if (isUrgent) {
-        const urg = makeUrgentFoodTag(18);
-        urg.position.set(tw / 2, icon.y - icon.height * 0.5 + 36);
+        const urg = makeUrgentFoodTag(20);
+        urg.position.set(tw / 2, icon.y - icon.height * 0.5 + 38);
         root.addChild(urg);
       }
     } else if (isUrgent) {
@@ -1579,7 +1916,6 @@ export class MarketScene implements Scene {
       this._basket.open(uid);
       return;
     }
-    // 先出声再 take：take 会同步拆掉整桌，模拟器里后播的 InnerAudio 经常被吞。
     if (item.quality === 'god' || item.defId === GOD_PICK.id) AudioManager.playGain();
     else AudioManager.play('basket_place');
     RunManager.take(uid);
@@ -1674,7 +2010,7 @@ export class MarketScene implements Scene {
     }
 
     const land = this._basketBtn
-      ? { x: this._basketBtn.x + 62, y: this._basketBtn.y + 22 }
+      ? { x: this._basketBtn.x + 36, y: this._basketBtn.y + 26 }
       : { x: 528, y: Game.safeTop + 28 };
 
     const finish = (openBasket: boolean): void => {

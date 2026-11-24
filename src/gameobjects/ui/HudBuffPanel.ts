@@ -9,21 +9,32 @@ import { buffIconPath, liveHudBuffs, type HudBuff } from '@/sim';
 import {
   PLAYER_LEVEL_HUD,
   UI_KIT,
-  UI_PALETTE,
-  drawCraftCard,
-  drawRecessedWell,
   fillRect,
-  makeArtisanShell,
-  makeLabel,
+  makeText,
 } from '@/utils/ui';
-import { fitSpriteInBox, gameTexture, isTextureReady, watchTextures } from '@/utils/assets';
+import { watchTextures } from '@/utils/assets';
+import {
+  SCENE_ART,
+  SCENE_INK,
+  drawInkDivider,
+  drawPlaqueTitle,
+  drawSceneClose,
+  drawSceneWall,
+  drawStretchSheet,
+  makePlateItem,
+  makeSealStamp,
+  sceneArtPaths,
+} from './scenePanel';
 
-const INDIGO = 0x35647B;
+const WALL = 'subpkg_images/scene_order_wall.png';
+const W = 640;
+const ROW_H = 108;
 const Z = 40;
 
 export class HudBuffPanel extends PIXI.Container {
   _isOpen = false;
   private _root = new PIXI.Container();
+  private _paintQueued = false;
 
   constructor() {
     super();
@@ -40,6 +51,7 @@ export class HudBuffPanel extends PIXI.Container {
   open(): void {
     const buffs = liveHudBuffs(KitchenManager.save);
     if (!buffs.length) return;
+    if (!this._isOpen) AudioManager.play('ui_open');
     this._isOpen = true;
     this.visible = true;
     this.relayout();
@@ -50,8 +62,21 @@ export class HudBuffPanel extends PIXI.Container {
     if (this._isOpen && !silent) AudioManager.play('ui_close');
     this._isOpen = false;
     this.visible = false;
+    this._paintQueued = false;
     this._root.removeChildren();
   }
+
+  private _scheduleRelayout = (): void => {
+    if (!this._isOpen || this._paintQueued) return;
+    this._paintQueued = true;
+    const later = typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame
+      : (cb: () => void) => setTimeout(cb, 0);
+    later(() => {
+      this._paintQueued = false;
+      if (this._isOpen) this.relayout();
+    });
+  };
 
   relayout(): void {
     this._root.removeChildren();
@@ -63,88 +88,117 @@ export class HudBuffPanel extends PIXI.Container {
     }
 
     watchTextures(
-      [UI_KIT.headerRibbon, UI_KIT.closeRound, ...buffs.map((buff) => buffIconPath(buff.icon))],
-      () => {
-        if (this._isOpen) this.relayout();
-      },
+      [
+        WALL,
+        ...sceneArtPaths(),
+        UI_KIT.closeRound,
+        ...buffs.map((buff) => buffIconPath(buff.icon)),
+      ],
+      this._scheduleRelayout,
     );
 
-    const w = Game.designWidth;
-    const h = Game.logicHeight;
-    this.hitArea = new PIXI.Rectangle(0, 0, w, h);
+    const sw = Game.designWidth;
+    const sh = Game.logicHeight;
+    this.hitArea = new PIXI.Rectangle(0, 0, sw, sh);
 
     const dim = new PIXI.Graphics();
-    fillRect(dim, 0, 0, w, h, 0x160E08);
-    dim.alpha = 0.48;
+    fillRect(dim, 0, 0, sw, sh, 0x160E08);
+    dim.alpha = 0.56;
     dim.eventMode = 'static';
     dim.on('pointertap', () => this.close());
     this._root.addChild(dim);
 
-    const cardW = Math.min(540, w - 56);
-    const rowH = 88;
-    const rowGap = 10;
-    const contentTop = 66;
-    const cardH = contentTop + buffs.length * rowH + (buffs.length - 1) * rowGap + 28;
+    // 木匾 top=-46, width=336 时底边在 y≈128；宣纸从 y=140 起铺，避免遮挡木匾下沿
+    const sheetTop = 140;
+    const headerH = 96;
+    const sheetH = headerH + buffs.length * ROW_H + 38;
+    const panelH = sheetTop + sheetH + 28;
+
     const hudBottom = Math.max(4, (Number.isFinite(Game.safeTop) ? Game.safeTop : 96) - 16)
       + PLAYER_LEVEL_HUD.height
-      + 22;
-    const x = Math.round((w - cardW) / 2);
-    const y = Math.round(Math.min(
-      Math.max(hudBottom, Game.safeTop + 32),
-      Math.max(32, h - cardH - 80),
-    ));
+      + 52;
+    const availW = sw - 28;
+    const availH = sh - hudBottom - Math.max(24, Game.safeBottom + 16);
+    const scale = Math.min(1, availW / W, availH / panelH);
 
-    const { shell } = makeArtisanShell({
-      width: cardW,
-      height: cardH,
-      title: '食 补 增 益',
-      closeSilent: true,
-      onReady: () => {
-        if (this._isOpen) this.relayout();
-      },
-      onClose: () => this.close(),
-    });
-    shell.position.set(x, y);
-    this._root.addChild(shell);
+    const scene = new PIXI.Container();
+    scene.eventMode = 'static';
+    scene.hitArea = new PIXI.Rectangle(0, -52, W, panelH + 62);
+    scene.on('pointertap', (e) => e.stopPropagation());
+    scene.scale.set(scale);
+    scene.position.set(
+      Math.round((sw - W * scale) / 2),
+      Math.round(Math.max(Game.safeTop + 56, Math.min(hudBottom, sh - panelH * scale - 40))),
+    );
+    this._root.addChild(scene);
+
+    drawSceneWall(scene, WALL, W, panelH, 160, 110);
+    drawPlaqueTitle(scene, '食补增益', W / 2, -46, 336);
+    drawSceneClose(scene, W - 44, -20, () => this.close(), this._scheduleRelayout);
+
+    const sheetX = 24;
+    const sheetW = W - sheetX * 2;
+    drawStretchSheet(scene, SCENE_ART.sheet, sheetX, sheetTop, sheetW, sheetH, 110, 96);
+
+    // 抬头内收避开左右铜钉（x: 92..W-92, cy: sheetTop+62）
+    const headL = 92;
+    const headR = W - 92;
+    const contentL = 62;
+    const contentW = W - contentL * 2;
+
+    const sub = makeText('body', '刚吃下的热菜食补效果：', SCENE_INK.soft, { size: 24, fontWeight: '700' });
+    sub.anchor.set(0, 0.5);
+    sub.position.set(headL, sheetTop + 60);
+    scene.addChild(sub);
+
+    const seal = makeSealStamp('生效', 46, -0.09);
+    seal.position.set(headR - 24, sheetTop + 60);
+    scene.addChild(seal);
+
+    drawInkDivider(scene, contentL, sheetTop + headerH - 10, contentW, 0.5, 10);
 
     buffs.forEach((buff, i) => {
-      shell.addChild(this._row(buff, 24, contentTop + i * (rowH + rowGap), cardW - 48, rowH));
+      const ry = sheetTop + headerH + i * ROW_H;
+      scene.addChild(this._row(buff, contentL, ry, contentW, ROW_H, i < buffs.length - 1));
     });
   }
 
-  private _row(buff: HudBuff, x: number, y: number, width: number, height: number): PIXI.Container {
+  private _row(
+    buff: HudBuff,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    divider: boolean,
+  ): PIXI.Container {
     const root = new PIXI.Container();
-    const bg = new PIXI.Graphics();
-    drawCraftCard(bg, x, y, width, height, { radius: 16, tone: 'ivory' });
-    root.addChild(bg);
+    root.position.set(0, y);
 
-    const iconBox = 64;
-    const iy = y + Math.round((height - iconBox) / 2);
-    const iconBg = new PIXI.Graphics();
-    drawRecessedWell(iconBg, x + 12, iy, iconBox, iconBox, { radius: 14 });
-    root.addChild(iconBg);
+    const plateW = 104;
+    const plate = makePlateItem({
+      iconPath: buffIconPath(buff.icon),
+      plateW,
+      iconSize: 64,
+    });
+    plate.position.set(x + plateW / 2, height / 2 + 4);
+    root.addChild(plate);
 
-    const path = buffIconPath(buff.icon);
-    const tex = gameTexture(path);
-    if (isTextureReady(tex)) {
-      const spr = new PIXI.Sprite(tex);
-      fitSpriteInBox(spr, iconBox - 12, iconBox - 12);
-      spr.anchor.set(0.5);
-      spr.position.set(x + 12 + iconBox / 2, y + height / 2);
-      spr.eventMode = 'none';
-      root.addChild(spr);
-    }
-
-    const label = makeLabel(buff.label, 20, INDIGO, {
+    const textX = x + plateW + 20;
+    const label = makeText('body', buff.label, SCENE_INK.ink, {
+      size: 25,
       fontWeight: '700',
       wordWrap: true,
       breakWords: true,
-      wordWrapWidth: width - iconBox - 44,
-      lineHeight: 28,
+      wordWrapWidth: width - plateW - 24,
+      lineHeight: 36,
     });
     label.anchor.set(0, 0.5);
-    label.position.set(x + iconBox + 28, y + height / 2);
+    label.position.set(textX, height / 2);
     root.addChild(label);
+
+    if (divider) {
+      drawInkDivider(root, x, height - 6, width, 0.34, 8);
+    }
     return root;
   }
 }

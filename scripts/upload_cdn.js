@@ -16,6 +16,7 @@ import { PROJECT_ROOT, loadUploadEnv } from './loadWxSecret.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FORCE = process.argv.includes('--force');
 const DRY_RUN = process.argv.includes('--dry-run');
+const SYNC_IGNORE = process.argv.includes('--sync-ignore');
 const PRUNE = process.argv.includes('--prune');
 const CONCURRENCY = Number(process.env.CDN_UPLOAD_CONCURRENCY || 5);
 const MANIFEST_LOCAL = path.join(PROJECT_ROOT, 'scripts', '.cdn_manifest.json');
@@ -231,34 +232,42 @@ function formatSize(bytes) {
 }
 
 function syncPackIgnore(remotePaths) {
-  const configPath = path.join(PROJECT_ROOT, 'project.config.json');
-  const raw = fs.readFileSync(configPath, 'utf-8');
-  const project = JSON.parse(raw);
-  const pack = project.packOptions || { ignore: [], include: [] };
+  const configPaths = [
+    path.join(PROJECT_ROOT, 'project.config.json'),
+    path.join(PROJECT_ROOT, 'platform', 'wechat', 'project.config.json'),
+  ];
   const remote = new Set(remotePaths);
-  const keep = (pack.ignore || []).filter((entry) => {
-    const value = String(entry.value || '');
-    if (remote.has(value)) return false;
-    return !value.startsWith('subpkg_images/')
-      && !value.startsWith('subpkg_audio/')
-      && !value.startsWith('audio/');
-  });
   const globs = [
     { type: 'glob', value: 'subpkg_images/market_*.jpg' },
     { type: 'glob', value: 'subpkg_images/stall_rummage_*.jpg' },
     { type: 'glob', value: 'subpkg_images/stall_pile_*.png' },
     { type: 'glob', value: 'subpkg_images/outing_curtain.jpg' },
     { type: 'glob', value: 'subpkg_images/dest_*.jpg' },
-    { type: 'glob', value: 'subpkg_images/special_*.jpg' },
+    { type: 'glob', value: 'subpkg_images/special_*' },
     { type: 'glob', value: 'subpkg_images/dish_*.png' },
     { type: 'glob', value: 'subpkg_images/npc_*.png' },
+    { type: 'glob', value: 'subpkg_images/scene_*.png' },
     { type: 'glob', value: 'subpkg_audio/*' },
     { type: 'glob', value: 'audio/*.mp3' },
   ];
   const files = [...remotePaths].sort().map((value) => ({ type: 'file', value }));
-  pack.ignore = [...keep, ...globs, ...files];
-  project.packOptions = pack;
-  fs.writeFileSync(configPath, `${JSON.stringify(project, null, 2)}\n`);
+
+  for (const configPath of configPaths) {
+    if (!fs.existsSync(configPath)) continue;
+    const raw = fs.readFileSync(configPath, 'utf-8');
+    const project = JSON.parse(raw);
+    const pack = project.packOptions || { ignore: [], include: [] };
+    const keep = (pack.ignore || []).filter((entry) => {
+      const value = String(entry.value || '');
+      if (remote.has(value)) return false;
+      return !value.startsWith('subpkg_images/')
+        && !value.startsWith('subpkg_audio/')
+        && !value.startsWith('audio/');
+    });
+    pack.ignore = [...keep, ...globs, ...files];
+    project.packOptions = pack;
+    fs.writeFileSync(configPath, `${JSON.stringify(project, null, 2)}\n`);
+  }
 }
 
 async function main() {
@@ -289,9 +298,12 @@ async function main() {
     localBytes += f.size;
   }
   console.log(`扫描完成: ${allFiles.length} 个文件，${formatSize(localBytes)}`);
-  if (!DRY_RUN) {
+  if (!DRY_RUN || SYNC_IGNORE) {
     syncPackIgnore(allFiles.map(f => f.remote));
-    console.log('已同步 project.config.json packOptions.ignore，上传包将排除这些大图。');
+    console.log('已同步 project.config.json 与 platform/wechat/project.config.json 的 packOptions.ignore，上传包将排除这些大图。');
+    if (SYNC_IGNORE && !FORCE && DRY_RUN === false && !process.argv.includes('--upload')) {
+      return;
+    }
   }
 
   if (!SECRET_ID || !SECRET_KEY) {

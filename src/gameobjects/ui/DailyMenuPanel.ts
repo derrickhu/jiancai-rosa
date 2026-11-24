@@ -22,29 +22,19 @@ import { kitchenGachaHudPos, playRewardCollect, playTicketCollect } from '@/util
 import { playDailyMenuClearBanner } from '@/utils/dailyMenuClearFx';
 import {
   P0_ART,
-  SERIF_FONT,
   UI_KIT,
-  UI_PALETTE,
-  drawCraftCard,
-  drawItemSlotBox,
-  drawRecessedWell,
-  drawSectionTray,
-  fillRect,
+  fitTextWidth,
   makeAdButton,
-  makeArtisanShell,
-  makeCraftProgressBar,
-  makeLabel,
-  makeRewardStrip,
+  makeHandProgressBar,
+  makeRarityFlare,
   makeSlicedButton,
-  makeSlotBadge,
+  makeText,
+  uiBarPaths,
 } from '@/utils/ui';
 import { dailyMenuPanelPaths } from '@/utils/panelAssets';
 import {
-  dishTexture,
-  fitSpriteInBox,
-  gameTexture,
-  isTextureReady,
-  itemTexture,
+  resolveDishAssetPath,
+  resolveItemAssetPath,
   watchTextures,
 } from '@/utils/assets';
 import {
@@ -53,14 +43,45 @@ import {
   makeItemInspectCard,
   type ItemInspectView,
 } from './ItemInspectCard';
+import {
+  SCENE_ART,
+  SCENE_INK,
+  drawInkDivider,
+  drawPlaqueTitle,
+  drawSceneClose,
+  drawSceneWall,
+  drawStretchSheet,
+  makeDishDisplay,
+  makeInlineRewards,
+  makeSceneRoot,
+  makeSealStamp,
+  sceneArtPaths,
+  sceneSprite,
+} from './scenePanel';
 
-const TITLE = 'subpkg_kitchen/ui_daily_menu_title.png';
-const TICKET = 'subpkg_images/ui_menu_ticket.png';
-const STAMP = 'subpkg_kitchen/ui_daily_done_stamp.png';
-const INK = UI_PALETTE.ink;
-const MUTED = UI_PALETTE.muted;
-const TERRACOTTA = UI_PALETTE.terracotta;
-const OLIVE = UI_PALETTE.olive;
+/** 今日菜单挂牌墙：两侧红灯笼 + 麻绳悬吊黑板 + 铜钉宣纸菜单笺。 */
+const ART = {
+  wall: 'subpkg_images/scene_menu_wall.png',
+  ticket: 'subpkg_images/ui_menu_ticket.png',
+  flare: 'subpkg_kitchen/ui_pickup_flare.png',
+} as const;
+
+const W = 720;
+const L = {
+  wallSliceTop: 320,
+  wallSliceBottom: 140,
+  boardLeft: 154,
+  boardRight: 568,
+  boardTop: 278,
+  sheetTop: 404,
+  sheetX: 28,
+  sheetTopPad: 32,
+  sheetBottomPad: 36,
+  rowH: 178,
+  extraH: 102,
+  contentX: 62,
+  contentR: 658,
+} as const;
 
 export class DailyMenuPanel extends PIXI.Container {
   _isOpen = false;
@@ -69,6 +90,7 @@ export class DailyMenuPanel extends PIXI.Container {
   private _inspect: ItemInspectView | null = null;
   private _paintQueued = false;
   private _adBusy = false;
+  private _toStage: (x: number, y: number) => { x: number; y: number } = (x, y) => ({ x, y });
 
   constructor() {
     super();
@@ -86,6 +108,7 @@ export class DailyMenuPanel extends PIXI.Container {
     this._isOpen = true;
     this.visible = true;
     this._inspect = null;
+    this._adBusy = false;
     warmupAdScene('daily_extra');
     this._warm();
     this.relayout();
@@ -97,6 +120,7 @@ export class DailyMenuPanel extends PIXI.Container {
     this._isOpen = false;
     this.visible = false;
     this._inspect = null;
+    this._adBusy = false;
     this._paintQueued = false;
     this._root.removeChildren();
     TutorialOverlay.refresh();
@@ -105,6 +129,9 @@ export class DailyMenuPanel extends PIXI.Container {
   private _warm(): void {
     watchTextures(
       [
+        ...Object.values(ART),
+        ...sceneArtPaths(),
+        ...uiBarPaths(),
         UI_KIT.closeRound,
         UI_KIT.btnOlive,
         UI_KIT.btnGold,
@@ -138,93 +165,71 @@ export class DailyMenuPanel extends PIXI.Container {
       return;
     }
 
-    const w = Game.designWidth;
-    const h = Game.logicHeight;
-    this.hitArea = new PIXI.Rectangle(0, 0, w, h);
-    const dim = new PIXI.Graphics();
-    fillRect(dim, 0, 0, w, h, 0x160E08);
-    dim.alpha = 0.56;
-    dim.eventMode = 'static';
-    dim.on('pointertap', () => {
-      if (this._inspect) {
-        this._inspect = null;
-        this.relayout();
-        return;
-      }
-      if (!this._adBusy) this.close();
-    });
-    this._root.addChild(dim);
+    const sw = Game.designWidth;
+    const sh = Game.logicHeight;
+    this.hitArea = new PIXI.Rectangle(0, 0, sw, sh);
 
     const canExtra = menu.boardClaimed && canUseDailyAd(KitchenManager.save, 'daily_extra');
-    const rowH = canExtra ? 222 : 238;
-    const rowGap = 11;
-    const boxW = Math.min(w - 30, 706);
-    const padX = 24;
-    const cw = boxW - padX * 2;
-    const titleH = 54;
-    const prizeH = 88;
-    const headH = 22 + titleH + 8 + prizeH + 12;
-    const footH = canExtra ? 94 : 26;
-    const boxH = headH + menu.lines.length * rowH + (menu.lines.length - 1) * rowGap + footH;
-    const bx = Math.round((w - boxW) / 2);
-    const by = Math.round(Math.max(Game.safeTop + 16, (h - boxH) / 2));
+    const n = menu.lines.length;
+    const sheetH = L.sheetTopPad + n * L.rowH + (canExtra ? L.extraH : 0) + L.sheetBottomPad;
+    const panelH = L.sheetTop + sheetH + 34;
 
-    const { shell } = makeArtisanShell({
-      width: boxW,
-      height: boxH,
-      onReady: this._scheduleRelayout,
-      closeSilent: true,
-      onClose: () => {
+    const { scene, toStage } = makeSceneRoot({
+      parent: this._root,
+      designW: W,
+      panelH,
+      topBleed: 44,
+      onDimTap: () => {
+        if (this._inspect) {
+          this._inspect = null;
+          this.relayout();
+          return;
+        }
         if (!this._adBusy) this.close();
       },
     });
-    shell.position.set(bx, by);
-    this._root.addChild(shell);
+    this._toStage = toStage;
 
-    shell.addChild(this._title(menu, padX, 20, cw, titleH));
-    shell.addChild(this._progress(menu, padX, 20 + titleH + 8, cw, prizeH));
+    drawSceneWall(scene, ART.wall, W, panelH, L.wallSliceTop, L.wallSliceBottom, 0x4A2A18);
+    drawPlaqueTitle(scene, '今日菜单', W / 2, -44, 344);
+    if (menu.extraRound) {
+      const extraSeal = makeSealStamp('晚市', 52, 0.09);
+      extraSeal.position.set(W / 2 + 168, 42);
+      scene.addChild(extraSeal);
+    }
+
+    this._drawChalkProgress(scene, menu);
+
+    drawStretchSheet(
+      scene,
+      SCENE_ART.sheet,
+      L.sheetX,
+      L.sheetTop,
+      W - L.sheetX * 2,
+      sheetH,
+      140,
+      120,
+    );
 
     menu.lines.forEach((line, i) => {
-      shell.addChild(this._row(line, padX, headH + i * (rowH + rowGap), cw, rowH));
+      const ry = L.sheetTop + L.sheetTopPad + i * L.rowH;
+      this._drawMenuLine(scene, line, ry, i < n - 1 || canExtra);
     });
 
     if (canExtra) {
-      const stripY = boxH - footH + 6;
-      const strip = new PIXI.Graphics();
-      drawCraftCard(strip, padX, stripY, cw, 66, { radius: 16, tone: 'gold' });
-      shell.addChild(strip);
-
-      const note = makeLabel('街坊没吃尽兴！加开晚市再领 1 张菜谱券', 17, INK, { fontWeight: '700' });
-      note.anchor.set(0, 0.5);
-      note.position.set(padX + 18, stripY + 32);
-      shell.addChild(note);
-
-      const extraBtn = makeAdButton({
-        label: '加开晚市',
-        width: 192,
-        height: 46,
-        skin: 'gold',
-        badge: '送券×1',
-        onReady: this._scheduleRelayout,
-      });
-      extraBtn.position.set(padX + cw - 204, stripY + 10);
-      extraBtn.on('pointertap', () => {
-        if (this._adBusy) return;
-        this._adBusy = true;
-        Platform.showRewardedVideo(
-          'daily_extra',
-          () => {
-            this._adBusy = false;
-            KitchenManager.unlockExtraDailyMenu();
-            if (this._isOpen) this.relayout();
-          },
-          () => {
-            this._adBusy = false;
-          },
-        );
-      });
-      shell.addChild(extraBtn);
+      const extraY = L.sheetTop + L.sheetTopPad + n * L.rowH;
+      this._drawExtraRoundFooter(scene, extraY);
     }
+
+    drawSceneClose(
+      scene,
+      W - 46,
+      -20,
+      () => {
+        if (!this._adBusy) this.close();
+      },
+      this._scheduleRelayout,
+    );
 
     if (this._inspect) {
       this._root.addChild(makeItemInspectCard({
@@ -242,113 +247,75 @@ export class DailyMenuPanel extends PIXI.Container {
     }
   }
 
-  private _title(menu: DailyMenuState, x: number, y: number, width: number, height: number): PIXI.Container {
-    const root = new PIXI.Container();
-    const tex = gameTexture(TITLE);
-    if (isTextureReady(tex)) {
-      const spr = new PIXI.Sprite(tex);
-      fitSpriteInBox(spr, width - 90, height);
-      spr.anchor.set(0.5);
-      spr.position.set(x + width / 2, y + height / 2);
-      spr.eventMode = 'none';
-      root.addChild(spr);
-    } else {
-      const fallback = makeLabel('今 日 菜 单', 32, INK, {
-        fontFamily: SERIF_FONT,
-        fontWeight: '700',
-        stroke: 0xFFF6E8,
-        strokeThickness: 5,
-      });
-      fallback.anchor.set(0.5);
-      fallback.position.set(x + width / 2, y + height / 2);
-      root.addChild(fallback);
-    }
-    if (menu.extraRound) {
-      const tag = new PIXI.Container();
-      const txt = makeLabel('晚市加桌', 14, 0xFFF8F0, { fontWeight: '700' });
-      const tw = Math.ceil(txt.width) + 20;
-      const th = 26;
-      const g = new PIXI.Graphics();
-      g.lineStyle(2, INK, 1);
-      g.beginFill(TERRACOTTA, 1);
-      g.drawRoundedRect(0, 0, tw, th, th / 2);
-      g.endFill();
-      txt.anchor.set(0.5);
-      txt.position.set(tw / 2, th / 2);
-      tag.addChild(g, txt);
-      tag.position.set(x + 6, y + Math.round((height - th) / 2));
-      tag.eventMode = 'none';
-      root.addChild(tag);
-    }
-    return root;
-  }
-
-  private _progress(menu: DailyMenuState, x: number, y: number, width: number, height: number): PIXI.Container {
-    const root = new PIXI.Container();
-    const well = new PIXI.Graphics();
-    drawRecessedWell(well, x, y, width, height, { radius: 16 });
-    root.addChild(well);
-
+  // ── 黑板横幅：粉笔上菜进度 + 悬钉满桌菜谱券 ───────────────────────────────
+  private _drawChalkProgress(scene: PIXI.Container, menu: DailyMenuState): void {
     const { done, need, ratio } = dailyMenuProgress(menu);
     const claimed = menu.boardClaimed;
     const tickets = Math.max(1, menu.board?.tickets ?? 1);
-    const iconW = 78;
-    const iconH = 54;
-    const gap = 16;
-    const barW = Math.min(340, width - iconW - gap - 44);
-    const groupW = barW + gap + iconW;
-    const barX = x + Math.round((width - groupW) / 2);
-    const barY = y + 40;
-    const iconX = barX + barW + gap + iconW / 2;
-    const iconY = y + height / 2 - 4;
 
+    const leftX = L.boardLeft;
+    const barW = 294;
     const hint = claimed
-      ? '✓ 本桌三道已齐 · 菜谱券已发放'
+      ? '✓ 本桌三道已齐 · 菜谱券已入袋'
       : need > 0
-        ? `上菜进度 ${done}/${need} · 满桌送菜谱券`
-        : '全部完成后可获得奖励';
-    const count = makeLabel(hint, 17, claimed ? OLIVE : INK, { fontWeight: '700' });
-    count.anchor.set(0.5, 0);
-    count.position.set(barX + barW / 2, y + 11);
-    root.addChild(count);
+        ? `${menu.extraRound ? '晚市' : '今日'}上菜 ${done}/${need} · 满桌赠菜谱券`
+        : '交齐今日三道拿菜谱券';
+    const headline = makeText('heading', hint, claimed ? 0xC2F5A8 : SCENE_INK.cream, {
+      size: 25,
+      stroke: 0x162219,
+      strokeWidth: 4,
+    });
+    headline.anchor.set(0, 0.5);
+    headline.position.set(leftX, L.boardTop + 34);
+    fitTextWidth(headline, barW + 6);
+    scene.addChild(headline);
 
-    const bar = makeCraftProgressBar({
+    const bar = makeHandProgressBar({
       width: barW,
       height: 22,
-      ratio: claimed ? 1 : ratio,
-      scheme: claimed ? 'olive' : 'terracotta',
+      ratio: claimed ? 1 : Math.max(0.06, ratio),
+      onReady: this._scheduleRelayout,
     });
-    bar.position.set(barX, barY);
-    root.addChild(bar);
+    bar.node.position.set(leftX, L.boardTop + 68);
+    scene.addChild(bar.node);
 
-    const hit = new PIXI.Container();
-    const tex = gameTexture(TICKET);
-    if (isTextureReady(tex)) {
-      const spr = new PIXI.Sprite(tex);
-      fitSpriteInBox(spr, iconW, iconH);
-      spr.anchor.set(0.5);
-      spr.alpha = claimed || ratio >= 1 ? 1 : 0.88;
-      spr.eventMode = 'none';
-      hit.addChild(spr);
+    // 右侧：实物菜谱券（点按可查看详情）
+    const ticketCx = 516;
+    const ticketCy = L.boardTop + 50;
+    if (!claimed && ratio >= 1) {
+      const flare = makeRarityFlare('rare', 132);
+      flare.position.set(ticketCx, ticketCy);
+      scene.addChild(flare);
     }
-    const tag = makeLabel(claimed ? '已发' : `×${tickets}`, 16, claimed ? OLIVE : TERRACOTTA, {
-      fontWeight: '700',
-    });
-    tag.anchor.set(0.5, 0);
-    tag.position.set(0, iconH / 2 - 2);
-    hit.addChild(tag);
-    hit.position.set(iconX, iconY);
-    hit.eventMode = 'static';
-    hit.cursor = 'pointer';
-    hit.hitArea = new PIXI.Rectangle(-iconW / 2, -iconH / 2, iconW, iconH + 20);
-    hit.on('pointertap', (e) => {
+    const ticketHit = new PIXI.Container();
+    ticketHit.position.set(ticketCx, ticketCy);
+    const sp = sceneSprite(ART.ticket, 86, 62);
+    if (sp) {
+      sp.anchor.set(0.5);
+      sp.rotation = -0.08;
+      sp.alpha = claimed ? 0.85 : 1;
+      ticketHit.addChild(sp);
+    }
+    const countTxt = makeText(
+      'number',
+      claimed ? '已发' : `×${tickets}`,
+      claimed ? 0xC2F5A8 : 0xFFE082,
+      { size: 22, stroke: 0x162219, strokeWidth: 4 },
+    );
+    countTxt.anchor.set(0.5, 0);
+    countTxt.position.set(0, 26);
+    ticketHit.addChild(countTxt);
+
+    ticketHit.eventMode = 'static';
+    ticketHit.cursor = 'pointer';
+    ticketHit.hitArea = new PIXI.Rectangle(-54, -40, 108, 98);
+    ticketHit.on('pointertap', (e) => {
       e.stopPropagation();
       AudioManager.play('ui_click');
       this._inspect = this._ticketInspect(tickets, claimed);
       this.relayout();
     });
-    root.addChild(hit);
-    return root;
+    scene.addChild(ticketHit);
   }
 
   private _ticketInspect(tickets: number, claimed: boolean): ItemInspectView {
@@ -361,246 +328,352 @@ export class DailyMenuPanel extends PIXI.Container {
       rarity: 'rare',
       unitPrice: 0,
       maxQty: 1,
-      iconPath: TICKET,
+      iconPath: ART.ticket,
       note: claimed ? '今日已发' : `完成菜单发 ×${tickets}`,
       priceLine: `抽一次要 ${RECIPE_GACHA_COST} 张`,
-      eatLabel: '点左侧抽谱就能用',
+      eatLabel: '点厨房左侧抽谱台即可使用',
     };
   }
 
-  private _row(line: DailyMenuLine, x: number, y: number, width: number, height: number): PIXI.Container {
-    const root = new PIXI.Container();
+  // ── 宣纸菜单单行：青花瓷碟菜品 / 大字菜名+食材需求+无框赏金 / 按钮或完成红印 ──
+  private _drawMenuLine(
+    scene: PIXI.Container,
+    line: DailyMenuLine,
+    y: number,
+    showDivider: boolean,
+  ): void {
+    const row = new PIXI.Container();
+    row.position.set(0, y);
+    scene.addChild(row);
+
+    const save = KitchenManager.save;
     const recipe = recipeById(line.recipeId);
-    const view = recipeUnlockView(KitchenManager.save);
-    const have = fridgeDishQty(KitchenManager.save.fridge, line.recipeId);
+    const view = recipeUnlockView(save);
+    const have = fridgeDishQty(save.fridge, line.recipeId);
     const done = line.done >= line.need;
+    const needs = recipeNeeds(view, line.recipeId);
+    const missing = needs.filter((n) => n.have < n.need);
 
-    const headerH = 44;
-    const bg = new PIXI.Graphics();
-    drawCraftCard(bg, x, y, width, height, {
-      radius: 16,
-      tone: done ? 'olive' : have > 0 ? 'gold' : 'ivory',
-      headerH,
+    // 左：立体成菜大图标直呈（去掉重复底盘，点击预览菜谱详情）
+    const plateCx = L.contentX + 58;
+    const plateCy = 88;
+    if (have > 0 && !done) {
+      const flare = makeRarityFlare(recipe?.rarity ?? 'common', 156);
+      flare.position.set(plateCx, plateCy - 2);
+      row.addChild(flare);
+    }
+    const dishNode = makeDishDisplay({
+      dishPath: resolveDishAssetPath(line.recipeId),
+      size: 106,
+      qty: line.need > 1 ? line.need : undefined,
+      dim: false,
+      shadowAlpha: 0.22,
     });
-    root.addChild(bg);
-
-    const name = makeLabel(recipe?.name ?? '菜', 21, INK, { fontWeight: '700' });
-    name.anchor.set(0, 0.5);
-    name.position.set(x + 16, y + headerH / 2 + 1);
-    root.addChild(name);
-
-    const progStr = done ? '✓ 已上齐' : `要交 ${line.done}/${line.need} · 冰箱 ${have} 盘`;
-    const progLbl = makeLabel(progStr, 15, 0xFFFDF8, { fontWeight: '700' });
-    const pW = Math.ceil(progLbl.width) + 20;
-    const pH = 26;
-    const pBg = new PIXI.Graphics();
-    pBg.beginFill(done ? OLIVE : have > 0 ? 0xB87910 : 0x7A5B40, 1);
-    pBg.drawRoundedRect(0, 0, pW, pH, pH / 2);
-    pBg.endFill();
-    progLbl.anchor.set(0.5);
-    progLbl.position.set(pW / 2, pH / 2);
-    const pWrap = new PIXI.Container();
-    pWrap.addChild(pBg, progLbl);
-    pWrap.position.set(x + width - pW - 14, y + Math.round((headerH - pH) / 2) + 1);
-    root.addChild(pWrap);
-
-    const bodyY = y + headerH + 8;
-    const pad = 14;
-    const actW = 124;
-    const trayW = width - pad * 2 - actW - 14;
-    const trayH = 82;
-    const tray = new PIXI.Graphics();
-    drawSectionTray(tray, x + pad, bodyY, trayW, trayH, {
-      radius: 13,
-      tone: done || have > 0 ? 'sage' : 'sand',
+    dishNode.position.set(plateCx, plateCy + 4);
+    dishNode.eventMode = 'static';
+    dishNode.cursor = 'pointer';
+    dishNode.hitArea = new PIXI.Rectangle(-62, -64, 124, 124);
+    dishNode.on('pointertap', (e) => {
+      e.stopPropagation();
+      const inspect = inspectFromRecipe(line.recipeId);
+      if (!inspect) return;
+      AudioManager.play('ui_click');
+      this._inspect = inspect;
+      this.relayout();
     });
-    root.addChild(tray);
+    row.addChild(dishNode);
 
-    const dishSize = 66;
-    root.addChild(this._dishTile(line.recipeId, x + pad + 8, bodyY + 8, dishSize));
+    // 右列宽度与位置预留
+    const btnW = 152;
+    const btnH = 58;
+    const btnX = L.contentR - btnW;
+    const midX = L.contentX + 132;
+    const maxMidW = btnX - midX - 14;
 
-    const innerX = x + pad + 8 + dishSize + 12;
-    const missing = recipeNeeds(view, line.recipeId).filter((row) => row.have < row.need);
-    if (done) {
-      const ready = makeLabel('✓ 街坊已经美美吃上啦！', 18, OLIVE, { fontWeight: '700' });
-      ready.anchor.set(0, 0.5);
-      ready.position.set(innerX, bodyY + trayH / 2);
-      root.addChild(ready);
-    } else if (have > 0) {
-      const ready = makeLabel('✓ 冰箱有现成，点交菜上桌！', 18, OLIVE, { fontWeight: '700' });
-      ready.anchor.set(0, 0.5);
-      ready.position.set(innerX, bodyY + trayH / 2);
-      root.addChild(ready);
-    } else if (missing.length) {
-      const lack = makeLabel('缺料', 16, 0x7A5B40, { fontWeight: '700' });
-      lack.anchor.set(0.5);
-      lack.position.set(innerX + 18, bodyY + trayH / 2);
-      root.addChild(lack);
-      let usedX = innerX + 42;
-      const slotS = 62;
-      for (const row of missing) {
-        if (usedX + slotS > x + pad + trayW - 6) break;
-        root.addChild(this._needTile(usedX, bodyY + Math.round((trayH - slotS) / 2), slotS, row.iconId, row.have, row.need));
-        usedX += slotS + 6;
-      }
+    // 中上：菜名（30pt）+ 多盘进度说明
+    const dishName = makeText('title', recipe?.name ?? '家常菜', SCENE_INK.ink, { size: 30 });
+    dishName.anchor.set(0, 0.5);
+    dishName.position.set(midX, 32);
+    const needSuffix = !done && line.need > 1 ? `${line.done}/${line.need}盘` : '';
+    if (needSuffix) {
+      const suffixT = makeText('caption', needSuffix, SCENE_INK.soft, { size: 22, fontWeight: '700' });
+      suffixT.anchor.set(1, 0.5);
+      suffixT.position.set(btnX - 14, 34);
+      fitTextWidth(dishName, Math.max(120, maxMidW - suffixT.width - 10));
+      row.addChild(dishName, suffixT);
     } else {
-      const ready = makeLabel('食材齐备', 18, OLIVE, { fontWeight: '700' });
-      ready.anchor.set(0, 0.5);
-      ready.position.set(innerX, bodyY + trayH / 2);
-      root.addChild(ready);
-      const cook = makeSlicedButton({
-        label: '去做菜',
-        width: 110,
-        height: 42,
-        skin: 'terracotta',
-        textColor: 0xFFF8F0,
-        fontSize: 18,
-        onReady: this._scheduleRelayout,
-      });
-      cook.position.set(innerX + Math.ceil(ready.width) + 10, bodyY + Math.round((trayH - 42) / 2));
-      cook.on('pointertap', () => {
-        this.onCook?.(line.recipeId);
-      });
-      root.addChild(cook);
+      fitTextWidth(dishName, maxMidW);
+      row.addChild(dishName);
     }
 
+    // 中间：现成提示 或 无框食材图标+大字余量（可点按查食材）
+    const midCy = 86;
+    if (done) {
+      const doneNote = makeText('body', '街坊已经美美吃上啦！', SCENE_INK.green, { size: 24 });
+      doneNote.anchor.set(0, 0.5);
+      doneNote.position.set(midX, midCy);
+      fitTextWidth(doneNote, maxMidW);
+      row.addChild(doneNote);
+    } else if (have > 0) {
+      const readyNote = makeText('body', `冰箱现成 ${have} 盘 · 可直接端上桌`, SCENE_INK.green, { size: 24 });
+      readyNote.anchor.set(0, 0.5);
+      readyNote.position.set(midX, midCy);
+      fitTextWidth(readyNote, maxMidW);
+      row.addChild(readyNote);
+    } else {
+      const needsRow = this._makeClickableNeeds(needs, maxMidW);
+      needsRow.position.set(midX, midCy);
+      row.addChild(needsRow);
+    }
+
+    // 中下：无框赏金直排（图标 + 大数字）
     const chips = dailyMenuRewardChips(line);
     if (chips.length) {
-      const strip = makeRewardStrip(chips, this._scheduleRelayout, done ? '已发' : '赏金', 'paper');
-      strip.position.set(x + pad, y + height - 50);
-      root.addChild(strip);
+      const rewardLine = new PIXI.Container();
+      rewardLine.position.set(midX, 140);
+      const lead = makeText('caption', done ? '已发赏：' : '赏金：', SCENE_INK.muted, {
+        size: 22,
+        fontWeight: '600',
+      });
+      lead.anchor.set(0, 0.5);
+      rewardLine.addChild(lead);
+
+      const inline = makeInlineRewards(chips, {
+        size: 24,
+        iconSize: 34,
+        color: SCENE_INK.ink,
+        goldColor: SCENE_INK.gold,
+        gap: 14,
+        resolveItemIcon: resolveItemAssetPath,
+      });
+      inline.position.set(lead.width + 4, 0);
+      rewardLine.addChild(inline);
+
+      const totalRw = lead.width + 4 + inline.width;
+      const rwMax = done ? (L.contentR - midX - 96) : maxMidW + 16;
+      if (totalRw > rwMax && rwMax > 80) {
+        rewardLine.scale.set(rwMax / totalRw);
+      }
+
+      if (line.food?.defId) {
+        const foodId = line.food.defId;
+        rewardLine.eventMode = 'static';
+        rewardLine.cursor = 'pointer';
+        rewardLine.hitArea = new PIXI.Rectangle(-4, -22, Math.ceil(totalRw) + 8, 44);
+        rewardLine.on('pointertap', (e) => {
+          e.stopPropagation();
+          const v = inspectFromItem(foodId);
+          if (!v) return;
+          if (line.food?.tease) v.note = `${v.note ?? ''} · 街坊鲜货回礼`;
+          AudioManager.play('ui_click');
+          this._inspect = v;
+          this.relayout();
+        });
+      }
+      row.addChild(rewardLine);
     }
 
+    // 右侧：完成盖朱印 / 交菜 / 去做菜
+    const btnCx = btnX + btnW / 2;
     if (done) {
-      root.addChild(this._doneStamp(x + width - 78, bodyY + trayH / 2 + 16));
-    } else {
-      const btn = makeSlicedButton({
+      const stamp = makeSealStamp('已上齐', 78, -0.14);
+      stamp.position.set(btnCx, 88);
+      row.addChild(stamp);
+    } else if (have > 0) {
+      const submitBtn = makeSlicedButton({
         label: '交菜',
-        width: actW,
-        height: 50,
-        skin: have > 0 ? 'olive' : 'cream',
-        textColor: have > 0 ? 0xFFF8F0 : 0x8A7358,
+        width: btnW,
+        height: btnH,
+        skin: 'olive',
+        fontSize: 28,
         onReady: this._scheduleRelayout,
       });
-      btn.position.set(x + width - actW - 14, bodyY + Math.round((trayH - 50) / 2));
-      btn.on('pointertap', () => {
+      submitBtn.position.set(btnX, 38);
+      submitBtn.on('pointertap', () => {
+        const from = this._toStage(btnCx, y + 67);
         const gain = KitchenManager.submitDailyMenu(line.recipeId);
         this._inspect = null;
         if (this._isOpen) this.relayout();
-        if (gain) this._playSubmitFx(gain);
+        if (gain) this._playSubmitFx(gain, from);
       });
-      root.addChild(btn);
+      row.addChild(submitBtn);
+
+      const stockTxt = makeText('caption', `存 ${have} 盘`, SCENE_INK.green, { size: 22, fontWeight: '700' });
+      stockTxt.anchor.set(0.5);
+      stockTxt.position.set(btnCx, 118);
+      row.addChild(stockTxt);
+    } else if (missing.length === 0) {
+      const cookBtn = makeSlicedButton({
+        label: '去做菜',
+        width: btnW,
+        height: btnH,
+        skin: 'terracotta',
+        fontSize: 27,
+        onReady: this._scheduleRelayout,
+      });
+      cookBtn.position.set(btnX, 38);
+      cookBtn.on('pointertap', () => {
+        this.onCook?.(line.recipeId);
+      });
+      row.addChild(cookBtn);
+
+      const readyTxt = makeText('caption', '食材齐备', SCENE_INK.green, { size: 22, fontWeight: '700' });
+      readyTxt.anchor.set(0.5);
+      readyTxt.position.set(btnCx, 118);
+      row.addChild(readyTxt);
+    } else {
+      const lackBtn = makeSlicedButton({
+        label: '交菜',
+        width: btnW,
+        height: 54,
+        skin: 'cream',
+        textColor: 0x8A7358,
+        fontSize: 26,
+        onReady: this._scheduleRelayout,
+      });
+      lackBtn.position.set(btnX, 38);
+      lackBtn.on('pointertap', () => {
+        const from = this._toStage(btnCx, y + 65);
+        const gain = KitchenManager.submitDailyMenu(line.recipeId);
+        this._inspect = null;
+        if (this._isOpen) this.relayout();
+        if (gain) this._playSubmitFx(gain, from);
+      });
+      row.addChild(lackBtn);
+
+      const goStove = makeText('caption', '去灶台看 ›', SCENE_INK.soft, { size: 22, fontWeight: '700' });
+      goStove.anchor.set(0.5);
+      goStove.position.set(btnCx, 118);
+      goStove.eventMode = 'static';
+      goStove.cursor = 'pointer';
+      goStove.hitArea = new PIXI.Rectangle(-btnW / 2, -20, btnW, 40);
+      goStove.on('pointertap', (e) => {
+        e.stopPropagation();
+        AudioManager.play('ui_click');
+        this.onCook?.(line.recipeId);
+      });
+      row.addChild(goStove);
     }
-    return root;
+
+    if (showDivider) {
+      drawInkDivider(row, L.contentX, L.rowH - 8, L.contentR - L.contentX, 0.42, 12);
+    }
   }
 
-  private _playSubmitFx(gain: {
-    gold?: number;
-    foldGold?: number;
-    foodDefId?: string;
-    foodFolded?: boolean;
-    tickets?: number;
-  }): void {
+  private _makeClickableNeeds(
+    needs: Array<{ iconId: string; have: number; need: number }>,
+    maxW: number,
+  ): PIXI.Container {
+    const wrap = new PIXI.Container();
+    let x = 0;
+    const iconS = 42;
+    for (const item of needs) {
+      const ok = item.have >= item.need;
+      const g = new PIXI.Container();
+      const sp = sceneSprite(resolveItemAssetPath(item.iconId), iconS, iconS);
+      if (sp) {
+        sp.anchor.set(0.5);
+        sp.position.set(iconS / 2, 0);
+        g.addChild(sp);
+      }
+      const cnt = makeText('number', `${item.have}/${item.need}`, ok ? SCENE_INK.green : SCENE_INK.red, {
+        size: 24,
+      });
+      cnt.anchor.set(0, 0.5);
+      cnt.position.set(iconS + 4, 1);
+      g.addChild(cnt);
+
+      const cellW = iconS + 4 + Math.ceil(cnt.width);
+      g.position.set(x, 0);
+      g.eventMode = 'static';
+      g.cursor = 'pointer';
+      g.hitArea = new PIXI.Rectangle(-4, -24, cellW + 8, 48);
+      g.on('pointertap', (e) => {
+        e.stopPropagation();
+        const v = inspectFromItem(item.iconId);
+        if (!v) return;
+        AudioManager.play('ui_click');
+        this._inspect = v;
+        this.relayout();
+      });
+      wrap.addChild(g);
+      x += cellW + 14;
+    }
+    const totalW = Math.max(0, x - 14);
+    if (totalW > maxW && maxW > 60) {
+      wrap.scale.set(maxW / totalW);
+    }
+    return wrap;
+  }
+
+  // ── 纸单底部晚市加桌邀请 ─────────────────────────────────────────────────
+  private _drawExtraRoundFooter(scene: PIXI.Container, y: number): void {
+    const foot = new PIXI.Container();
+    foot.position.set(0, y);
+    scene.addChild(foot);
+
+    const cy = L.extraH / 2 + 2;
+    const ticketSp = sceneSprite(ART.ticket, 58, 42);
+    if (ticketSp) {
+      ticketSp.anchor.set(0, 0.5);
+      ticketSp.rotation = -0.06;
+      ticketSp.position.set(L.contentX, cy);
+      foot.addChild(ticketSp);
+    }
+
+    const btnW = 198;
+    const btnH = 56;
+    const btnX = L.contentR - btnW;
+    const noteX = L.contentX + 68;
+    const note = makeText('heading', '街坊没吃尽兴！加开晚市再赠券', SCENE_INK.ink, { size: 24 });
+    note.anchor.set(0, 0.5);
+    note.position.set(noteX, cy);
+    fitTextWidth(note, btnX - noteX - 12);
+    foot.addChild(note);
+
+    const extraBtn = makeAdButton({
+      label: '加开晚市',
+      width: btnW,
+      height: btnH,
+      skin: 'gold',
+      badge: '送券×1',
+      onReady: this._scheduleRelayout,
+    });
+    extraBtn.position.set(btnX, cy - btnH / 2);
+    extraBtn.on('pointertap', () => {
+      if (this._adBusy) return;
+      this._adBusy = true;
+      Platform.showRewardedVideo(
+        'daily_extra',
+        () => {
+          this._adBusy = false;
+          KitchenManager.unlockExtraDailyMenu();
+          if (this._isOpen) this.relayout();
+        },
+        () => {
+          this._adBusy = false;
+        },
+      );
+    });
+    foot.addChild(extraBtn);
+  }
+
+  private _playSubmitFx(
+    gain: {
+      gold?: number;
+      foldGold?: number;
+      foodDefId?: string;
+      foodFolded?: boolean;
+      tickets?: number;
+    },
+    from: { x: number; y: number },
+  ): void {
     const tickets = Math.max(0, Math.floor(gain.tickets ?? 0));
-    const from = {
-      x: Game.designWidth / 2,
-      y: Math.round(Game.logicHeight * 0.42),
-    };
     playRewardCollect({ ...gain, tickets: 0, from }, () => {
       if (tickets <= 0) return;
       playDailyMenuClearBanner(() => {
         playTicketCollect(from, kitchenGachaHudPos(), 0);
       });
     });
-  }
-
-  private _doneStamp(cx: number, cy: number): PIXI.Container {
-    const root = new PIXI.Container();
-    root.eventMode = 'none';
-    const tex = gameTexture(STAMP);
-    if (isTextureReady(tex)) {
-      const spr = new PIXI.Sprite(tex);
-      fitSpriteInBox(spr, 104, 104);
-      spr.anchor.set(0.5);
-      spr.angle = -16;
-      spr.alpha = 0.94;
-      spr.eventMode = 'none';
-      root.addChild(spr);
-    } else {
-      const mark = makeLabel('完成', 28, TERRACOTTA, {
-        fontFamily: SERIF_FONT,
-        fontWeight: '700',
-        stroke: 0xFFF6E8,
-        strokeThickness: 5,
-      });
-      mark.anchor.set(0.5);
-      mark.angle = -16;
-      root.addChild(mark);
-    }
-    root.position.set(cx, cy);
-    return root;
-  }
-
-  private _dishTile(recipeId: DailyMenuLine['recipeId'], x: number, y: number, size: number): PIXI.Container {
-    const root = new PIXI.Container();
-    const recipe = recipeById(recipeId);
-    const plate = new PIXI.Graphics();
-    drawItemSlotBox(plate, x, y, size, size, { radius: 11, rarity: recipe?.rarity ?? 'common' });
-    root.addChild(plate);
-    const dishTex = dishTexture(recipeId);
-    if (isTextureReady(dishTex)) {
-      const dish = new PIXI.Sprite(dishTex);
-      fitSpriteInBox(dish, size - 10, size - 10);
-      dish.anchor.set(0.5);
-      dish.position.set(x + size / 2, y + size / 2 - 1);
-      dish.eventMode = 'none';
-      root.addChild(dish);
-    }
-
-    root.eventMode = 'static';
-    root.cursor = 'pointer';
-    root.hitArea = new PIXI.Rectangle(x, y, size, size);
-    root.on('pointertap', (e) => {
-      e.stopPropagation();
-      const view = inspectFromRecipe(recipeId);
-      if (!view) return;
-      AudioManager.play('ui_click');
-      this._inspect = view;
-      this.relayout();
-    });
-    return root;
-  }
-
-  private _needTile(x: number, y: number, size: number, iconId: string, have: number, need: number): PIXI.Container {
-    const root = new PIXI.Container();
-    const plate = new PIXI.Graphics();
-    drawItemSlotBox(plate, x, y, size, size, { radius: 10, dimmed: have < need });
-    root.addChild(plate);
-    const iconTex = itemTexture(iconId);
-    if (isTextureReady(iconTex)) {
-      const icon = new PIXI.Sprite(iconTex);
-      fitSpriteInBox(icon, size - 12, size - 12);
-      icon.anchor.set(0.5);
-      icon.position.set(x + size / 2, y + size / 2 - 2);
-      icon.eventMode = 'none';
-      root.addChild(icon);
-    }
-
-    const badge = makeSlotBadge(`${have}/${need}`, have >= need ? 'olive' : 'lack', 13);
-    badge.node.position.set(x + size - badge.w - 2, y + size - badge.h - 2);
-    root.addChild(badge.node);
-
-    root.eventMode = 'static';
-    root.cursor = 'pointer';
-    root.hitArea = new PIXI.Rectangle(x, y, size, size);
-    root.on('pointertap', (e) => {
-      e.stopPropagation();
-      const view = inspectFromItem(iconId);
-      if (!view) return;
-      AudioManager.play('ui_click');
-      this._inspect = view;
-      this.relayout();
-    });
-    return root;
   }
 }

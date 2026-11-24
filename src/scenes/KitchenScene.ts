@@ -79,6 +79,7 @@ import {
   layoutFor,
   saveGmLayout,
   clampHouseLevel,
+  buffIconPath,
   type FurnId,
   type FurnLayout,
   type KitchenSave,
@@ -88,25 +89,35 @@ import { Ease, TweenManager } from '@/core/TweenManager';
 import {
   HUD_ICON,
   P2_ART,
-  PLAYER_LEVEL_HUD,
+  UI_KIT,
   UI_PALETTE,
   bindUiClick,
-  drawCraftCard,
   fillRect,
-  hudBuffRowY,
-  hudPillsY,
+  fitTextWidth,
   makeButton,
-  makeHudBuffRow,
+  makeCoinButton,
+  makeHandProgressBar,
   makeLabel,
   makeMuteButton,
-  makePlayerLevelHud,
-  makeSidebarIconBtn,
   makeSlicedButton,
-  makeStatPill,
+  makeText,
+  uiBarPaths,
 } from '@/utils/ui';
-import { applyFit, fitSpriteInBox, fitWidthBottom, gameTexture, isTextureFailed, isTextureReady, mapNorm, preloadTextures, retryTexture, watchTextures, whenTextureReady } from '@/utils/assets';
+import {
+  applyFit,
+  fitSpriteInBox,
+  fitWidthBottom,
+  gameTexture,
+  isTextureFailed,
+  isTextureReady,
+  mapNorm,
+  preloadTextures,
+  retryTexture,
+  watchTextures,
+  whenTextureReady,
+} from '@/utils/assets';
 import { kitchenBootPaths } from '@/utils/bootAssets';
-import { dailyMenuPanelPaths, orderPanelPaths } from '@/utils/panelAssets';
+import { PANEL_SHELL, dailyMenuPanelPaths, orderPanelPaths } from '@/utils/panelAssets';
 import { setKitchenFridgeHudPos, setKitchenGachaHudPos } from '@/utils/coinCollect';
 import { OutingCurtain } from '@/gameobjects/ui/OutingCurtain';
 import { destinationBootPaths } from '@/utils/outingAssets';
@@ -121,6 +132,22 @@ type UpgradePick = FurnId | 'house';
 const DRAG_SLOP = 14;
 const HOUSE_UPGRADE_SHIFT_X = 50;
 const KITCHEN_SLIP = 'subpkg_kitchen/ui_kitchen_slip.png';
+
+const KITCHEN_SCENE_ART = {
+  plaque: 'subpkg_images/scene_pk_plaque.png',
+  tag: 'subpkg_images/scene_pk_tag_h.png',
+  sheet: 'subpkg_images/scene_pk_recipe_sheet.png',
+  seal: 'subpkg_images/scene_pk_seal.png',
+  divider: 'subpkg_images/scene_pk_ink_divider.png',
+  bubble: 'subpkg_images/scene_cat_bubble.png',
+} as const;
+
+const INK = 0x2A2018;
+const INK_SOFT = 0x5A4430;
+const MUTED = 0x8A6E52;
+const RED_INK = 0xB8361F;
+const GREEN_INK = 0x3F7034;
+const CREAM = 0xFFF8EC;
 
 export class KitchenScene implements Scene {
   readonly name = 'kitchen';
@@ -186,6 +213,29 @@ export class KitchenScene implements Scene {
   private _bootRetryLeft = 8;
   private _bootRetryTimer = 0;
   private _wipeArmed = 0;
+  private _paintQueued = false;
+  private _watched = new Set<string>();
+
+  private _scheduleRelayout = (): void => {
+    if (!this.container.parent || this._itemDrag || this._paintQueued) return;
+    this._paintQueued = true;
+    const later = typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame
+      : (cb: () => void) => setTimeout(cb, 0);
+    later(() => {
+      this._paintQueued = false;
+      if (this.container.parent && !this._itemDrag) this.relayout();
+    });
+  };
+
+  private _watchOnce(path: string): void {
+    if (!path || isTextureReady(gameTexture(path)) || this._watched.has(path)) return;
+    this._watched.add(path);
+    whenTextureReady(path, () => {
+      this._watched.delete(path);
+      this._scheduleRelayout();
+    });
+  }
   private _onDown = (e: PIXI.FederatedPointerEvent) => {
     const p = this.container.toLocal(e.global);
     this._beginDrag(p.x, p.y);
@@ -304,6 +354,14 @@ export class KitchenScene implements Scene {
   private _warmPanelArt(): void {
     void preloadTextures(dailyMenuPanelPaths(KitchenManager.save));
     void preloadTextures(orderPanelPaths(KitchenManager.save, KitchenManager.liveNeighborOrders()));
+    void preloadTextures([
+      ...PANEL_SHELL.cook,
+      ...PANEL_SHELL.fridge,
+      ...PANEL_SHELL.dex,
+      ...PANEL_SHELL.gacha,
+      ...PANEL_SHELL.strayCat,
+      ...PANEL_SHELL.gameClub,
+    ]);
   }
 
   private _overlayBlocking(): boolean {
@@ -340,6 +398,7 @@ export class KitchenScene implements Scene {
     try { Platform.api?.offTouchEnd?.(this._onUp); } catch (_) {}
     try { Platform.api?.offTouchCancel?.(this._onUp); } catch (_) {}
     this._endDrag();
+    this._paintQueued = false;
     TweenManager.cancelTarget(this._panTween);
     this._clearOfferTimer();
     this._stopP2Watch();
@@ -390,12 +449,13 @@ export class KitchenScene implements Scene {
     const house = this._viewHouse();
     const roomPath = this._roomPath(house);
     const tex = gameTexture(roomPath);
-    watchTextures(kitchenBootPaths(save), () => {
-      if (this.container.parent && !this._itemDrag) this.relayout();
-    });
-    whenTextureReady(roomPath, () => {
-      if (this.container.parent && !this._itemDrag) this.relayout();
-    });
+    const sceneWatchPaths = [
+      ...kitchenBootPaths(save),
+      ...Object.values(KITCHEN_SCENE_ART),
+      ...uiBarPaths(),
+    ];
+    for (const p of sceneWatchPaths) this._watchOnce(p);
+    this._watchOnce(roomPath);
     const fb = HOUSE_FALLBACK_SIZE[house];
     const srcW = isTextureReady(tex) ? tex.width : fb.w;
     const srcH = isTextureReady(tex) ? tex.height : fb.h;
@@ -445,6 +505,7 @@ export class KitchenScene implements Scene {
           : mapNorm(fit, spot.nx, spot.ny, spot.nw, spot.nh);
         this._world.addChild(this._hotspot(spot.id, spot.label, rect));
       }
+      this._drawDoorPlaque();
       this._drawKitchenSlip();
       this._drawFridgeSlip();
       if (!TutorialManager.isActive || TutorialManager.isStep(TutorialStep.HINT_DOOR)) {
@@ -481,10 +542,11 @@ export class KitchenScene implements Scene {
     this._bootRetryTimer = globalThis.setTimeout(() => {
       this._bootRetryTimer = 0;
       if (!this.container.parent) return;
-      for (const path of miss) retryTexture(path);
-      watchTextures(miss, () => {
-        if (this.container.parent && !this._itemDrag) this.relayout();
-      });
+      for (const path of miss) {
+        this._watched.delete(path);
+        retryTexture(path);
+        this._watchOnce(path);
+      }
     }, 700) as unknown as number;
   }
 
@@ -726,7 +788,7 @@ export class KitchenScene implements Scene {
 
   private _furniture(
     furn: FurnLayout,
-    save: KitchenSave,
+    _save: KitchenSave,
     fit: ReturnType<typeof fitWidthBottom>,
   ): PIXI.Container {
     const root = new PIXI.Container();
@@ -734,9 +796,7 @@ export class KitchenScene implements Scene {
     root.position.set(rect.x, rect.y);
     const path = this._furnPath(furn.id, this._viewLevel(furn.id));
     const tex = gameTexture(path);
-    whenTextureReady(path, () => {
-      if (this.container.parent && !this._itemDrag) this.relayout();
-    });
+    this._watchOnce(path);
     if (isTextureReady(tex)) {
       const sprite = new PIXI.Sprite(tex);
       fitSpriteInBox(sprite, rect.w, rect.h);
@@ -745,21 +805,18 @@ export class KitchenScene implements Scene {
       sprite.eventMode = 'none';
       root.addChild(sprite);
     }
-    const tag = makeLabel(furnLabel(furn.id, this._viewLevel(furn.id)), 18, 0xFFF8F0);
-    const tagBg = new PIXI.Graphics();
-    fillRect(tagBg, 4, 4, Math.min(rect.w - 8, tag.width + 16), 28, 0x2A2018, 8);
-    tagBg.alpha = 0.7;
-    tag.position.set(12, 8);
     if (this._gm) {
-      root.addChild(tagBg);
-      root.addChild(tag);
-    }
-    if (this._gm) {
+      const tag = makeText('caption', furnLabel(furn.id, this._viewLevel(furn.id)), CREAM, {
+        size: 20,
+        stroke: INK,
+        strokeWidth: 4,
+      });
+      tag.position.set(10, 6);
       const frame = new PIXI.Graphics();
       frame.lineStyle(2, this._gmPick === furn.id ? 0xE0A100 : 0xFFFFFF, 0.7);
       frame.drawRoundedRect(0, 0, rect.w, rect.h, 10);
       frame.eventMode = 'none';
-      root.addChild(frame);
+      root.addChild(frame, tag);
       root.eventMode = 'static';
       root.cursor = 'pointer';
       root.hitArea = new PIXI.Rectangle(0, 0, rect.w, rect.h);
@@ -845,158 +902,696 @@ export class KitchenScene implements Scene {
     this._world.addChild(g);
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 主场景 HUD：木牌厨艺经验条 + 宣纸资源签（金币/体力/抽谱券）+ 房屋挂匾 + 侧栏木章 + 出门大按钮
+  // ═══════════════════════════════════════════════════════════════════════════
+
   private _drawHud(w: number): void {
     const save = KitchenManager.save;
-    const top = Number.isFinite(Game.safeTop) ? Game.safeTop : 96;
-    const y = Math.max(4, top - 16);
-    const redraw = () => {
-      if (this.container.parent) this.relayout();
-    };
+    const top = Math.max(8, Number.isFinite(Game.safeTop) ? Game.safeTop : 96);
+    const redraw = this._scheduleRelayout;
 
+    const gachaUnlocked = !TutorialManager.isActive
+      || TutorialManager.at(TutorialStep.CLAIM_GIFT, TutorialStep.HINT_DOOR)
+      || save.tutorialGiftClaimed
+      || save.recipeTickets > 0;
+
+    // 1. 左侧厨艺头像章 + 经验手绘进度木牌
     const skill = cookXpView(save);
-    const profile = makePlayerLevelHud({
-      avatar: HUD_ICON.player,
+    const chefHud = this._makeChefPlaque({
       level: skill.level,
-      text: skill.text,
+      xpText: skill.text,
       fill: skill.fill,
       onReady: redraw,
     });
-    profile.position.set(12, y);
-    this._ui.addChild(profile);
+    chefHud.position.set(12, top);
+    this._ui.addChild(chefHud);
 
-    const pillH = 44;
-    const buffs = liveHudBuffs(save);
-    const pillY = hudPillsY(y, pillH);
-    const resX = 12 + PLAYER_LEVEL_HUD.avatar + PLAYER_LEVEL_HUD.gap + PLAYER_LEVEL_HUD.barW + 12;
-    const money = makeStatPill({
-      icon: 'subpkg_images/hud_coin.png',
+    // 2. 右侧第一行：金币签 + 体力包子签 + 菜谱券签（25pt 大数字）
+    const resX = 278;
+    const resY = top + 6;
+    const moneyTag = this._makeResourceSlip({
+      icon: HUD_ICON.coin,
       text: `${save.money}`,
-      width: 164,
-      onIconReady: redraw,
+      width: 148,
+      onReady: redraw,
     });
-    money.position.set(resX, pillY);
-    this._ui.addChild(money);
+    moneyTag.position.set(resX, resY);
+    this._ui.addChild(moneyTag);
 
     const staMax = staminaMax(save);
     const staShort = save.stamina < staMax;
-    const sta = makeStatPill({
-      icon: 'subpkg_images/hud_stamina.png',
+    const staTag = this._makeResourceSlip({
+      icon: HUD_ICON.stamina,
       text: `${save.stamina}/${staMax}`,
-      width: 188,
-      fill: save.stamina / staMax,
-      fillColor: 0x6BA368,
+      width: 174,
+      ratio: save.stamina / Math.max(1, staMax),
       plus: staShort,
       pulsePlus: save.stamina <= 0,
+      onReady: redraw,
       onTap: staShort
         ? () => {
           if (TutorialManager.isActive && !TutorialManager.isStep(TutorialStep.HINT_DOOR)) return;
           void KitchenManager.offerShareStamina();
         }
         : undefined,
-      onIconReady: redraw,
     });
-    sta.position.set(resX + 172, pillY);
-    this._ui.addChild(sta);
+    staTag.position.set(resX + 156, resY);
+    this._ui.addChild(staTag);
 
+    const ticketTag = this._makeResourceSlip({
+      icon: HUD_ICON.ticket,
+      text: `${save.recipeTickets}`,
+      width: 112,
+      onReady: redraw,
+      onTap: gachaUnlocked
+        ? () => {
+          if (TutorialManager.isStep(TutorialStep.CLAIM_GIFT)) return;
+          KitchenManager.markGuideSeen('guide_gacha');
+          this._gacha.open();
+        }
+        : undefined,
+    });
+    ticketTag.position.set(resX + 338, resY);
+    this._ui.addChild(ticketTag);
+
+    // 3. 右侧第二行：当前房屋木挂牌 + 增益 Buff 挂签 + 静音方章
+    const row2Y = top + 66;
+    const housePlaque = this._makeRoomNamePlaque(houseLabel(this._viewHouse()), redraw);
+    housePlaque.position.set(resX, row2Y);
+    this._ui.addChild(housePlaque);
+
+    const buffs = liveHudBuffs(save);
     if (buffs.length) {
-      const row = makeHudBuffRow({
-        buffs,
-        onReady: redraw,
-        onTap: () => ensureHudBuffPanel().open(),
-      });
-      row.position.set(resX, hudBuffRowY(pillY, pillH));
-      this._ui.addChild(row);
+      const buffRow = this._makeBuffTags(buffs, redraw);
+      buffRow.position.set(resX + 150, row2Y + 2);
+      this._ui.addChild(buffRow);
     }
 
-
-    const STEP = 100;
-    const dexY = top + 148;
-    let slot = dexY;
-    this._drawDexHud(redraw, slot);
-    slot += STEP;
-    if (Platform.isWechat) {
-      this._drawGameClubHud(redraw, slot);
-      slot += STEP;
-    }
-    if (Platform.isDouyin) {
-      this._drawWelfareHud(redraw, slot);
-      slot += STEP;
-    }
-    const gachaUnlocked = !TutorialManager.isActive
-      || TutorialManager.at(TutorialStep.CLAIM_GIFT, TutorialStep.HINT_DOOR)
-      || save.tutorialGiftClaimed
-      || save.recipeTickets > 0;
-    const dailyUnlocked = !TutorialManager.isActive || TutorialManager.isStep(TutorialStep.HINT_DOOR);
-    if (dailyUnlocked && KitchenManager.save.dailyMenu) {
-      this._drawDailyMenuHud(redraw, slot);
-      slot += STEP;
-    }
-    if (gachaUnlocked) {
-      this._drawGachaHud(redraw, slot);
-      slot += STEP;
-    }
-    if (KitchenManager.liveNeighborOrders().length) {
-      this._drawOrderHud(redraw, slot);
-      slot += STEP;
-    }
     const mute = makeMuteButton(48);
-    mute.position.set(22, slot + 12);
-    const stopMute = (e: PIXI.FederatedPointerEvent) => e.stopPropagation();
-    mute.on('pointerdown', stopMute);
+    mute.position.set(w - 62, row2Y - 2);
+    mute.on('pointerdown', (e: PIXI.FederatedPointerEvent) => e.stopPropagation());
     this._ui.addChild(mute);
 
+    // 4. 左侧功能入口木牌列（22pt 标签 + 20pt 朱印角标）
+    const STEP = 114;
+    let slotY = top + 114;
+    this._drawDexHud(redraw, slotY);
+    slotY += STEP;
+
+    const dailyUnlocked = !TutorialManager.isActive || TutorialManager.isStep(TutorialStep.HINT_DOOR);
+    if (dailyUnlocked && KitchenManager.save.dailyMenu) {
+      this._drawDailyMenuHud(redraw, slotY);
+      slotY += STEP;
+    }
+    if (gachaUnlocked) {
+      this._drawGachaHud(redraw, slotY);
+      slotY += STEP;
+    }
+    if (KitchenManager.liveNeighborOrders().length) {
+      this._drawOrderHud(redraw, slotY);
+      slotY += STEP;
+    }
+
+    // 社区/抖音福利入口：若左栏已有 4 个则挂到右上角静音钮下方，保持左侧通透不拥挤
+    let rightSlotY = row2Y + 62;
+    if (Platform.isWechat) {
+      if (slotY <= top + 114 + STEP * 3) {
+        this._drawGameClubHud(redraw, slotY, 14);
+        slotY += STEP;
+      } else {
+        this._drawGameClubHud(redraw, rightSlotY, w - 98);
+        rightSlotY += STEP;
+      }
+    }
+    if (Platform.isDouyin && DouyinWelfareManager.hasEntry) {
+      if (slotY <= top + 114 + STEP * 3) {
+        this._drawWelfareHud(redraw, slotY, 14);
+        slotY += STEP;
+      } else {
+        this._drawWelfareHud(redraw, rightSlotY, w - 98);
+      }
+    }
+
+    // 5. 右缘切视角挂签（窗边角 ▶ / ◀ 回门口）
     if (!TutorialManager.isActive) {
       this._drawWindowCornerHud(w, save, redraw);
     }
 
     if (this._gm) {
-      const hint = makeLabel('GM：拖家具 · 屋+/屋-换房子 · 导出后发给我固化', 18, 0xF4EFE6);
-      const hintBg = new PIXI.Graphics();
-      fillRect(hintBg, 16, Game.logicHeight - 56, w - 32, 40, 0x2A2018, 12);
-      hintBg.alpha = 0.55;
-      hint.position.set(32, Game.logicHeight - 48);
-      this._ui.addChild(hintBg);
+      const hint = makeText('caption', 'GM：拖家具 · 屋+/屋-换房子 · 导出后发给我固化', CREAM, {
+        size: 20,
+        stroke: INK,
+        strokeWidth: 4,
+      });
+      hint.position.set(24, Game.logicHeight - 48);
       this._ui.addChild(hint);
     }
-    this._drawGmBar(w);
+    this._drawGmBar();
+  }
+
+  /** 厨艺头像铜章 + 木牌经验手绘条（全字号 ≥ 20pt）。 */
+  private _makeChefPlaque(opts: {
+    level: number;
+    xpText: string;
+    fill: number;
+    onReady: () => void;
+  }): PIXI.Container {
+    const root = new PIXI.Container();
+    root.eventMode = 'none';
+    const avatarR = 42;
+    const cx = avatarR;
+    const cy = avatarR + 4;
+
+    // Right wooden/parchment wing holding level title + hand progress bar
+    const wingX = avatarR + 14;
+    const wingW = 198;
+    const wingH = 78;
+    const wingY = cy - wingH / 2;
+
+    const wing = new PIXI.Graphics();
+    wing.beginFill(0x160E08, 0.26);
+    wing.drawRoundedRect(wingX - 18, wingY + 4, wingW + 18, wingH, 14);
+    wing.endFill();
+    wing.lineStyle(2.6, INK, 1);
+    wing.beginFill(0x7A4B24, 1);
+    wing.drawRoundedRect(wingX - 18, wingY, wingW + 18, wingH, 14);
+    wing.endFill();
+    wing.lineStyle(1.2, 0xDFB870, 0.8);
+    wing.beginFill(0xFAF0DA, 1);
+    wing.drawRoundedRect(wingX - 12, wingY + 5, wingW + 7, wingH - 11, 10);
+    wing.endFill();
+    root.addChild(wing);
+
+    const contentLeft = cx + avatarR + 10;
+    const barW = wingX + wingW - 14 - contentLeft;
+
+    const lvTitle = makeText('heading', `厨艺 ${opts.level}级`, INK, { size: 24 });
+    lvTitle.anchor.set(0, 0.5);
+    lvTitle.position.set(contentLeft, wingY + 23);
+    fitTextWidth(lvTitle, barW);
+    root.addChild(lvTitle);
+
+    const bar = makeHandProgressBar({
+      width: barW,
+      height: 24,
+      ratio: Math.max(0.06, opts.fill),
+      onReady: opts.onReady,
+    });
+    bar.node.position.set(contentLeft, wingY + 43);
+    root.addChild(bar.node);
+
+    const xpTxt = makeText('caption', opts.xpText, INK, {
+      size: 20,
+      fontWeight: '700',
+      stroke: 0xFFFDF8,
+      strokeWidth: 4,
+    });
+    xpTxt.anchor.set(0.5);
+    fitTextWidth(xpTxt, barW - 10);
+    xpTxt.position.set(contentLeft + barW / 2, wingY + 55);
+    root.addChild(xpTxt);
+
+    // Brass & walnut portrait medallion
+    const ring = new PIXI.Graphics();
+    ring.beginFill(0x160E08, 0.3);
+    ring.drawCircle(cx, cy + 4, avatarR + 1);
+    ring.endFill();
+    ring.lineStyle(3, INK, 1);
+    ring.beginFill(UI_PALETTE.brass, 1);
+    ring.drawCircle(cx, cy, avatarR);
+    ring.endFill();
+    ring.lineStyle(1.6, 0x6E441E, 0.9);
+    ring.beginFill(0xF8EEDC, 1);
+    ring.drawCircle(cx, cy, avatarR - 5);
+    ring.endFill();
+    root.addChild(ring);
+
+    this._watchOnce(HUD_ICON.player);
+    const pTex = gameTexture(HUD_ICON.player);
+    if (isTextureReady(pTex)) {
+      const mask = new PIXI.Graphics();
+      mask.beginFill(0xffffff);
+      mask.drawCircle(cx, cy, avatarR - 6);
+      mask.endFill();
+      const spr = new PIXI.Sprite(pTex);
+      const side = (avatarR - 6) * 2;
+      fitSpriteInBox(spr, side * 1.16, side * 1.16);
+      spr.anchor.set(0.5);
+      spr.position.set(cx, cy);
+      spr.mask = mask;
+      spr.eventMode = 'none';
+      root.addChild(mask, spr);
+    }
+
+    return root;
+  }
+
+  /** 宣纸木轴资源签：大图标外探 + 25pt 浓墨数字 + 可选加号章。 */
+  private _makeResourceSlip(opts: {
+    icon: string;
+    text: string;
+    width: number;
+    ratio?: number;
+    plus?: boolean;
+    pulsePlus?: boolean;
+    onReady: () => void;
+    onTap?: () => void;
+  }): PIXI.Container {
+    const root = new PIXI.Container();
+    const h = 48;
+    const barX = 20;
+    const barW = opts.width - barX;
+
+    const bg = new PIXI.Graphics();
+    bg.beginFill(0x160E08, 0.24);
+    bg.drawRoundedRect(barX, 4, barW, h, 10);
+    bg.endFill();
+    bg.lineStyle(2.5, INK, 1);
+    bg.beginFill(0xFAF0DA, 0.98);
+    bg.drawRoundedRect(barX, 0, barW, h, 10);
+    bg.endFill();
+    // Right walnut trim cap
+    bg.lineStyle(2, INK, 1);
+    bg.beginFill(0x7A4B24, 1);
+    bg.drawRoundedRect(barX + barW - 8, -1, 8, h + 2, 4);
+    bg.endFill();
+
+    if (opts.ratio !== undefined) {
+      const r = Math.max(0, Math.min(1, opts.ratio));
+      if (r > 0) {
+        const pad = 4;
+        const fw = Math.max(12, (barW - 14 - pad * 2) * r);
+        bg.lineStyle(0);
+        bg.beginFill(0x7BB36E, 0.42);
+        bg.drawRoundedRect(barX + pad, pad, fw, h - pad * 2, 6);
+        bg.endFill();
+      }
+    }
+    root.addChild(bg);
+
+    const num = makeText('number', opts.text, INK, {
+      size: 25,
+      stroke: 0xFFFDF8,
+      strokeWidth: 4,
+    });
+    num.anchor.set(0.5);
+    const availTextW = barW - (opts.plus ? 56 : 30);
+    fitTextWidth(num, availTextW);
+    num.position.set(barX + 18 + availTextW / 2, h / 2 - 0.5);
+    root.addChild(num);
+
+    this._watchOnce(opts.icon);
+    const icTex = gameTexture(opts.icon);
+    if (isTextureReady(icTex)) {
+      const sp = new PIXI.Sprite(icTex);
+      fitSpriteInBox(sp, 54, 54);
+      sp.anchor.set(0.5);
+      sp.position.set(22, h / 2);
+      sp.eventMode = 'none';
+      root.addChild(sp);
+    }
+
+    if (opts.plus) {
+      const plusWrap = new PIXI.Container();
+      plusWrap.position.set(opts.width - 18, h / 2);
+      plusWrap.eventMode = 'none';
+      const pg = new PIXI.Graphics();
+      pg.beginFill(0x160E08, 0.26);
+      pg.drawCircle(0, 2.5, 16);
+      pg.endFill();
+      pg.lineStyle(2.4, INK, 1);
+      pg.beginFill(opts.pulsePlus ? 0xD9412E : 0xC46234, 1);
+      pg.drawCircle(0, 0, 15.5);
+      pg.endFill();
+      pg.lineStyle(0);
+      pg.beginFill(CREAM, 1);
+      pg.drawRoundedRect(-7.5, -2, 15, 4, 2);
+      pg.drawRoundedRect(-2, -7.5, 4, 15, 2);
+      pg.endFill();
+      plusWrap.addChild(pg);
+      root.addChild(plusWrap);
+      if (opts.pulsePlus) {
+        const pulse = (): void => {
+          if (plusWrap.destroyed || !plusWrap.parent) return;
+          TweenManager.to({
+            target: plusWrap.scale,
+            props: { x: 1.18, y: 1.18 },
+            duration: 0.42,
+            ease: Ease.easeOutQuad,
+            onComplete: () => {
+              if (plusWrap.destroyed || !plusWrap.parent) return;
+              TweenManager.to({
+                target: plusWrap.scale,
+                props: { x: 1, y: 1 },
+                duration: 0.42,
+                ease: Ease.easeInOutQuad,
+                onComplete: pulse,
+              });
+            },
+          });
+        };
+        pulse();
+      }
+    }
+
+    if (opts.onTap) {
+      root.eventMode = 'static';
+      root.cursor = 'pointer';
+      root.hitArea = new PIXI.Rectangle(0, -4, opts.width + 6, h + 8);
+      root.on('pointerdown', (e) => e.stopPropagation());
+      root.on('pointertap', (e) => {
+        e.stopPropagation();
+        AudioManager.play('ui_click');
+        opts.onTap?.();
+      });
+    } else {
+      root.eventMode = 'none';
+    }
+    return root;
+  }
+
+  /** 房屋名牌：胡桃木铜钉小横匾，点按可查看房屋修缮进度。 */
+  private _makeRoomNamePlaque(roomTitle: string, onReady: () => void): PIXI.Container {
+    const root = new PIXI.Container();
+    const w = 138;
+    const h = 42;
+    this._watchOnce(UI_KIT.headerRibbon);
+    const rTex = gameTexture(UI_KIT.headerRibbon);
+    if (isTextureReady(rTex)) {
+      const sp = new PIXI.Sprite(rTex);
+      sp.width = w;
+      sp.height = h;
+      sp.eventMode = 'none';
+      root.addChild(sp);
+    } else {
+      const g = new PIXI.Graphics();
+      g.lineStyle(2.4, INK, 1);
+      g.beginFill(UI_PALETTE.walnutDark, 1);
+      g.drawRoundedRect(0, 0, w, h, 10);
+      g.endFill();
+      g.lineStyle(1.2, UI_PALETTE.brassBright, 0.85);
+      g.drawRoundedRect(4, 4, w - 8, h - 8, 7);
+      root.addChild(g);
+    }
+    const txt = makeText('caption', roomTitle, CREAM, {
+      size: 22,
+      fontWeight: '700',
+      stroke: 0x261509,
+      strokeWidth: 4,
+    });
+    txt.anchor.set(0.5);
+    fitTextWidth(txt, w - 26);
+    txt.position.set(w / 2, h / 2 - 1);
+    root.addChild(txt);
+
+    const canInspectHouse = houseLevel(KitchenManager.save) < HOUSE_MAX_LEVEL && !TutorialManager.isActive;
+    if (canInspectHouse) {
+      root.eventMode = 'static';
+      root.cursor = 'pointer';
+      root.hitArea = new PIXI.Rectangle(0, 0, w, h);
+      root.on('pointerdown', (e) => e.stopPropagation());
+      root.on('pointertap', (e) => {
+        e.stopPropagation();
+        AudioManager.play('ui_click');
+        this._upgradePick = this._upgradePick === 'house' ? null : 'house';
+        this.relayout();
+      });
+    } else {
+      root.eventMode = 'none';
+    }
+    return root;
+  }
+
+  /** 顶栏 Buff 宣纸圆章行。 */
+  private _makeBuffTags(buffs: ReturnType<typeof liveHudBuffs>, onReady: () => void): PIXI.Container {
+    const root = new PIXI.Container();
+    const size = 42;
+    buffs.forEach((buff, i) => {
+      const path = buffIconPath(buff.icon);
+      this._watchOnce(path);
+      const cell = new PIXI.Container();
+      const bg = new PIXI.Graphics();
+      bg.beginFill(0x160E08, 0.24);
+      bg.drawCircle(size / 2, size / 2 + 2.5, size / 2);
+      bg.endFill();
+      bg.lineStyle(2.4, INK, 0.95);
+      bg.beginFill(0xFFF6E2, 0.98);
+      bg.drawCircle(size / 2, size / 2, size / 2 - 1);
+      bg.endFill();
+      cell.addChild(bg);
+
+      const tex = gameTexture(path);
+      if (isTextureReady(tex)) {
+        const sp = new PIXI.Sprite(tex);
+        fitSpriteInBox(sp, size - 8, size - 8);
+        sp.anchor.set(0.5);
+        sp.position.set(size / 2, size / 2);
+        sp.eventMode = 'none';
+        cell.addChild(sp);
+      }
+      cell.position.set(i * (size + 8), 0);
+      cell.eventMode = 'static';
+      cell.cursor = 'pointer';
+      cell.hitArea = new PIXI.Rectangle(0, 0, size, size);
+      cell.on('pointerdown', (e) => e.stopPropagation());
+      cell.on('pointertap', (e) => {
+        e.stopPropagation();
+        AudioManager.play('ui_click');
+        ensureHudBuffPanel().open();
+      });
+      root.addChild(cell);
+    });
+    return root;
+  }
+
+  /** 厨房功能入口木牌徽章：大图标 + 胡桃木 22pt 铭牌 + 朱印 20pt 角标。 */
+  private _makeKitchenEntryBtn(opts: {
+    icon?: string;
+    customIcon?: PIXI.DisplayObject;
+    fallbackText: string;
+    label: string;
+    badgeText?: string;
+    badgeTone?: 'red' | 'gold';
+    highlight?: boolean;
+    onReady?: () => void;
+    onTap: () => void;
+  }): PIXI.Container {
+    const boxSize = 80;
+    const plateW = 92;
+    const plateH = 30;
+    const totalH = boxSize + 18;
+    const root = new PIXI.Container();
+
+    const anchorPad = new PIXI.Graphics();
+    anchorPad.beginFill(0x000000, 0.001);
+    anchorPad.drawRect(-6, 0, plateW, totalH);
+    anchorPad.endFill();
+    anchorPad.eventMode = 'none';
+    root.addChild(anchorPad);
+
+    const face = new PIXI.Container();
+    face.eventMode = 'none';
+    root.addChild(face);
+
+    const tile = new PIXI.Graphics();
+    tile.beginFill(0x160E08, 0.28);
+    tile.drawRoundedRect(0, 4, boxSize, boxSize, 18);
+    tile.endFill();
+    tile.lineStyle(2.6, INK, 1);
+    tile.beginFill(opts.highlight ? 0xE5B24C : 0x8B5A2B, 1);
+    tile.drawRoundedRect(0, 0, boxSize, boxSize, 18);
+    tile.endFill();
+    tile.lineStyle(1.2, 0xFFFDF8, 0.9);
+    tile.beginFill(opts.highlight ? 0xFFF7DD : 0xFAF0DA, 1);
+    tile.drawRoundedRect(3.5, 3.5, boxSize - 7, boxSize - 9, 14);
+    tile.endFill();
+    tile.lineStyle(0);
+    tile.beginFill(opts.highlight ? 0xF7DF9C : 0xEFE0C4, 0.72);
+    tile.drawCircle(boxSize / 2, boxSize / 2 - 4, boxSize * 0.35);
+    tile.endFill();
+    face.addChild(tile);
+
+    if (opts.customIcon) {
+      face.addChild(opts.customIcon);
+    } else if (opts.icon) {
+      this._watchOnce(opts.icon);
+      const tex = gameTexture(opts.icon);
+      if (isTextureReady(tex)) {
+        const sp = new PIXI.Sprite(tex);
+        fitSpriteInBox(sp, boxSize - 14, boxSize - 18);
+        sp.anchor.set(0.5);
+        sp.position.set(boxSize / 2, boxSize / 2 - 4);
+        sp.eventMode = 'none';
+        face.addChild(sp);
+      } else {
+        const fb = makeText('heading', opts.fallbackText, UI_PALETTE.walnutDark, { size: 28 });
+        fb.anchor.set(0.5);
+        fb.position.set(boxSize / 2, boxSize / 2 - 4);
+        face.addChild(fb);
+      }
+    } else {
+      const fb = makeText('heading', opts.fallbackText, UI_PALETTE.walnutDark, { size: 28 });
+      fb.anchor.set(0.5);
+      fb.position.set(boxSize / 2, boxSize / 2 - 4);
+      face.addChild(fb);
+    }
+
+    // Carved walnut nameplate at bottom (22pt crisp text)
+    const plateX = Math.round((boxSize - plateW) / 2);
+    const plateY = boxSize - 12;
+    const plate = new PIXI.Graphics();
+    plate.lineStyle(2.4, INK, 1);
+    plate.beginFill(UI_PALETTE.walnutDark, 1);
+    plate.drawRoundedRect(plateX, plateY, plateW, plateH, 10);
+    plate.endFill();
+    plate.lineStyle(1, 0xD6A660, 0.8);
+    plate.drawRoundedRect(plateX + 2.5, plateY + 2.5, plateW - 5, plateH - 5, 8);
+    face.addChild(plate);
+
+    const nameTxt = makeText('caption', opts.label, CREAM, {
+      size: 22,
+      fontWeight: '700',
+      stroke: 0x241408,
+      strokeWidth: 3,
+    });
+    nameTxt.anchor.set(0.5);
+    fitTextWidth(nameTxt, plateW - 10);
+    nameTxt.position.set(boxSize / 2, plateY + plateH / 2 - 0.5);
+    face.addChild(nameTxt);
+
+    // Vermilion seal / gold stamp badge (20pt)
+    if (opts.badgeText) {
+      const isGold = opts.badgeTone === 'gold';
+      const seal = new PIXI.Container();
+      const bTxt = makeText('caption', opts.badgeText, isGold ? INK : 0xFFF6EA, {
+        size: 20,
+        fontWeight: '700',
+      });
+      const sealW = Math.max(32, Math.ceil(bTxt.width) + 14);
+      const sealH = 30;
+      const sealTex = gameTexture(KITCHEN_SCENE_ART.seal);
+      if (!isGold && sealW <= 36 && isTextureReady(sealTex)) {
+        const sp = new PIXI.Sprite(sealTex);
+        fitSpriteInBox(sp, 34, 34);
+        sp.anchor.set(0.5);
+        seal.addChild(sp);
+      } else {
+        const sg = new PIXI.Graphics();
+        sg.lineStyle(2.2, INK, 1);
+        sg.beginFill(isGold ? 0xF7C948 : 0xC93828, 1);
+        sg.drawRoundedRect(-sealW / 2, -sealH / 2, sealW, sealH, 8);
+        sg.endFill();
+        seal.addChild(sg);
+      }
+      bTxt.anchor.set(0.5);
+      seal.addChild(bTxt);
+      seal.rotation = -0.06;
+      seal.position.set(boxSize - 4, 4);
+      face.addChild(seal);
+    }
+
+    root.eventMode = 'static';
+    root.cursor = 'pointer';
+    root.hitArea = new PIXI.Rectangle(-8, -8, plateW + 4, totalH + 12);
+    const reset = () => {
+      face.y = 0;
+      face.alpha = 1;
+    };
+    root.on('pointerdown', (e) => {
+      e.stopPropagation();
+      face.y = 2;
+      face.alpha = 0.94;
+    });
+    root.on('pointerup', reset);
+    root.on('pointerupoutside', reset);
+    root.on('pointercancel', reset);
+    root.on('pointertap', (e) => {
+      e.stopPropagation();
+      AudioManager.play('ui_click');
+      opts.onTap();
+    });
+    return root;
+  }
+
+  /** 门扇右上留白处挂一块手绘木招牌「出门买菜」，避开左侧功能按钮列。 */
+  private _drawDoorPlaque(): void {
+    const doorRect = this._spotRects.get('door');
+    if (!doorRect) return;
+    const pw = 140;
+    const host = new PIXI.Container();
+    const pTex = gameTexture(KITCHEN_SCENE_ART.plaque);
+    let faceCy = 42;
+    if (isTextureReady(pTex)) {
+      const sp = new PIXI.Sprite(pTex);
+      sp.width = pw;
+      sp.scale.y = sp.scale.x;
+      sp.anchor.set(0.5, 0);
+      sp.eventMode = 'none';
+      host.addChild(sp);
+      faceCy = sp.height * 0.64;
+    } else {
+      const g = new PIXI.Graphics();
+      g.lineStyle(2.4, INK, 1);
+      g.beginFill(0xC89660, 1);
+      g.drawRoundedRect(-pw / 2, 16, pw, 48, 10);
+      g.endFill();
+      host.addChild(g);
+      faceCy = 40;
+    }
+    const lbl = makeText('heading', '出门买菜', 0x4A2A12, {
+      size: 22,
+      stroke: 0xF6DDB0,
+      strokeWidth: 3,
+    });
+    lbl.anchor.set(0.5);
+    lbl.position.set(0, faceCy);
+    host.addChild(lbl);
+    // 左边缘 >= 112px 避开左侧快捷栏，Y 下移至房屋升级圆章 (pin.y + 24) 下方的门扇留白处
+    const mark = houseUpgradeMark(this._viewHouse());
+    const badgeBottom = houseLevel(KitchenManager.save) < HOUSE_MAX_LEVEL
+      ? mapNorm(this._fit, mark.nx, mark.ny, 0, 0).y + 30
+      : 0;
+    const plaqueY = Math.max(doorRect.y + 78, Math.round(badgeBottom));
+    host.position.set(Math.max(182, doorRect.x + doorRect.w * 0.80), plaqueY);
+    host.eventMode = 'none';
+    this._world.addChild(host);
   }
 
   private _drawOrderHud(redraw: () => void, y: number): void {
     const orders = KitchenManager.liveNeighborOrders();
     if (!orders.length) return;
     const npc = neighborNpc(orders[0].npcId);
-    whenTextureReady(npc.portrait, redraw);
-    const size = 72;
+    this._watchOnce(npc.portrait);
+    const boxSize = 80;
     let customIcon: PIXI.Container | undefined;
     const tex = gameTexture(npc.portrait);
     if (isTextureReady(tex)) {
       customIcon = new PIXI.Container();
       const mask = new PIXI.Graphics();
       mask.beginFill(0xffffff);
-      mask.drawRoundedRect(5, 4, size - 10, size - 12, 14);
+      mask.drawRoundedRect(6, 5, boxSize - 12, boxSize - 15, 14);
       mask.endFill();
       const spr = new PIXI.Sprite(tex);
-      fitSpriteInBox(spr, size - 6, size - 6);
+      fitSpriteInBox(spr, boxSize - 8, boxSize - 8);
       spr.anchor.set(0.5);
-      spr.position.set(size / 2, size / 2 - 2);
+      spr.position.set(boxSize / 2, boxSize / 2 - 3);
       spr.mask = mask;
       spr.eventMode = 'none';
       customIcon.addChild(mask, spr);
     }
 
     const n = Math.min(9, orders.length);
-    const btn = makeSidebarIconBtn({
+    const btn = this._makeKitchenEntryBtn({
       customIcon,
       fallbackText: '客',
-      label: '点菜',
+      label: '街坊点单',
       badgeText: `${n}`,
       badgeTone: 'red',
-      size,
       onReady: redraw,
       onTap: () => this._orders.open(),
     });
-    btn.position.set(12, y);
-    btn.on('pointerdown', (e) => e.stopPropagation());
+    btn.position.set(14, y);
     this._ui.addChild(btn);
   }
 
@@ -1006,24 +1601,21 @@ export class KitchenScene implements Scene {
     const canExtra = !!save.dailyMenu?.boardClaimed && canUseDailyAd(save, 'daily_extra');
     const badgeText = left > 0 ? `${Math.min(9, left)}` : canExtra ? '加' : undefined;
     const badgeTone = left > 0 ? 'red' : 'gold';
-    const btn = makeSidebarIconBtn({
+    const btn = this._makeKitchenEntryBtn({
       icon: HUD_ICON.dailyMenu,
       fallbackText: '桌',
-      label: '小饭桌',
+      label: '今日菜单',
       badgeText,
       badgeTone,
       highlight: canExtra && left <= 0,
-      size: 72,
       onReady: redraw,
       onTap: () => this._daily.open(),
     });
-    btn.position.set(12, y);
-    btn.on('pointerdown', (e) => e.stopPropagation());
+    btn.position.set(14, y);
     this._ui.addChild(btn);
   }
 
   private _drawGachaHud(redraw: () => void, y: number): void {
-    const size = 72;
     const save = KitchenManager.save;
     const tickets = save.recipeTickets;
     const freeBox = canUseDailyAd(save, 'gacha_free');
@@ -1036,14 +1628,13 @@ export class KitchenScene implements Scene {
           : undefined;
     const badgeTone = tickets >= 2 || freeBox ? 'red' : 'gold';
 
-    const btn = makeSidebarIconBtn({
+    const btn = this._makeKitchenEntryBtn({
       icon: HUD_ICON.gacha,
       fallbackText: '谱',
-      label: '抽谱',
+      label: '寻味抽签',
       badgeText,
       badgeTone,
       highlight: tickets >= 2 || freeBox,
-      size,
       onReady: redraw,
       onTap: () => {
         if (TutorialManager.isStep(TutorialStep.CLAIM_GIFT)) return;
@@ -1051,9 +1642,8 @@ export class KitchenScene implements Scene {
         this._gacha.open();
       },
     });
-    btn.position.set(12, y);
-    setKitchenGachaHudPos({ x: 12 + size / 2, y: y + size / 2 });
-    btn.on('pointerdown', (e) => e.stopPropagation());
+    btn.position.set(14, y);
+    setKitchenGachaHudPos({ x: 14 + 40, y: y + 40 });
     this._ui.addChild(btn);
     this._gachaBtn = btn;
   }
@@ -1093,60 +1683,56 @@ export class KitchenScene implements Scene {
     this._offerTimer = 0;
   }
 
-  private _drawGameClubHud(redraw: () => void, y: number): void {
-    const btn = makeSidebarIconBtn({
+  private _drawGameClubHud(redraw: () => void, y: number, x = 14): void {
+    const btn = this._makeKitchenEntryBtn({
       icon: HUD_ICON.gameClub,
       fallbackText: '圈',
       label: '游戏圈',
-      size: 72,
       onReady: redraw,
       onTap: () => this._gameClub.open(),
     });
-    btn.position.set(12, y);
-    btn.on('pointerdown', (e) => e.stopPropagation());
+    btn.position.set(x, y);
     this._ui.addChild(btn);
   }
 
-  private _drawWelfareHud(_redraw: () => void, y: number): void {
+  private _drawWelfareHud(_redraw: () => void, y: number, x = 14): void {
     if (!DouyinWelfareManager.hasEntry) return;
-    const btn = makeSidebarIconBtn({
+    const btn = this._makeKitchenEntryBtn({
       fallbackText: '福',
-      label: '福利',
+      label: '福利社',
       badgeText: DouyinWelfareManager.hasRedDot ? '领' : undefined,
       badgeTone: 'red',
       highlight: DouyinWelfareManager.hasRedDot,
-      size: 72,
       onTap: () => this._welfare.open(),
     });
-    btn.position.set(12, y);
-    btn.on('pointerdown', (e) => e.stopPropagation());
+    btn.position.set(x, y);
     this._ui.addChild(btn);
   }
 
   private _drawDexHud(redraw: () => void, y: number): void {
     const redCount = !TutorialManager.isActive ? dexRedDotCount(KitchenManager.save) : 0;
     const badgeText = redCount > 0 ? (redCount > 99 ? '99+' : `${redCount}`) : undefined;
-    const btn = makeSidebarIconBtn({
+    const btn = this._makeKitchenEntryBtn({
       icon: HUD_ICON.dex,
       fallbackText: '鉴',
-      label: '图鉴',
+      label: '烟火手账',
       badgeText,
       badgeTone: 'red',
-      size: 72,
       onReady: redraw,
       onTap: () => this._dex.open(),
     });
-    btn.position.set(12, y);
-    btn.on('pointerdown', (e) => e.stopPropagation());
+    btn.position.set(14, y);
     this._ui.addChild(btn);
   }
 
-  private _drawGmBar(w: number): void {
+  private _drawGmBar(): void {
     if (!Platform.isDevtools) return;
     const y = Game.logicHeight - 118;
     const stop = (e: PIXI.FederatedPointerEvent) => e.stopPropagation();
-    const gm = makeButton(this._gm ? 'GM开' : 'GM关', 100, 48, this._gm ? 0xC46A3A : 0x4A433C);
-    gm.position.set(16, y);
+    const gmX = this._gm ? 16 : Game.designWidth - 116;
+    const gmY = this._gm ? y : Game.logicHeight - Math.max(24, Game.safeBottom + 18) - 62;
+    const gm = makeButton(this._gm ? 'GM开' : 'GM关', 100, 48, this._gm ? 0xC46A3A : 0x5A402C);
+    gm.position.set(gmX, gmY);
     gm.on('pointerdown', stop);
     gm.on('pointertap', () => {
       this._gm = !this._gm;
@@ -1211,7 +1797,7 @@ export class KitchenScene implements Scene {
     houseUp.on('pointertap', () => this._nudgeGmHouse(1));
     this._ui.addChild(houseUp);
 
-    const houseName = makeLabel(houseLabel(this._viewHouse()), 18, 0xF4EFE6);
+    const houseName = makeLabel(houseLabel(this._viewHouse()), 20, 0xF4EFE6);
     houseName.position.set(160, y - 42);
     this._ui.addChild(houseName);
 
@@ -1257,7 +1843,7 @@ export class KitchenScene implements Scene {
     wipe.on('pointertap', () => this._gmWipeSave());
     this._ui.addChild(wipe);
 
-    const artName = makeLabel(`厨艺 ${KitchenManager.save.level}`, 18, 0xF4EFE6);
+    const artName = makeLabel(`厨艺 ${KitchenManager.save.level}`, 20, 0xF4EFE6);
     artName.position.set(510, y - 28);
     this._ui.addChild(artName);
 
@@ -1265,7 +1851,7 @@ export class KitchenScene implements Scene {
     const lv = pick ? this._viewLevel(pick) : 0;
     const name = makeLabel(
       pick ? `${furnLabel(pick, lv)} ${lv + 1}级` : '点一件再拖',
-      18,
+      20,
       0xE0A100,
     );
     name.position.set(16, y - 28);
@@ -1357,14 +1943,18 @@ export class KitchenScene implements Scene {
     ];
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 灶台与冰箱手绘木夹便签（放大至 22pt 高可读墨字，拒绝蚂蚁小字）
+  // ═══════════════════════════════════════════════════════════════════════════
+
   private _drawKitchenSlip(): void {
     const slip = computeKitchenSlip(KitchenManager.save);
     const lines: Array<{ text: string; color: number; onTap: () => void }> = [];
     if (slip.can) {
       const can = slip.can;
       lines.push({
-        text: `能做 · ${can.name}`,
-        color: 0x2A2018,
+        text: `可下锅 · ${can.name}`,
+        color: GREEN_INK,
         onTap: () => this._cook.open(can.recipeId),
       });
     }
@@ -1372,7 +1962,7 @@ export class KitchenScene implements Scene {
       const miss = slip.miss;
       lines.push({
         text: `还差 · ${miss.itemName}`,
-        color: 0xC46A3A,
+        color: RED_INK,
         onTap: () => {
           this._cook.open(miss.recipeId);
           Platform.showToast(kitchenSlipMissToast(miss));
@@ -1381,18 +1971,13 @@ export class KitchenScene implements Scene {
     }
     if (!lines.length) return;
     const pot = this._cookHitRect();
-    const lv = this._viewLevel('table');
-    const maxW = lv <= 4 ? 118 : 132;
-    const minW = 92;
+    const noteW = 220;
     this._mountOilSlip(
-      pot.x + pot.w * 0.30,
-      pot.y + pot.h * 0.04,
-      pot.w * 0.38,
-      maxW,
-      minW,
+      Math.max(24, pot.x + pot.w * 0.46 - noteW / 2),
+      pot.y - 36,
+      noteW,
       lines,
-      -0.16,
-      14,
+      22,
     );
   }
 
@@ -1400,49 +1985,33 @@ export class KitchenScene implements Scene {
     const rows = computeFridgeSlip(KitchenManager.save);
     if (!rows.length) return;
     const door = this._furnSpriteRect('fridge');
-    const lv = this._viewLevel('fridge');
-    const maxW = lv <= 2 ? 108 : lv <= 5 ? 132 : 156;
-    const minW = lv <= 2 ? 88 : 104;
-    const wantW = door.w * (lv <= 2 ? 0.52 : 0.40);
-    const noteW = Math.round(Math.min(maxW, Math.max(minW, wantW)));
-    const tex = gameTexture(KITCHEN_SLIP);
-    const ratio = isTextureReady(tex) && tex.width > 0 ? tex.height / tex.width : 457 / 720;
-    const noteH = Math.round(noteW * ratio);
+    const noteW = 204;
     this._mountOilSlip(
-      door.x + door.w * 0.58,
-      door.y - noteH * 0.18,
-      noteW,
-      noteW,
+      Math.round(door.x + (door.w - noteW) * 0.5),
+      door.y - 34,
       noteW,
       rows.map((row) => ({
         text: row.text,
-        color: row.tone === 'full' ? 0xC46A3A : 0x2A2018,
+        color: row.tone === 'full' ? RED_INK : INK,
         onTap: () => this._fridge.open(row.tab),
       })),
-      0,
-      lv <= 2 ? 13 : 15,
+      21,
     );
   }
 
   private _mountOilSlip(
     x: number,
     y: number,
-    wantW: number,
-    maxW: number,
-    minW: number,
+    noteW: number,
     lines: Array<{ text: string; color: number; onTap: () => void }>,
-    lift = 0,
-    fontSize = 16,
+    fontSize = 22,
   ): void {
-    whenTextureReady(KITCHEN_SLIP, () => {
-      if (this.container.parent) this.relayout();
-    });
+    this._watchOnce(KITCHEN_SLIP);
     const tex = gameTexture(KITCHEN_SLIP);
-    const noteW = Math.round(Math.min(maxW, Math.max(minW, wantW)));
     const ratio = isTextureReady(tex) && tex.width > 0 ? tex.height / tex.width : 457 / 720;
-    const noteH = Math.round(noteW * ratio);
+    const noteH = Math.max(lines.length > 1 ? 148 : 120, Math.round(noteW * ratio));
     const root = new PIXI.Container();
-    root.position.set(x, y + noteH * lift);
+    root.position.set(x, y);
     if (isTextureReady(tex)) {
       const paper = new PIXI.Sprite(tex);
       paper.width = noteW;
@@ -1451,24 +2020,30 @@ export class KitchenScene implements Scene {
       root.addChild(paper);
     } else {
       const paper = new PIXI.Graphics();
-      paper.beginFill(0xF6E4B8, 0.96);
-      paper.lineStyle(2, 0xC46A3A, 0.85);
-      paper.drawRoundedRect(0, 0, noteW, noteH, 8);
+      paper.lineStyle(2.4, INK, 0.92);
+      paper.beginFill(0xFAF0DA, 0.96);
+      paper.drawRoundedRect(0, 14, noteW, noteH - 14, 10);
       paper.endFill();
       paper.eventMode = 'none';
       root.addChild(paper);
     }
-    const textX = noteW * 0.13;
-    const textW = noteW * 0.74;
-    const textTop = noteH * 0.34;
-    const textH = noteH * 0.46;
-    const lineH = Math.max(fontSize + 4, textH / Math.max(1, lines.length));
-    let cy = textTop + (textH - lineH * lines.length) / 2;
+    const textX = noteW * 0.11;
+    const textW = noteW * 0.78;
+    // 下移至木夹子底沿以下 (0.43 * noteH)，确保首行文字绝不碰夹子
+    const textTop = noteH * 0.43;
+    const textH = noteH * 0.45;
+    const lineH = textH / Math.max(1, lines.length);
+    let cy = textTop;
     for (const line of lines) {
-      const row = makeLabel(line.text, fontSize, line.color, { fontWeight: '700' });
-      row.position.set(textX, cy + (lineH - row.height) / 2);
-      row.eventMode = 'none';
-      if (row.width > textW) row.scale.set(textW / row.width);
+      const row = makeText('body', line.text, line.color, {
+        size: fontSize,
+        fontWeight: '700',
+        stroke: 0xFFFDF7,
+        strokeWidth: 3,
+      });
+      row.anchor.set(0.5);
+      fitTextWidth(row, textW);
+      row.position.set(textX + textW / 2, cy + lineH / 2);
       const hit = new PIXI.Graphics();
       hit.beginFill(0xffffff, 0.001);
       hit.drawRect(textX - 4, cy, textW + 8, lineH);
@@ -1524,7 +2099,7 @@ export class KitchenScene implements Scene {
     const open = this._upgradePick === 'house';
     const mark = houseUpgradeMark(this._viewHouse());
     const pin = mapNorm(this._fit, mark.nx, mark.ny, 0, 0);
-    const size = Math.round(Math.min(48, Math.max(40, this._fit.srcH * this._fit.scale * 0.034)));
+    const size = 48;
     const root = this._makeUpgradeBadge(size, ready, open);
     root.position.set(pin.x - size / 2 + HOUSE_UPGRADE_SHIFT_X, pin.y - size / 2);
     root.on('pointertap', () => {
@@ -1551,10 +2126,10 @@ export class KitchenScene implements Scene {
     const arrow = new PIXI.Graphics();
     drawUpArrow(arrow, size / 2, size / 2, size, ready || open ? UI_PALETTE.ink : 0x8A7A60);
     root.addChild(arrow);
-    root.alpha = ready || open ? 1 : 0.78;
+    root.alpha = ready || open ? 1 : 0.82;
     root.eventMode = 'static';
     root.cursor = 'pointer';
-    root.hitArea = new PIXI.Circle(size / 2, size / 2, size / 2);
+    root.hitArea = new PIXI.Circle(size / 2, size / 2, size / 2 + 4);
     bindUiClick(root);
     root.on('pointerdown', (e) => e.stopPropagation());
     return root;
@@ -1568,7 +2143,7 @@ export class KitchenScene implements Scene {
     if (state.status === 'max') return null;
     const ready = state.status === 'ready';
     const open = this._upgradePick === id;
-    const size = 44;
+    const size = 48;
     const root = this._makeUpgradeBadge(size, ready, open);
     const bx = rect.x + rect.w / 2 - size / 2;
     const by = rect.y - size + 10;
@@ -1584,6 +2159,46 @@ export class KitchenScene implements Scene {
     return root;
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 家具/房屋修缮宣纸浮签（铜钉宣纸 + 水墨分割线 + 朱印等级 + 手绘价格钮）
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  private _drawPinnedSheet(card: PIXI.Container, w: number, h: number): void {
+    const shadow = new PIXI.Graphics();
+    shadow.beginFill(0x120A05, 0.34);
+    shadow.drawRoundedRect(6, 10, w - 8, h - 4, 14);
+    shadow.endFill();
+    card.addChild(shadow);
+
+    const sTex = gameTexture(KITCHEN_SCENE_ART.sheet);
+    if (isTextureReady(sTex)) {
+      const k = w / sTex.width;
+      const plane = new PIXI.NineSlicePlane(sTex, 0, 120, 0, 110);
+      plane.width = sTex.width;
+      plane.height = h / k;
+      plane.scale.set(k);
+      card.addChild(plane);
+    } else {
+      const g = new PIXI.Graphics();
+      g.lineStyle(2.8, INK, 1);
+      g.beginFill(0xF8ECD2, 1);
+      g.drawRoundedRect(0, 0, w, h, 12);
+      g.endFill();
+      card.addChild(g);
+    }
+
+    const dTex = gameTexture(KITCHEN_SCENE_ART.divider);
+    if (isTextureReady(dTex)) {
+      const div = new PIXI.Sprite(dTex);
+      div.width = w - 52;
+      div.height = 10;
+      div.alpha = 0.45;
+      div.position.set(26, 66);
+      div.eventMode = 'none';
+      card.addChild(div);
+    }
+  }
+
   private _drawHouseUpgradeCard(): void {
     const save = KitchenManager.save;
     const level = houseLevel(save);
@@ -1594,12 +2209,12 @@ export class KitchenScene implements Scene {
     const mark = houseUpgradeMark(this._viewHouse());
     const pin = mapNorm(this._fit, mark.nx, mark.ny, 0, 0);
     const w = Game.designWidth;
-    const cardW = 248;
-    const cardH = 156;
+    const cardW = 328;
+    const cardH = 204;
     let x = pin.x + HOUSE_UPGRADE_SHIFT_X + this._pan.x - cardW / 2;
     let y = pin.y + this._pan.y - cardH - 28;
     x = Math.max(16, Math.min(w - cardW - 16, x));
-    y = Math.max((Number.isFinite(Game.safeTop) ? Game.safeTop : 96) + 64, y);
+    y = Math.max((Number.isFinite(Game.safeTop) ? Game.safeTop : 96) + 74, y);
 
     const veil = new PIXI.Graphics();
     veil.beginFill(0x000000, 0.001);
@@ -1618,47 +2233,54 @@ export class KitchenScene implements Scene {
     card.eventMode = 'static';
     card.on('pointerdown', (e) => e.stopPropagation());
     card.on('pointertap', (e) => e.stopPropagation());
+    this._drawPinnedSheet(card, cardW, cardH);
 
-    const panel = new PIXI.Graphics();
-    panel.beginFill(0x160E08, 0.28);
-    panel.drawRoundedRect(0, 6, cardW, cardH, 20);
-    panel.endFill();
-    panel.lineStyle(3, UI_PALETTE.ink, 1);
-    panel.beginFill(UI_PALETTE.walnut, 1);
-    panel.drawRoundedRect(0, 0, cardW, cardH, 20);
-    panel.endFill();
-    drawCraftCard(panel, 6, 6, cardW - 12, cardH - 13, {
-      radius: 15,
-      tone: ready ? 'gold' : 'ivory',
-      headerH: 42,
-    });
-    card.addChild(panel);
-
-    const name = makeLabel(houseLabel(level), 22, UI_PALETTE.ink, { fontWeight: '700' });
-    name.position.set(18, 14);
+    const name = makeText('title', houseLabel(level), INK, { size: 28 });
+    name.position.set(48, 22);
+    fitTextWidth(name, cardW - 146);
     card.addChild(name);
-    const levelText = makeLabel(
-      maxed ? '✓ 已最高档' : `房屋进度：${level + 1}/${HOUSE_MAX_LEVEL + 1} 档`,
-      16,
-      UI_PALETTE.muted,
-      { fontWeight: '600' },
+
+    const seal = this._makeMiniSeal(`${level + 1}档`, 44);
+    seal.position.set(cardW - 68, 40);
+    card.addChild(seal);
+
+    const levelText = makeText(
+      'body',
+      maxed ? '已修缮至最高档宅院' : `房屋进度：第 ${level + 1}/${HOUSE_MAX_LEVEL + 1} 档`,
+      INK_SOFT,
+      { size: 22 },
     );
-    levelText.position.set(18, 56);
+    levelText.position.set(28, 82);
+    fitTextWidth(levelText, cardW - 56);
     card.addChild(levelText);
 
     if (!maxed) {
-      const labelText = ready ? `装修 · ${cost} 金` : state.status === 'blocked' ? state.error : `装修 · ${cost} 金`;
-      const btn = makeSlicedButton({
-        label: labelText,
-        width: cardW - 36,
-        height: 46,
-        skin: ready ? 'gold' : 'cream',
-        textColor: ready ? UI_PALETTE.ink : 0x8A7358,
-        fontSize: 18,
-        silent: !ready,
-      });
-      btn.position.set(18, 90);
-      btn.alpha = ready ? 1 : 0.85;
+      const btnW = cardW - 52;
+      const btnH = 54;
+      const redraw = this._scheduleRelayout;
+      const btn = state.status === 'blocked' && !state.error.includes('金')
+        ? makeSlicedButton({
+          label: state.error,
+          width: btnW,
+          height: btnH,
+          skin: 'cream',
+          textColor: 0x8A7358,
+          fontSize: 23,
+          silent: true,
+          onReady: redraw,
+        })
+        : makeCoinButton({
+          prefix: '修缮',
+          price: cost,
+          width: btnW,
+          height: btnH,
+          skin: ready ? 'gold' : 'cream',
+          textColor: ready ? INK : 0x8A7358,
+          fontSize: 24,
+          silent: !ready,
+          onReady: redraw,
+        });
+      btn.position.set(26, 126);
       btn.on('pointertap', () => {
         if (!ready) {
           if (state.status === 'blocked') Platform.showToast(state.error);
@@ -1682,12 +2304,12 @@ export class KitchenScene implements Scene {
     const state = furnUpgradeState(save, id);
     const rect = this._furnSpriteRect(id);
     const w = Game.designWidth;
-    const cardW = 264;
-    const cardH = 156;
+    const cardW = 340;
+    const cardH = 208;
     let x = rect.x + rect.w / 2 + this._pan.x - cardW / 2;
     let y = rect.y + this._pan.y - cardH - 58;
     x = Math.max(16, Math.min(w - cardW - 16, x));
-    y = Math.max((Number.isFinite(Game.safeTop) ? Game.safeTop : 96) + 64, y);
+    y = Math.max((Number.isFinite(Game.safeTop) ? Game.safeTop : 96) + 74, y);
 
     const veil = new PIXI.Graphics();
     veil.beginFill(0x000000, 0.001);
@@ -1708,74 +2330,73 @@ export class KitchenScene implements Scene {
     card.on('pointertap', (e) => e.stopPropagation());
 
     const ready = state.status === 'ready';
-    const panel = new PIXI.Graphics();
-    panel.beginFill(0x160E08, 0.28);
-    panel.drawRoundedRect(0, 6, cardW, cardH, 20);
-    panel.endFill();
-    panel.lineStyle(3, UI_PALETTE.ink, 1);
-    panel.beginFill(UI_PALETTE.walnut, 1);
-    panel.drawRoundedRect(0, 0, cardW, cardH, 20);
-    panel.endFill();
-    drawCraftCard(panel, 6, 6, cardW - 12, cardH - 13, {
-      radius: 15,
-      tone: ready ? 'gold' : 'ivory',
-      headerH: 42,
-    });
-    card.addChild(panel);
+    this._drawPinnedSheet(card, cardW, cardH);
 
     const shown = lv + 1;
-    const name = makeLabel(furnLabel(id, lv), 22, UI_PALETTE.ink, { fontWeight: '700' });
-    name.position.set(18, 14);
+    const name = makeText('title', furnLabel(id, lv), INK, { size: 28 });
+    name.position.set(48, 22);
+    fitTextWidth(name, cardW - 146);
     card.addChild(name);
-    const grade = makeLabel(`Lv.${shown}`, 16, UI_PALETTE.muted, { fontWeight: '700' });
-    grade.anchor.set(1, 0);
-    grade.position.set(cardW - 18, 18);
-    card.addChild(grade);
+
+    const seal = this._makeMiniSeal(`${shown}级`, 44);
+    seal.position.set(cardW - 68, 40);
+    card.addChild(seal);
 
     const cookNeed = furnCookNeed(id, lv);
     const capLine = (() => {
-      if (state.status === 'max') return '✓ 已满级';
+      if (state.status === 'max') return '已升至最高级';
       const nextShown = lv + 2;
       if (id === 'fridge') {
-        return `${nextShown}级容量  ${fridgeOwnCap(lv)} → ${fridgeOwnCap(lv + 1)}`;
+        return `${nextShown}级容量  ${fridgeOwnCap(lv)} → ${fridgeOwnCap(lv + 1)} 格`;
       }
       if (id === 'foam') {
-        return `容量  ${foamWetCols(lv)}×${foamWetRows(lv)} → ${foamWetCols(lv + 1)}×${foamWetRows(lv + 1)}`;
+        return `湿货容量  ${foamWetCols(lv)}×${foamWetRows(lv)} → ${foamWetCols(lv + 1)}×${foamWetRows(lv + 1)}`;
       }
       if (id === 'basket') {
-        return `容量  ${bagDryCols(lv)}×${bagRows(lv)} → ${bagDryCols(lv + 1)}×${bagRows(lv + 1)}`;
+        return `干货容量  ${bagDryCols(lv)}×${bagRows(lv)} → ${bagDryCols(lv + 1)}×${bagRows(lv + 1)}`;
       }
       if (id === 'table') {
         const unlocks = tableUnlockNext(lv);
-        return unlocks > 0 ? `${nextShown}级解锁 ${unlocks} 本菜谱` : `升至 ${nextShown} 级`;
+        return unlocks > 0 ? `${nextShown}级解锁 ${unlocks} 道新菜谱` : `升至 ${nextShown} 级灶台`;
       }
       return `升至 ${nextShown} 级`;
     })();
-    const level = makeLabel(capLine, 16, UI_PALETTE.muted, { fontWeight: '600' });
-    level.position.set(18, 56);
+    const level = makeText('body', capLine, INK_SOFT, { size: 22 });
+    level.position.set(28, 82);
+    fitTextWidth(level, cardW - 56);
     card.addChild(level);
 
     if (state.status !== 'max') {
       const needHouse = state.status === 'blocked' && lv >= houseFurnCap(houseLevel(save), id);
       const needCook = state.status === 'blocked' && cookLevel(save) < cookNeed;
-      const btnText = needHouse
-        ? `需${houseLabel(minHouseForFurn(id, lv + 1))}`
-        : needCook
-          ? `厨艺 ${cookNeed} 级解锁`
-          : `升级 · ${state.cost} 金`;
-      const btn = makeSlicedButton({
-        label: btnText,
-        width: cardW - 36,
-        height: 46,
-        skin: ready ? 'olive' : 'cream',
-        textColor: ready ? 0xFFF8F0 : 0x8A7358,
-        fontSize: 18,
-        silent: !ready,
-      });
-      btn.position.set(18, 90);
-      btn.alpha = ready ? 1 : 0.85;
+      const btnW = cardW - 52;
+      const btnH = 54;
+      const redraw = this._scheduleRelayout;
+      const btn = needHouse || needCook
+        ? makeSlicedButton({
+          label: needHouse ? `需${houseLabel(minHouseForFurn(id, lv + 1))}` : `厨艺 ${cookNeed} 级解锁`,
+          width: btnW,
+          height: btnH,
+          skin: 'cream',
+          textColor: 0x8A7358,
+          fontSize: 23,
+          silent: true,
+          onReady: redraw,
+        })
+        : makeCoinButton({
+          prefix: '升级',
+          price: state.cost,
+          width: btnW,
+          height: btnH,
+          skin: ready ? 'olive' : 'cream',
+          textColor: ready ? 0xFFF8F0 : 0x8A7358,
+          fontSize: 24,
+          silent: !ready,
+          onReady: redraw,
+        });
+      btn.position.set(26, 128);
       if (id === 'table') {
-        this._upgradeConfirmRect = { x: x + 18, y: y + 90, w: cardW - 36, h: 46 };
+        this._upgradeConfirmRect = { x: x + 26, y: y + 128, w: btnW, h: btnH };
       }
       btn.on('pointertap', () => {
         if (!ready) {
@@ -1793,6 +2414,30 @@ export class KitchenScene implements Scene {
       card.addChild(btn);
     }
     this._ui.addChild(card);
+  }
+
+  private _makeMiniSeal(text: string, size = 44): PIXI.Container {
+    const root = new PIXI.Container();
+    root.eventMode = 'none';
+    const tex = gameTexture(KITCHEN_SCENE_ART.seal);
+    if (isTextureReady(tex)) {
+      const sp = new PIXI.Sprite(tex);
+      fitSpriteInBox(sp, size, size);
+      sp.anchor.set(0.5);
+      root.addChild(sp);
+    } else {
+      const g = new PIXI.Graphics();
+      g.beginFill(0xC43426, 1);
+      g.drawRoundedRect(-size / 2, -size / 2, size, size, 8);
+      g.endFill();
+      root.addChild(g);
+    }
+    const t = makeText('caption', text, 0xFFF4E6, { size: 19, fontWeight: '700' });
+    t.anchor.set(0.5);
+    fitTextWidth(t, size - 8);
+    root.addChild(t);
+    root.rotation = -0.08;
+    return root;
   }
 
   private _hotspot(
@@ -1844,32 +2489,56 @@ export class KitchenScene implements Scene {
     }
   }
 
+  /** 老坛 / 阿橘头顶手绘气泡牌（22pt 浓墨清晰大字 + 朱红提示印点）。 */
   private _makePropTag(text: string, tone: 'cream' | 'warm' | 'gold', pulse = false): PIXI.Container {
     const tag = new PIXI.Container();
     tag.eventMode = 'none';
-    const textColor = tone === 'cream' || tone === 'gold' ? UI_PALETTE.ink : 0xFFF8F0;
-    const fillColor = tone === 'gold' ? 0xF7CD5C : tone === 'warm' ? 0xCC6B3B : 0xFFFBF3;
-    const lbl = makeLabel(text, 15, textColor, { fontWeight: '700' });
-    const pw = Math.ceil(lbl.width) + 24;
-    const ph = 28;
-    const bg = new PIXI.Graphics();
-    bg.beginFill(0x180F07, 0.24);
-    bg.drawRoundedRect(-pw / 2, -ph / 2 + 2.5, pw, ph, ph / 2);
-    bg.endFill();
-    bg.lineStyle(2.2, UI_PALETTE.ink, 1);
-    bg.beginFill(fillColor, 0.98);
-    bg.drawRoundedRect(-pw / 2, -ph / 2, pw, ph, ph / 2);
-    bg.endFill();
+    const textColor = tone === 'gold' ? RED_INK : tone === 'warm' ? 0x9A421A : INK;
+    const lbl = makeText('body', text, textColor, {
+      size: 22,
+      fontWeight: '700',
+    });
+    const pw = Math.max(128, Math.ceil(lbl.width) + 36);
+    const ph = 52;
+
+    const bTex = gameTexture(KITCHEN_SCENE_ART.bubble);
+    if (isTextureReady(bTex)) {
+      const sp = new PIXI.Sprite(bTex);
+      sp.width = pw;
+      sp.height = ph + 10;
+      sp.anchor.set(0.5);
+      sp.position.set(0, 3);
+      if (tone === 'gold') sp.tint = 0xFFF3C8;
+      tag.addChild(sp);
+    } else {
+      const bg = new PIXI.Graphics();
+      bg.beginFill(0x160E08, 0.24);
+      bg.drawRoundedRect(-pw / 2, -ph / 2 + 3, pw, ph, 14);
+      bg.endFill();
+      bg.lineStyle(2.4, INK, 1);
+      bg.beginFill(tone === 'gold' ? 0xFFF3C4 : 0xFAF0DA, 0.98);
+      bg.drawRoundedRect(-pw / 2, -ph / 2, pw, ph, 14);
+      bg.endFill();
+      tag.addChild(bg);
+    }
     lbl.anchor.set(0.5);
-    lbl.position.set(0, 0);
-    tag.addChild(bg, lbl);
+    lbl.position.set(0, -1);
+    tag.addChild(lbl);
+
     if (pulse) {
+      const dot = new PIXI.Graphics();
+      dot.lineStyle(2, INK, 1);
+      dot.beginFill(0xD93829, 1);
+      dot.drawCircle(pw / 2 - 8, -ph / 2 + 6, 7);
+      dot.endFill();
+      tag.addChild(dot);
+
       const bob = (): void => {
         if (tag.destroyed || !tag.parent) return;
         const y0 = tag.y;
         TweenManager.to({
           target: tag,
-          props: { y: y0 - 5 },
+          props: { y: y0 - 6 },
           duration: 0.55,
           ease: Ease.easeOutQuad,
           onComplete: () => {
@@ -1889,12 +2558,14 @@ export class KitchenScene implements Scene {
     return tag;
   }
 
+  /** 右侧切视角挂签（牛皮纸麻绳挂签风格，24pt 主标 + 20pt 副标）。 */
   private _drawWindowCornerHud(w: number, save: KitchenSave, redraw: () => void): void {
     const minX = this._minPanX();
     if (minX >= -24) return;
 
     const top = Number.isFinite(Game.safeTop) ? Game.safeTop : 96;
-    const tabY = Math.round(Math.max(top + 168, Game.logicHeight * 0.34));
+    // 置于右上窗帘空白处，完全避开下方冰箱顶部便签 (y ≈ 490)
+    const tabY = Math.round(Math.max(top + 132, Math.min(296, Game.logicHeight * 0.22)));
     const now = Date.now();
     const readyCount = pickleReadyCount(save, now);
     const catView = catStateView(save, now);
@@ -1902,21 +2573,21 @@ export class KitchenScene implements Scene {
     const catNew = catView.unlocked && catView.effectiveStatus === 'unadopted';
     const hasAlert = readyCount > 0 || catGift || catNew;
 
-    // 1. Tab to glide right to Sunlit Window Bay (老坛 & 阿橘)
+    // 1. 滑往右侧窗边角（老坛 & 阿橘）
     const toWin = new PIXI.Container();
-    const winW = 148;
-    const winH = 72;
+    const winW = 196;
+    const winH = 86;
     const wBg = new PIXI.Graphics();
-    wBg.beginFill(0x160E08, 0.28);
-    wBg.drawRoundedRect(0, 4, winW + 16, winH, 20);
+    wBg.beginFill(0x160E08, 0.3);
+    wBg.drawRoundedRect(0, 5, winW + 18, winH, 16);
     wBg.endFill();
-    wBg.lineStyle(2.8, UI_PALETTE.ink, 1);
-    wBg.beginFill(hasAlert ? 0xE2AA40 : UI_PALETTE.walnut, 1);
-    wBg.drawRoundedRect(0, 0, winW + 16, winH, 20);
+    wBg.lineStyle(2.8, INK, 1);
+    wBg.beginFill(hasAlert ? 0xD89A32 : 0x7A4B24, 1);
+    wBg.drawRoundedRect(0, 0, winW + 18, winH, 16);
     wBg.endFill();
-    wBg.lineStyle(1.2, 0xFFFDF8, 0.9);
-    wBg.beginFill(hasAlert ? 0xFFF8DF : 0xFFF9EE, 1);
-    wBg.drawRoundedRect(4, 4, winW + 12, winH - 9, 16);
+    wBg.lineStyle(1.4, 0xFFFDF8, 0.88);
+    wBg.beginFill(hasAlert ? 0xFFF7DC : 0xFAF0DA, 1);
+    wBg.drawRoundedRect(5, 5, winW + 12, winH - 11, 12);
     wBg.endFill();
     toWin.addChild(wBg);
 
@@ -1927,19 +2598,19 @@ export class KitchenScene implements Scene {
       : catGift
         ? cArt.gift
         : cArt.idle;
-    whenTextureReady(iconPath, redraw);
+    this._watchOnce(iconPath);
     const itex = gameTexture(iconPath);
     if (isTextureReady(itex)) {
       const sp = new PIXI.Sprite(itex);
-      fitSpriteInBox(sp, 46, 46);
+      fitSpriteInBox(sp, 54, 54);
       sp.anchor.set(0.5);
-      sp.position.set(30, winH / 2 - 1);
+      sp.position.set(36, winH / 2 - 1);
       sp.eventMode = 'none';
       toWin.addChild(sp);
     }
 
-    const t1 = makeLabel('窗边角 ▶', 17, UI_PALETTE.ink, { fontWeight: '700' });
-    t1.position.set(55, 11);
+    const t1 = makeText('heading', '窗边角 ▶', INK, { size: 24 });
+    t1.position.set(68, 12);
     const subText = readyCount > 0
       ? '老坛可开！'
       : catGift
@@ -1947,15 +2618,18 @@ export class KitchenScene implements Scene {
         : catNew
           ? '橘猫上门！'
           : '老坛·阿橘';
-    const t2 = makeLabel(subText, 14, hasAlert ? UI_PALETTE.terracotta : UI_PALETTE.muted, { fontWeight: '700' });
-    t2.position.set(55, 36);
+    const t2 = makeText('caption', subText, hasAlert ? RED_INK : MUTED, {
+      size: 20,
+      fontWeight: '700',
+    });
+    t2.position.set(68, 46);
     toWin.addChild(t1, t2);
 
     if (hasAlert) {
       const dot = new PIXI.Graphics();
-      dot.lineStyle(2, UI_PALETTE.ink, 1);
+      dot.lineStyle(2.2, INK, 1);
       dot.beginFill(0xE03E2D, 1);
-      dot.drawCircle(8, 8, 8);
+      dot.drawCircle(10, 10, 9);
       dot.endFill();
       toWin.addChild(dot);
     }
@@ -1963,7 +2637,7 @@ export class KitchenScene implements Scene {
     toWin.position.set(w - winW, tabY);
     toWin.eventMode = 'static';
     toWin.cursor = 'pointer';
-    toWin.hitArea = new PIXI.Rectangle(-6, -4, winW + 10, winH + 8);
+    toWin.hitArea = new PIXI.Rectangle(-6, -4, winW + 12, winH + 8);
     toWin.on('pointerdown', (e) => e.stopPropagation());
     toWin.on('pointertap', (e) => {
       e.stopPropagation();
@@ -1973,34 +2647,34 @@ export class KitchenScene implements Scene {
     this._ui.addChild(toWin);
     this._toWindowTab = toWin;
 
-    // 2. Tab to glide back left to Door & Stove when viewing Window Bay
+    // 2. 滑回左侧主灶与门口
     const toDoor = new PIXI.Container();
-    const doorW = 128;
-    const doorH = 64;
+    const doorW = 166;
+    const doorH = 80;
     const dBg = new PIXI.Graphics();
-    dBg.beginFill(0x160E08, 0.26);
-    dBg.drawRoundedRect(0, 4, doorW + 16, doorH, 18);
+    dBg.beginFill(0x160E08, 0.28);
+    dBg.drawRoundedRect(0, 5, doorW + 18, doorH, 16);
     dBg.endFill();
-    dBg.lineStyle(2.8, UI_PALETTE.ink, 1);
-    dBg.beginFill(UI_PALETTE.walnut, 1);
-    dBg.drawRoundedRect(0, 0, doorW + 16, doorH, 18);
+    dBg.lineStyle(2.8, INK, 1);
+    dBg.beginFill(0x7A4B24, 1);
+    dBg.drawRoundedRect(0, 0, doorW + 18, doorH, 16);
     dBg.endFill();
-    dBg.lineStyle(1.2, 0xFFFDF8, 0.9);
-    dBg.beginFill(0xFFF9EE, 1);
-    dBg.drawRoundedRect(4, 4, doorW + 12, doorH - 9, 14);
+    dBg.lineStyle(1.4, 0xFFFDF8, 0.88);
+    dBg.beginFill(0xFAF0DA, 1);
+    dBg.drawRoundedRect(5, 5, doorW + 12, doorH - 11, 12);
     dBg.endFill();
     toDoor.addChild(dBg);
 
-    const dt1 = makeLabel('◀ 回门口', 17, UI_PALETTE.ink, { fontWeight: '700' });
-    dt1.position.set(16, 10);
-    const dt2 = makeLabel('出门·主灶', 14, UI_PALETTE.muted, { fontWeight: '700' });
-    dt2.position.set(18, 34);
+    const dt1 = makeText('heading', '◀ 回主灶', INK, { size: 24 });
+    dt1.position.set(18, 11);
+    const dt2 = makeText('caption', '门口·冰柜', MUTED, { size: 20, fontWeight: '700' });
+    dt2.position.set(22, 43);
     toDoor.addChild(dt1, dt2);
 
     toDoor.position.set(w - doorW, tabY);
     toDoor.eventMode = 'static';
     toDoor.cursor = 'pointer';
-    toDoor.hitArea = new PIXI.Rectangle(-6, -4, doorW + 10, doorH + 8);
+    toDoor.hitArea = new PIXI.Rectangle(-6, -4, doorW + 12, doorH + 8);
     toDoor.on('pointerdown', (e) => e.stopPropagation());
     toDoor.on('pointertap', (e) => {
       e.stopPropagation();
@@ -2025,14 +2699,10 @@ export class KitchenScene implements Scene {
 
     const pArt = P2_ART.pickleTiers[pickleTier(save)];
     const mainArt = slot0Ready ? pArt.ready : pArt.idle;
-    whenTextureReady(mainArt, () => {
-      if (this.container.parent && !this._itemDrag) this.relayout();
-    });
+    this._watchOnce(mainArt);
     if (hasSecond) {
       const subArt = slot1Ready ? pArt.ready : pArt.idle;
-      whenTextureReady(subArt, () => {
-        if (this.container.parent && !this._itemDrag) this.relayout();
-      });
+      this._watchOnce(subArt);
     }
 
     const box = mapNorm(fit, PICKLE_BAY_POSE.nx, PICKLE_BAY_POSE.ny, PICKLE_BAY_POSE.nw, PICKLE_BAY_POSE.nh);
@@ -2093,15 +2763,15 @@ export class KitchenScene implements Scene {
           : '老坛腌菜';
     const tone = !unlocked ? 'cream' : readyCount > 0 ? 'gold' : fermCount > 0 ? 'warm' : 'cream';
     const tag = this._makePropTag(tagText, tone, readyCount > 0);
-    tag.position.set(topAnchorX, topAnchorY - 18);
+    tag.position.set(topAnchorX, topAnchorY - 26);
     root.addChild(tag);
 
     if (!this._gm) {
       root.eventMode = 'static';
       root.cursor = 'pointer';
-      const hitW = hasSecond ? box.w * 1.45 : box.w + 12;
-      const hitH = hasSecond ? box.h * 1.32 : box.h + 24;
-      root.hitArea = new PIXI.Rectangle(-10, topAnchorY - 30, hitW, hitH + 16);
+      const hitW = hasSecond ? box.w * 1.45 : box.w + 16;
+      const hitH = hasSecond ? box.h * 1.32 : box.h + 30;
+      root.hitArea = new PIXI.Rectangle(-12, topAnchorY - 46, hitW, hitH + 24);
       root.on('pointertap', (e) => {
         e.stopPropagation();
         if (this._dragMoved) return;
@@ -2132,9 +2802,7 @@ export class KitchenScene implements Scene {
       : view.effectiveStatus === 'gift'
         ? cArt.gift
         : cArt.idle;
-    whenTextureReady(artPath, () => {
-      if (this.container.parent && !this._itemDrag) this.relayout();
-    });
+    this._watchOnce(artPath);
 
     const box = mapNorm(fit, CAT_BAY_POSE.nx, CAT_BAY_POSE.ny, CAT_BAY_POSE.nw, CAT_BAY_POSE.nh);
     const root = new PIXI.Container();
@@ -2160,17 +2828,17 @@ export class KitchenScene implements Scene {
           ? '阿橘带礼回！'
           : view.effectiveStatus === 'away'
             ? '阿橘巡街中'
-            : '阿橘';
+            : '阿橘小窝';
     const isUrgent = view.effectiveStatus === 'unadopted' || view.effectiveStatus === 'gift';
     const tone = isUrgent ? 'gold' : view.effectiveStatus === 'away' ? 'warm' : 'cream';
     const tag = this._makePropTag(tagText, tone, isUrgent);
-    tag.position.set(box.w / 2, visibleTopY - 18);
+    tag.position.set(box.w / 2, visibleTopY - 26);
     root.addChild(tag);
 
     if (!this._gm) {
       root.eventMode = 'static';
       root.cursor = 'pointer';
-      root.hitArea = new PIXI.Rectangle(-6, visibleTopY - 30, box.w + 12, box.h - visibleTopY + 34);
+      root.hitArea = new PIXI.Rectangle(-10, visibleTopY - 46, box.w + 20, box.h - visibleTopY + 50);
       root.on('pointertap', (e) => {
         e.stopPropagation();
         if (this._dragMoved) return;

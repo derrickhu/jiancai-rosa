@@ -3,24 +3,33 @@ import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { Ease, TweenManager } from '@/core/TweenManager';
-import { fitSpriteInBox, gameTexture, isTextureReady, watchTextures, whenTextureReady } from '@/utils/assets';
+import { watchTextures } from '@/utils/assets';
 import {
   UI_KIT,
-  UI_PALETTE,
-  drawRecessedWell,
   fillRect,
-  makeArtisanShell,
-  makeLabel,
   makeSlicedButton,
+  makeText,
 } from '@/utils/ui';
+import {
+  SCENE_ART,
+  SCENE_INK,
+  drawInkDivider,
+  drawPlaqueTitle,
+  drawSceneClose,
+  drawSceneWall,
+  drawStretchSheet,
+  makePlateItem,
+  sceneArtPaths,
+} from './scenePanel';
 
 /**
- * 通用确认 / 提示框：统一手作胡桃木横匾 + 暖宣纸内芯 + 立体切片按钮。
+ * 通用确认 / 提示弹窗：木匾标题 + 宣纸短笺 + 大字墨书 + 主次分明按钮。
  */
-const INK = UI_PALETTE.ink;
-const MUTED = UI_PALETTE.muted;
+const WALL = 'subpkg_images/scene_order_wall.png';
+const INK = SCENE_INK.ink;
 const TAP_LOCK_MS = 260;
 const Z = 90;
+const W = 620;
 
 export interface PromptOpts {
   title: string;
@@ -38,6 +47,8 @@ class PromptPanelClass extends PIXI.Container {
   private _resolve: ((ok: boolean) => void) | null = null;
   private _lockAt = 0;
   private _card: PIXI.Container | null = null;
+  private _baseScale = 1;
+  private _paintQueued = false;
 
   constructor() {
     super();
@@ -72,168 +83,179 @@ class PromptPanelClass extends PIXI.Container {
     this._finish(false, silent);
   }
 
+  private _scheduleRelayout = (): void => {
+    if (!this._isOpen || this._paintQueued) return;
+    this._paintQueued = true;
+    const later = typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame
+      : (cb: () => void) => setTimeout(cb, 0);
+    later(() => {
+      this._paintQueued = false;
+      if (this._isOpen) this.relayout();
+    });
+  };
+
   relayout(): void {
     this._root.removeChildren();
     this._card = null;
     const opts = this._opts;
     if (!this._isOpen || !opts) return;
 
-    watchTextures([UI_KIT.headerRibbon, UI_KIT.closeRound, UI_KIT.btnOlive], () => {
-      if (this._isOpen) this.relayout();
-    });
+    const watchList: string[] = [
+      WALL,
+      ...sceneArtPaths(),
+      UI_KIT.closeRound,
+      UI_KIT.btnOlive,
+      UI_KIT.btnGold,
+    ];
+    if (opts.icon) watchList.push(opts.icon);
+    watchTextures(watchList, this._scheduleRelayout);
 
-    const w = Game.designWidth;
-    const h = Game.logicHeight;
-    this.hitArea = new PIXI.Rectangle(0, 0, w, h);
+    const sw = Game.designWidth;
+    const sh = Game.logicHeight;
+    this.hitArea = new PIXI.Rectangle(0, 0, sw, sh);
 
     const dim = new PIXI.Graphics();
-    fillRect(dim, 0, 0, w, h, 0x160E08);
-    dim.alpha = 0.54;
+    fillRect(dim, 0, 0, sw, sh, 0x160E08);
+    dim.alpha = 0.62;
     dim.eventMode = 'static';
     dim.on('pointertap', () => this._pick(false));
     this._root.addChild(dim);
 
-    const cardW = Math.min(540, w - 56);
-    const pad = 34;
-    const wrap = cardW - pad * 2 - 24;
-    const iconPath = opts.icon ?? '';
-    if (iconPath) {
-      whenTextureReady(iconPath, () => {
-        if (this._isOpen) this.relayout();
-      });
-    }
+    const sheetMargin = 24;
+    const contentL = 88;
+    const contentR = W - 88;
+    const contentW = contentR - contentL;
 
-    const body = makeLabel(opts.content, 21, INK, {
-      fontWeight: '600',
+    const body = makeText('body', opts.content, INK, {
+      size: 26,
       align: 'center',
       wordWrap: true,
       breakWords: true,
-      wordWrapWidth: wrap,
-      lineHeight: 33,
+      wordWrapWidth: contentW,
+      lineHeight: 40,
     });
     body.anchor.set(0.5, 0);
 
-    const iconH = iconPath ? 74 : 0;
-    const btnH = 54;
-    const contentTop = 64;
-    const wellPadY = 18;
-    const wellH = (iconH ? iconH + 12 : 0) + body.height + wellPadY * 2;
-    const cardH = contentTop + wellH + 22 + btnH + 30;
+    const hasIcon = Boolean(opts.icon);
+    const iconBlockH = hasIcon ? 126 : 0;
+    // 木匾 top=-46, width=348 时底边在 y≈134；宣纸从 y=144 起铺，彻底避开木匾下沿
+    const sheetTop = 144;
+    const topPad = 56;
+    const btnH = 60;
+    const btnRowW = W - 128;
+    const sheetH = topPad + iconBlockH + Math.ceil(body.height) + 28 + 26 + btnH + 38;
+    const cardH = sheetTop + sheetH + 28;
 
-    const { shell } = makeArtisanShell({
-      width: cardW,
-      height: cardH,
-      title: opts.title,
-      closeSilent: true,
-      onReady: () => {
-        if (this._isOpen) this.relayout();
-      },
-      onClose: () => this._pick(false),
-    });
+    const availW = sw - 32;
+    const availH = sh - Game.safeTop - 64 - Math.max(24, Game.safeBottom);
+    const scale = Math.min(1, availW / W, availH / cardH);
+    this._baseScale = scale;
 
-    const cx = Math.round(w / 2);
-    const cy = Math.round(Math.max(Game.safeTop + 36 + cardH / 2, h / 2));
-    shell.pivot.set(cardW / 2, cardH / 2);
-    shell.position.set(cx, cy);
-    this._root.addChild(shell);
-    this._card = shell;
+    const card = new PIXI.Container();
+    card.eventMode = 'static';
+    card.hitArea = new PIXI.Rectangle(0, -52, W, cardH + 62);
+    card.on('pointertap', (e) => e.stopPropagation());
+    card.pivot.set(W / 2, cardH / 2);
+    card.scale.set(scale);
+    card.position.set(
+      Math.round(sw / 2),
+      Math.round(Math.max(Game.safeTop + 56 + (cardH * scale) / 2, sh / 2)),
+    );
+    this._root.addChild(card);
+    this._card = card;
 
-    const well = new PIXI.Graphics();
-    drawRecessedWell(well, pad, contentTop, cardW - pad * 2, wellH, { radius: 16 });
-    shell.addChild(well);
+    drawSceneWall(card, WALL, W, cardH, 160, 110);
+    drawPlaqueTitle(card, opts.title, W / 2, -46, 348);
+    drawSceneClose(card, W - 44, -20, () => this._pick(false), this._scheduleRelayout);
 
-    let y = contentTop + wellPadY;
-    if (iconPath) {
-      const halo = new PIXI.Graphics();
-      halo.beginFill(0xFFFBF2, 0.8);
-      halo.drawCircle(cardW / 2, y + 32, 34);
-      halo.endFill();
-      shell.addChild(halo);
+    drawStretchSheet(card, SCENE_ART.sheet, sheetMargin, sheetTop, W - sheetMargin * 2, sheetH, 110, 96);
 
-      const icon = new PIXI.Sprite(gameTexture(iconPath));
-      if (isTextureReady(icon.texture)) fitSpriteInBox(icon, 60, 60);
-      else {
-        icon.width = 60;
-        icon.height = 60;
-      }
-      icon.anchor.set(0.5);
-      icon.position.set(cardW / 2, y + 32);
-      icon.eventMode = 'none';
-      shell.addChild(icon);
-      y += iconH + 12;
+    let y = sheetTop + topPad;
+    if (opts.icon) {
+      const plate = makePlateItem({
+        iconPath: opts.icon,
+        plateW: 132,
+        iconSize: 78,
+      });
+      plate.position.set(W / 2, y + 48);
+      card.addChild(plate);
+      y += iconBlockH;
     }
 
-    body.position.set(cardW / 2, y);
-    shell.addChild(body);
+    body.position.set(W / 2, y);
+    card.addChild(body);
+    y += Math.ceil(body.height) + 26;
 
-    const btnY = cardH - btnH - 28;
+    const btnLeft = Math.round((W - btnRowW) / 2);
+    drawInkDivider(card, btnLeft, y, btnRowW, 0.48, 10);
+    y += 28;
+
     const showCancel = opts.showCancel !== false;
     if (showCancel) {
-      const gapBtn = 16;
-      const btnW = Math.floor((cardW - pad * 2 - gapBtn) / 2);
+      const gapBtn = 18;
+      const btnW = Math.floor((btnRowW - gapBtn) / 2);
       const cancel = makeSlicedButton({
         label: opts.cancelText ?? '取消',
         width: btnW,
         height: btnH,
         skin: 'cream',
-        textColor: MUTED,
+        textColor: SCENE_INK.soft,
+        fontSize: 26,
         silent: true,
-        onReady: () => {
-          if (this._isOpen) this.relayout();
-        },
+        onReady: this._scheduleRelayout,
       });
-      cancel.position.set(pad, btnY);
+      cancel.position.set(btnLeft, y);
       cancel.on('pointertap', (e) => {
         e.stopPropagation();
         this._pick(false);
       });
-      shell.addChild(cancel);
+      card.addChild(cancel);
 
       const ok = makeSlicedButton({
         label: opts.confirmText ?? '确定',
         width: btnW,
         height: btnH,
         skin: 'terracotta',
+        fontSize: 26,
         silent: true,
-        onReady: () => {
-          if (this._isOpen) this.relayout();
-        },
+        onReady: this._scheduleRelayout,
       });
-      ok.position.set(pad + btnW + gapBtn, btnY);
+      ok.position.set(btnLeft + btnW + gapBtn, y);
       ok.on('pointertap', (e) => {
         e.stopPropagation();
         this._pick(true);
       });
-      shell.addChild(ok);
+      card.addChild(ok);
       return;
     }
 
-    const okW = 228;
+    const okW = 268;
     const ok = makeSlicedButton({
       label: opts.confirmText ?? '知道了',
       width: okW,
       height: btnH,
       skin: 'olive',
+      fontSize: 27,
       silent: true,
-      onReady: () => {
-        if (this._isOpen) this.relayout();
-      },
+      onReady: this._scheduleRelayout,
     });
-    ok.position.set((cardW - okW) / 2, btnY);
+    ok.position.set((W - okW) / 2, y);
     ok.on('pointertap', (e) => {
       e.stopPropagation();
       this._pick(true);
     });
-    shell.addChild(ok);
+    card.addChild(ok);
   }
 
   private _popIn(): void {
     const card = this._card;
     if (!card) return;
+    const s = this._baseScale;
     TweenManager.cancelTarget(card);
     TweenManager.cancelTarget(card.scale);
     card.alpha = 0;
-    card.scale.set(0.92);
+    card.scale.set(s * 0.92);
     TweenManager.to({
       target: card,
       props: { alpha: 1 },
@@ -242,9 +264,9 @@ class PromptPanelClass extends PIXI.Container {
     });
     TweenManager.to({
       target: card.scale,
-      props: { x: 1, y: 1 },
-      duration: 0.16,
-      ease: Ease.easeOutQuad,
+      props: { x: s, y: s },
+      duration: 0.18,
+      ease: Ease.easeOutBack,
     });
   }
 
@@ -263,6 +285,7 @@ class PromptPanelClass extends PIXI.Container {
     this.visible = false;
     this._opts = null;
     this._card = null;
+    this._paintQueued = false;
     this._root.removeChildren();
     resolve?.(ok);
   }

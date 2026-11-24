@@ -16,6 +16,7 @@ import {
   recipeById,
   recipeNeeds,
   recipeUnlockView,
+  type NeighborNpc,
   type NeighborOrder,
   type RecipeId,
 } from '@/sim';
@@ -24,24 +25,18 @@ import { orderPanelPaths } from '@/utils/panelAssets';
 import {
   P0_ART,
   UI_KIT,
-  UI_PALETTE,
-  drawCraftCard,
-  drawItemSlotBox,
-  drawSectionTray,
-  fillRect,
+  fitTextWidth,
   makeAdButton,
-  makeArtisanShell,
-  makeLabel,
-  makeRewardStrip,
+  makeRarityFlare,
   makeSlicedButton,
-  makeSlotBadge,
+  makeText,
 } from '@/utils/ui';
 import {
-  dishTexture,
   fitSpriteInBox,
   gameTexture,
   isTextureReady,
-  itemTexture,
+  resolveDishAssetPath,
+  resolveItemAssetPath,
   watchTextures,
 } from '@/utils/assets';
 import {
@@ -50,21 +45,57 @@ import {
   makeItemInspectCard,
   type ItemInspectView,
 } from './ItemInspectCard';
+import {
+  SCENE_ART,
+  SCENE_INK,
+  drawInkDivider,
+  drawPlaqueTitle,
+  drawSceneClose,
+  drawSceneWall,
+  drawStretchSheet,
+  makeDishDisplay,
+  makeInlineRewards,
+  makeSceneRoot,
+  makeSealStamp,
+  sceneArtPaths,
+  sceneSprite,
+} from './scenePanel';
 
-const INK = UI_PALETTE.ink;
-const MUTED = UI_PALETTE.muted;
-const TERRACOTTA = UI_PALETTE.terracotta;
-const OLIVE = UI_PALETTE.olive;
-const GOLD = 0xB87910;
+/** 街坊邻里留言点单墙：麻绳木墙 + 撕边信笺点菜单 + 绿格胶带拍立得头像。 */
+const ART = {
+  wall: 'subpkg_images/scene_order_wall.png',
+  slip: 'subpkg_images/scene_order_slip.png',
+  photo: 'subpkg_images/scene_order_photo.png',
+  flare: 'subpkg_kitchen/ui_pickup_flare.png',
+} as const;
+
+const W = 720;
+const L = {
+  wallSliceTop: 180,
+  wallSliceBottom: 130,
+  slipX: 54,
+  slipW: 612,
+  slipH: 384,
+  slipGap: 24,
+  firstSlipY: 142,
+  bottomLedgePad: 96,
+} as const;
+
+interface LiveOrderTimer {
+  expiresAt: number;
+  textNode: PIXI.Text;
+}
 
 export class OrderPanel extends PIXI.Container {
   _isOpen = false;
   onCook: ((recipeId: RecipeId) => void) | null = null;
   private _root = new PIXI.Container();
-  private _timer = 0;
+  private _timer: ReturnType<typeof setInterval> | null = null;
+  private _liveTimers: LiveOrderTimer[] = [];
   private _inspect: ItemInspectView | null = null;
   private _paintQueued = false;
   private _adBusy = false;
+  private _toStage: (x: number, y: number) => { x: number; y: number } = (x, y) => ({ x, y });
 
   constructor() {
     super();
@@ -82,7 +113,9 @@ export class OrderPanel extends PIXI.Container {
     this._isOpen = true;
     this.visible = true;
     this._inspect = null;
+    this._adBusy = false;
     warmupAdScene('order_double');
+    warmupAdScene('order_refresh');
     this._armTimer();
     this._warm();
     this.relayout();
@@ -94,7 +127,9 @@ export class OrderPanel extends PIXI.Container {
     this._isOpen = false;
     this.visible = false;
     this._inspect = null;
+    this._adBusy = false;
     this._paintQueued = false;
+    this._liveTimers = [];
     this._clearTimer();
     this._root.removeChildren();
   }
@@ -102,7 +137,8 @@ export class OrderPanel extends PIXI.Container {
   private _warm(): void {
     watchTextures(
       [
-        UI_KIT.headerRibbon,
+        ...Object.values(ART),
+        ...sceneArtPaths(),
         UI_KIT.closeRound,
         UI_KIT.btnOlive,
         UI_KIT.btnGold,
@@ -127,6 +163,7 @@ export class OrderPanel extends PIXI.Container {
 
   relayout(): void {
     this._root.removeChildren();
+    this._liveTimers = [];
     if (!this._isOpen) return;
     this._warm();
     const now = Date.now();
@@ -136,48 +173,59 @@ export class OrderPanel extends PIXI.Container {
       return;
     }
 
-    const w = Game.designWidth;
-    const h = Game.logicHeight;
-    this.hitArea = new PIXI.Rectangle(0, 0, w, h);
-    const dim = new PIXI.Graphics();
-    fillRect(dim, 0, 0, w, h, 0x160E08);
-    dim.alpha = 0.56;
-    dim.eventMode = 'static';
-    dim.on('pointertap', () => {
-      if (this._inspect) {
-        this._inspect = null;
-        this.relayout();
-        return;
-      }
-      if (!this._adBusy) this.close();
-    });
-    this._root.addChild(dim);
+    const sw = Game.designWidth;
+    const sh = Game.logicHeight;
+    this.hitArea = new PIXI.Rectangle(0, 0, sw, sh);
 
-    const rowH = 260;
-    const rowGap = 12;
-    const boxW = Math.min(w - 30, 710);
-    const padX = 24;
-    const contentTop = 66;
-    const boxH = contentTop + orders.length * rowH + (orders.length - 1) * rowGap + 26;
-    const bx = Math.round((w - boxW) / 2);
-    const by = Math.round(Math.max(Game.safeTop + 22, (h - boxH) / 2 + 6));
+    const n = orders.length;
+    const panelH = L.firstSlipY + n * L.slipH + (n - 1) * L.slipGap + L.bottomLedgePad;
 
-    const { shell } = makeArtisanShell({
-      width: boxW,
-      height: boxH,
-      title: '街 坊 点 菜',
-      onReady: this._scheduleRelayout,
-      closeSilent: true,
-      onClose: () => {
+    const { scene, toStage } = makeSceneRoot({
+      parent: this._root,
+      designW: W,
+      panelH,
+      topBleed: 44,
+      onDimTap: () => {
+        if (this._inspect) {
+          this._inspect = null;
+          this.relayout();
+          return;
+        }
         if (!this._adBusy) this.close();
       },
     });
-    shell.position.set(bx, by);
-    this._root.addChild(shell);
+    this._toStage = toStage;
 
-    orders.forEach((order, i) => {
-      shell.addChild(this._row(order, padX, contentTop + i * (rowH + rowGap), boxW - padX * 2, rowH, now));
+    drawSceneWall(scene, ART.wall, W, panelH, L.wallSliceTop, L.wallSliceBottom, 0x7A4924);
+    drawPlaqueTitle(scene, '街坊点菜', W / 2, -44, 344);
+
+    orders.forEach((order, idx) => {
+      const sy = L.firstSlipY + idx * (L.slipH + L.slipGap);
+      this._drawOrderSlip(scene, order, L.slipX, sy, L.slipW, L.slipH, now);
     });
+
+    // 右下角铜铃轻点彩蛋
+    const bellHit = new PIXI.Container();
+    bellHit.position.set(592, panelH - 108);
+    bellHit.eventMode = 'static';
+    bellHit.cursor = 'pointer';
+    bellHit.hitArea = new PIXI.Rectangle(0, 0, 92, 88);
+    bellHit.on('pointertap', (e) => {
+      e.stopPropagation();
+      AudioManager.play('event_pop');
+      Platform.showToast('叮铃~ 街坊们闻着灶台香来留单啦');
+    });
+    scene.addChild(bellHit);
+
+    drawSceneClose(
+      scene,
+      W - 46,
+      -20,
+      () => {
+        if (!this._adBusy) this.close();
+      },
+      this._scheduleRelayout,
+    );
 
     if (this._inspect) {
       this._root.addChild(makeItemInspectCard({
@@ -195,112 +243,248 @@ export class OrderPanel extends PIXI.Container {
     }
   }
 
-  private _row(
+  // ── 一张钉在木墙上的街坊点菜单纸 ─────────────────────────────────────────
+  private _drawOrderSlip(
+    scene: PIXI.Container,
     order: NeighborOrder,
     x: number,
     y: number,
     width: number,
     height: number,
     now: number,
-  ): PIXI.Container {
-    const root = new PIXI.Container();
+  ): void {
+    const slip = new PIXI.Container();
+    slip.position.set(x, y);
+    scene.addChild(slip);
+
+    // 纸片投影 + 拉伸信笺纸底 + 顶部黄铜图钉
+    const shadow = new PIXI.Graphics();
+    shadow.beginFill(0x1E0F06, 0.26);
+    shadow.drawRoundedRect(6, 10, width - 4, height - 4, 8);
+    shadow.endFill();
+    slip.addChild(shadow);
+
+    drawStretchSheet(slip, ART.slip, 0, 0, width, height, 48, 36, 0xF7E8CB);
+
+    const tack = new PIXI.Graphics();
+    tack.beginFill(0x2A180B, 0.35);
+    tack.drawCircle(width / 2 + 2, 16, 11);
+    tack.endFill();
+    tack.lineStyle(2, 0x3A2210, 1);
+    tack.beginFill(0xD8A24A, 1);
+    tack.drawCircle(width / 2, 13, 10);
+    tack.endFill();
+    tack.lineStyle(0);
+    tack.beginFill(0xFFE7A8, 0.8);
+    tack.drawCircle(width / 2 - 3, 10, 3.5);
+    tack.endFill();
+    slip.addChild(tack);
+
     const save = KitchenManager.save;
     const npc = neighborNpc(order.npcId);
     const recipe = recipeById(order.recipeId);
     const view = recipeUnlockView(save);
     const have = fridgeDishQty(save.fridge, order.recipeId);
-
-    const headerH = 44;
-    const bg = new PIXI.Graphics();
-    drawCraftCard(bg, x, y, width, height, {
-      radius: 16,
-      tone: have > 0 ? 'gold' : 'ivory',
-      headerH,
-    });
-    root.addChild(bg);
+    const needs = recipeNeeds(view, order.recipeId);
+    const missing = needs.filter((r) => r.have < r.need);
 
     const canRefresh = canUseDailyAd(save, 'order_refresh', now);
     const refreshLeft = dailyAdLeft(save, 'order_refresh', now);
     const canDouble = canUseDailyAd(save, 'order_double', now);
     const doubleLeft = dailyAdLeft(save, 'order_double', now);
 
-    // Structured top header bar: Dish order title on left + Timer tag & Abandon link on right
-    const name = makeLabel(`${npc.name}点：${recipe?.name ?? '家常菜'}`, 21, INK, { fontWeight: '700' });
-    name.anchor.set(0, 0.5);
-    name.position.set(x + 16, y + headerH / 2 + 1);
-    root.addChild(name);
+    // 左上：绿格胶带拍立得街坊相片
+    const photo = this._makePolaroid(npc, 166);
+    photo.position.set(-14, 14);
+    slip.addChild(photo);
 
-    const remainTxt = `⏱ ${formatOrderRemain(order.expiresAt - now)}`;
-    const remainLbl = makeLabel(remainTxt, 15, 0xFFFDF8, { fontWeight: '700' });
-    const rPillW = Math.ceil(remainLbl.width) + 18;
-    const rPillH = 26;
-    const rPill = new PIXI.Graphics();
-    rPill.beginFill(0x7A5B40, 1);
-    rPill.drawRoundedRect(0, 0, rPillW, rPillH, rPillH / 2);
-    rPill.endFill();
-    remainLbl.anchor.set(0.5);
-    remainLbl.position.set(rPillW / 2, rPillH / 2);
-    const rWrap = new PIXI.Container();
-    rWrap.addChild(rPill, remainLbl);
-    const rightMetaX = x + width - (canRefresh ? rPillW + 94 : rPillW + 14);
-    rWrap.position.set(rightMetaX, y + Math.round((headerH - rPillH) / 2) + 1);
-    root.addChild(rWrap);
+    // 右上：手写感大字诉求 + 沙漏倒计时（无胶囊黑框）
+    const headLeft = 162;
+    const headRight = width - 26;
+    const remainMs = Math.max(0, order.expiresAt - now);
+    const urgent = remainMs < 15 * 60 * 1000;
+
+    const timerBox = new PIXI.Container();
+    const hg = sceneSprite(SCENE_ART.hourglass, 18, 26);
+    let tx = 0;
+    if (hg) {
+      hg.anchor.set(0, 0.5);
+      timerBox.addChild(hg);
+      tx = 24;
+    }
+    const timerTxt = makeText(
+      'caption',
+      formatOrderRemain(remainMs),
+      urgent ? SCENE_INK.red : SCENE_INK.muted,
+      { size: 22, fontWeight: '700' },
+    );
+    timerTxt.anchor.set(0, 0.5);
+    timerTxt.position.set(tx, 0);
+    timerBox.addChild(timerTxt);
+    const timerW = tx + Math.ceil(timerTxt.width);
+    timerBox.position.set(headRight - timerW, 48);
+    slip.addChild(timerBox);
+    this._liveTimers.push({ expiresAt: order.expiresAt, textNode: timerTxt });
+
+    const dishTitle = makeText('title', `想吃 · ${recipe?.name ?? '家常菜'}`, SCENE_INK.ink, { size: 30 });
+    dishTitle.anchor.set(0, 0.5);
+    dishTitle.position.set(headLeft, 48);
+    fitTextWidth(dishTitle, Math.max(140, headRight - timerW - headLeft - 14));
+    slip.addChild(dishTitle);
+
+    drawInkDivider(slip, headLeft, 76, headRight - headLeft, 0.38, 10);
+
+    // 中部：立体成菜大图标直呈 + 食材余量/备好状态（去掉重复底盘）
+    const plateCx = 224;
+    const plateCy = 158;
+    if (have > 0) {
+      const flare = makeRarityFlare(recipe?.rarity ?? 'common', 156);
+      flare.position.set(plateCx, plateCy - 2);
+      slip.addChild(flare);
+    }
+    const plateNode = makeDishDisplay({
+      dishPath: resolveDishAssetPath(order.recipeId),
+      size: 108,
+      shadowAlpha: 0.22,
+    });
+    plateNode.position.set(plateCx, plateCy + 4);
+    plateNode.eventMode = 'static';
+    plateNode.cursor = 'pointer';
+    plateNode.hitArea = new PIXI.Rectangle(-62, -64, 124, 124);
+    plateNode.on('pointertap', (e) => {
+      e.stopPropagation();
+      const v = inspectFromRecipe(order.recipeId);
+      if (!v) return;
+      AudioManager.play('ui_click');
+      this._inspect = v;
+      this.relayout();
+    });
+    slip.addChild(plateNode);
+
+    const midX = 296;
+    const maxMidW = headRight - midX;
+    if (have > 0) {
+      const readyTitle = makeText('heading', `✓ 冰箱现成 ${have} 盘`, SCENE_INK.green, { size: 26 });
+      readyTitle.anchor.set(0, 0.5);
+      readyTitle.position.set(midX, 134);
+      fitTextWidth(readyTitle, maxMidW);
+
+      const readySub = makeText(
+        'body',
+        canDouble ? '直接交菜，或看视频双倍领谢礼' : '端过去就能领街坊谢礼啦',
+        SCENE_INK.soft,
+        { size: 22 },
+      );
+      readySub.anchor.set(0, 0.5);
+      readySub.position.set(midX, 178);
+      fitTextWidth(readySub, maxMidW);
+      slip.addChild(readyTitle, readySub);
+    } else if (missing.length === 0) {
+      const canCookTitle = makeText('heading', '食材齐备 · 下锅就能炒', SCENE_INK.green, { size: 25 });
+      canCookTitle.anchor.set(0, 0.5);
+      canCookTitle.position.set(midX, 126);
+      fitTextWidth(canCookTitle, maxMidW);
+      slip.addChild(canCookTitle);
+
+      const needsRow = this._makeClickableNeeds(needs, maxMidW);
+      needsRow.position.set(midX, 178);
+      slip.addChild(needsRow);
+    } else {
+      const lackTitle = makeText('body', '还差这几味食材：', SCENE_INK.soft, { size: 23 });
+      lackTitle.anchor.set(0, 0.5);
+      lackTitle.position.set(midX, 124);
+      slip.addChild(lackTitle);
+
+      const needsRow = this._makeClickableNeeds(needs, maxMidW);
+      needsRow.position.set(midX, 176);
+      slip.addChild(needsRow);
+    }
+
+    // 下部：水墨分割线 + 无框大字谢礼 + 动作按钮栏
+    drawInkDivider(slip, 28, 236, width - 56, 0.4, 12);
+
+    const reward = neighborOrderReward(order);
+    const chips = neighborRewardChips(reward);
+    if (chips.length) {
+      const rewardLine = new PIXI.Container();
+      rewardLine.position.set(30, 272);
+      const lead = makeText('heading', '街坊谢礼：', SCENE_INK.soft, { size: 24 });
+      lead.anchor.set(0, 0.5);
+      rewardLine.addChild(lead);
+
+      const inline = makeInlineRewards(chips, {
+        size: 26,
+        iconSize: 38,
+        color: SCENE_INK.ink,
+        goldColor: SCENE_INK.gold,
+        gap: 16,
+        resolveItemIcon: resolveItemAssetPath,
+      });
+      inline.position.set(lead.width + 4, 0);
+      rewardLine.addChild(inline);
+
+      let totalRw = lead.width + 4 + inline.width;
+      if (reward.food?.tease) {
+        const teaseSeal = makeSealStamp('鲜货', 44, -0.1);
+        teaseSeal.position.set(totalRw + 26, 0);
+        rewardLine.addChild(teaseSeal);
+        totalRw += 52;
+      }
+
+      const maxRw = canRefresh ? width - 166 : width - 60;
+      if (totalRw > maxRw && maxRw > 120) {
+        rewardLine.scale.set(maxRw / totalRw);
+      }
+
+      if (reward.food?.defId) {
+        const foodId = reward.food.defId;
+        rewardLine.eventMode = 'static';
+        rewardLine.cursor = 'pointer';
+        rewardLine.hitArea = new PIXI.Rectangle(-4, -24, Math.ceil(totalRw) + 8, 48);
+        rewardLine.on('pointertap', (e) => {
+          e.stopPropagation();
+          const v = inspectFromItem(foodId);
+          if (!v) return;
+          if (reward.food?.tease) v.note = `${v.note ?? ''} · 街坊私藏鲜货`;
+          AudioManager.play('ui_click');
+          this._inspect = v;
+          this.relayout();
+        });
+      }
+      slip.addChild(rewardLine);
+    }
 
     if (canRefresh) {
-      const dropLink = makeLabel('放弃此单', 15, MUTED, { fontWeight: '700' });
-      dropLink.anchor.set(0, 0.5);
-      dropLink.position.set(rightMetaX + rPillW + 10, y + headerH / 2 + 1);
+      const dropLink = makeText('caption', '婉拒此单', SCENE_INK.muted, { size: 22, fontWeight: '700' });
+      dropLink.anchor.set(1, 0.5);
+      dropLink.position.set(headRight, 272);
       dropLink.eventMode = 'static';
       dropLink.cursor = 'pointer';
-      dropLink.hitArea = new PIXI.Rectangle(-6, -14, dropLink.width + 12, 28);
+      dropLink.hitArea = new PIXI.Rectangle(-dropLink.width - 10, -20, dropLink.width + 20, 40);
       dropLink.on('pointertap', (e) => {
         e.stopPropagation();
         KitchenManager.abandonNeighborOrder(order.id);
         this._inspect = null;
         if (this._isOpen) this.relayout();
       });
-      root.addChild(dropLink);
+      slip.addChild(dropLink);
     }
 
-    const bodyTop = y + headerH + 10;
-    const faceW = 128;
-    const faceH = height - headerH - 20;
-    const faceX = x + 12;
-
-    // Framed recessed portrait card slot
-    const arch = new PIXI.Graphics();
-    drawSectionTray(arch, faceX, bodyTop, faceW, faceH, { radius: 13, tone: 'sand' });
-    root.addChild(arch);
-
-    const tex = gameTexture(npc.portrait);
-    if (isTextureReady(tex)) {
-      const spr = new PIXI.Sprite(tex);
-      fitSpriteInBox(spr, faceW - 8, faceH - 6);
-      spr.anchor.set(0.5, 1);
-      spr.position.set(faceX + faceW / 2, bodyTop + faceH - 2);
-      spr.eventMode = 'none';
-      const clip = new PIXI.Graphics();
-      clip.beginFill(0xffffff);
-      clip.drawRoundedRect(faceX + 2, bodyTop + 2, faceW - 4, faceH - 4, 11);
-      clip.endFill();
-      spr.mask = clip;
-      root.addChild(clip, spr);
-    }
-
-    const actW = 146;
-    const actX = x + width - actW - 12;
-
+    // 底部操作按钮行（x: 28..584，高 56）
+    const btnY = 308;
+    const btnH = 56;
+    const leftBtnW = 166;
     if (canRefresh) {
       const refreshBtn = makeAdButton({
         label: '换一单',
-        width: actW,
-        height: 42,
+        width: leftBtnW,
+        height: btnH,
         skin: 'cream',
-        textColor: INK,
+        textColor: SCENE_INK.ink,
         badge: `免冷·${refreshLeft}`,
         onReady: this._scheduleRelayout,
       });
-      refreshBtn.position.set(actX, bodyTop + 4);
+      refreshBtn.position.set(28, btnY);
       refreshBtn.on('pointertap', () => {
         if (this._adBusy) return;
         this._adBusy = true;
@@ -317,220 +501,271 @@ export class OrderPanel extends PIXI.Container {
           },
         );
       });
-      root.addChild(refreshBtn);
+      slip.addChild(refreshBtn);
     } else {
-      const drop = makeSlicedButton({
-        label: '放弃',
-        width: actW,
-        height: 42,
+      const dropBtn = makeSlicedButton({
+        label: '婉拒此单',
+        width: leftBtnW,
+        height: btnH,
         skin: 'cream',
-        textColor: INK,
+        textColor: SCENE_INK.soft,
+        fontSize: 25,
         onReady: this._scheduleRelayout,
       });
-      drop.position.set(actX, bodyTop + 4);
-      drop.on('pointertap', () => {
+      dropBtn.position.set(28, btnY);
+      dropBtn.on('pointertap', () => {
         KitchenManager.abandonNeighborOrder(order.id);
         this._inspect = null;
         if (this._isOpen) this.relayout();
       });
-      root.addChild(drop);
+      slip.addChild(dropBtn);
     }
 
-    // Center Unified Recessed Tray: Dish Tile + Required Ingredients / Ready Status
-    const colX = faceX + faceW + 12;
-    const trayW = actX - colX - 12;
-    const trayH = 82;
-    const trayY = bodyTop + 4;
-    const tray = new PIXI.Graphics();
-    drawSectionTray(tray, colX, trayY, trayW, trayH, {
-      radius: 13,
-      tone: have > 0 ? 'sage' : 'sand',
-    });
-    root.addChild(tray);
-
-    const dishSize = 66;
-    root.addChild(this._dishTile(order, colX + 8, trayY + 8, dishSize));
-
-    const innerX = colX + 8 + dishSize + 10;
-    const missing = recipeNeeds(view, order.recipeId).filter((row) => row.have < row.need);
-    if (have > 0) {
-      const readyTitle = makeLabel('✓ 菜已备好', 18, OLIVE, { fontWeight: '700' });
-      readyTitle.position.set(innerX, trayY + 16);
-      const readySub = makeLabel(canDouble ? '可双倍领谢礼' : '点交菜立领赏金', 15, 0x55734A, { fontWeight: '700' });
-      readySub.position.set(innerX, trayY + 45);
-      root.addChild(readyTitle, readySub);
-    } else if (missing.length) {
-      const lackTag = makeLabel('缺料', 16, 0x7A5B40, { fontWeight: '700' });
-      lackTag.anchor.set(0.5);
-      lackTag.position.set(innerX + 18, trayY + trayH / 2);
-      root.addChild(lackTag);
-      let usedX = innerX + 42;
-      const slotS = 62;
-      for (const row of missing) {
-        if (usedX + slotS > colX + trayW - 6) break;
-        root.addChild(this._needTile(usedX, trayY + Math.round((trayH - slotS) / 2), slotS, row.iconId, row.have, row.need));
-        usedX += slotS + 6;
-      }
-    } else {
-      const ready = makeLabel('食材齐备', 18, OLIVE, { fontWeight: '700' });
-      ready.anchor.set(0, 0.5);
-      ready.position.set(innerX, trayY + trayH / 2);
-      root.addChild(ready);
-      const cook = makeSlicedButton({
-        label: '去做菜',
-        width: 106,
-        height: 42,
-        skin: 'terracotta',
-        textColor: 0xFFF8F0,
-        fontSize: 18,
-        onReady: this._scheduleRelayout,
-      });
-      cook.position.set(innerX + Math.ceil(ready.width) + 10, trayY + Math.round((trayH - 42) / 2));
-      cook.on('pointertap', () => {
-        this.onCook?.(order.recipeId);
-      });
-      root.addChild(cook);
-    }
-
-    // Bottom Structured Reward Strip aligned cleanly with tray
-    const chips = neighborRewardChips(neighborOrderReward(order));
-    if (chips.length) {
-      const strip = makeRewardStrip(chips, this._scheduleRelayout, '谢礼', 'paper');
-      strip.position.set(colX, bodyTop + trayH + 18);
-      root.addChild(strip);
-    }
-
-    const submitNormal = (doubled: boolean): void => {
+    const submitOrder = (doubled: boolean, fromX: number): void => {
+      const from = this._toStage(x + fromX, y + btnY + btnH / 2);
       const gain = KitchenManager.submitNeighborOrder(order.id, { doubled });
       if (!gain) return;
       this._inspect = null;
-      const from = { x: Game.designWidth / 2, y: Math.round(Game.logicHeight * 0.42) };
       if (KitchenManager.liveNeighborOrders().length) this.relayout();
       else this.close(true);
       playRewardCollect({ ...gain, from });
     };
 
-    const btn = makeSlicedButton({
-      label: '交菜',
-      width: actW,
-      height: 44,
-      skin: have > 0 ? 'olive' : 'cream',
-      textColor: have > 0 ? 0xFFF8F0 : 0x8A7358,
-      onReady: this._scheduleRelayout,
-    });
-    btn.position.set(actX, bodyTop + 56);
-    btn.on('pointertap', () => submitNormal(false));
-    root.addChild(btn);
+    const rightStart = 208;
+    const rightSpan = headRight - rightStart; // 378px
+    if (have > 0) {
+      if (canDouble) {
+        const subW = 170;
+        const dblW = rightSpan - subW - 12; // 196px
+        const subBtn = makeSlicedButton({
+          label: '交菜',
+          width: subW,
+          height: btnH,
+          skin: 'olive',
+          fontSize: 28,
+          onReady: this._scheduleRelayout,
+        });
+        subBtn.position.set(rightStart, btnY);
+        subBtn.on('pointertap', () => submitOrder(false, rightStart + subW / 2));
 
-    if (canDouble) {
-      const dblBtn = makeAdButton({
-        label: '双倍交菜',
-        width: actW,
-        height: 46,
-        skin: 'gold',
-        disabled: have <= 0,
-        badge: `×2·剩${doubleLeft}`,
+        const dblBtn = makeAdButton({
+          label: '双倍交菜',
+          width: dblW,
+          height: btnH,
+          skin: 'gold',
+          badge: `×2·剩${doubleLeft}`,
+          onReady: this._scheduleRelayout,
+        });
+        dblBtn.position.set(rightStart + subW + 12, btnY);
+        dblBtn.on('pointertap', () => {
+          if (this._adBusy) return;
+          this._adBusy = true;
+          Platform.showRewardedVideo(
+            'order_double',
+            () => {
+              this._adBusy = false;
+              submitOrder(true, rightStart + subW + 12 + dblW / 2);
+            },
+            () => {
+              this._adBusy = false;
+            },
+          );
+        });
+        slip.addChild(subBtn, dblBtn);
+      } else {
+        const subBtn = makeSlicedButton({
+          label: '交菜领礼',
+          width: rightSpan,
+          height: btnH,
+          skin: 'olive',
+          fontSize: 28,
+          onReady: this._scheduleRelayout,
+        });
+        subBtn.position.set(rightStart, btnY);
+        subBtn.on('pointertap', () => submitOrder(false, rightStart + rightSpan / 2));
+        slip.addChild(subBtn);
+      }
+    } else {
+      const cookW = 222;
+      const subW = rightSpan - cookW - 12; // 144px
+      const cookBtn = makeSlicedButton({
+        label: missing.length === 0 ? '去做菜' : '去灶台看',
+        width: cookW,
+        height: btnH,
+        skin: 'terracotta',
+        fontSize: 27,
         onReady: this._scheduleRelayout,
       });
-      dblBtn.position.set(actX, bodyTop + 112);
-      dblBtn.on('pointertap', () => {
-        if (this._adBusy) return;
-        if (have <= 0) {
-          AudioManager.play('ui_deny');
-          Platform.showToast('先把这道菜做出来放冰箱，就能双倍交单！');
-          return;
-        }
-        this._adBusy = true;
-        Platform.showRewardedVideo(
-          'order_double',
-          () => {
-            this._adBusy = false;
-            submitNormal(true);
-          },
-          () => {
-            this._adBusy = false;
-          },
-        );
+      cookBtn.position.set(rightStart, btnY);
+      cookBtn.on('pointertap', () => {
+        this.onCook?.(order.recipeId);
       });
-      root.addChild(dblBtn);
+
+      const subBtn = makeSlicedButton({
+        label: '交菜',
+        width: subW,
+        height: btnH,
+        skin: 'cream',
+        textColor: 0x8A7358,
+        fontSize: 26,
+        onReady: this._scheduleRelayout,
+      });
+      subBtn.position.set(rightStart + cookW + 12, btnY);
+      subBtn.on('pointertap', () => submitOrder(false, rightStart + cookW + 12 + subW / 2));
+      slip.addChild(cookBtn, subBtn);
     }
+  }
+
+  // ── 拍立得相框 + 街坊肖像 + 相纸手写署名 ─────────────────────────────────
+  private _makePolaroid(npc: NeighborNpc, photoW: number): PIXI.Container {
+    const root = new PIXI.Container();
+    root.eventMode = 'none';
+    const s = photoW / 220;
+    const photoH = Math.round(252 * s);
+    const tilt = -0.113; // 对应原图 220×252 预倾斜角 -6.5°
+
+    const frameSp = sceneSprite(ART.photo, photoW, photoH);
+    if (frameSp) {
+      root.addChild(frameSp);
+    } else {
+      const fb = new PIXI.Graphics();
+      fb.lineStyle(3, SCENE_INK.ink, 1);
+      fb.beginFill(0xFAF0DC, 1);
+      fb.drawRoundedRect(6, 16, photoW - 12, photoH - 20, 6);
+      fb.endFill();
+      root.addChild(fb);
+    }
+
+    // 相纸内窗精确四角（原图 220×252：(21,48)-(179,30)-(196,185)-(37,204)）
+    const p1x = 21 * s; const p1y = 48 * s;
+    const p2x = 179 * s; const p2y = 30 * s;
+    const p3x = 196 * s; const p3y = 185 * s;
+    const p4x = 37 * s; const p4y = 204 * s;
+
+    const backdrop = new PIXI.Graphics();
+    backdrop.beginFill(0xF6E8CE, 1);
+    backdrop.moveTo(p1x, p1y);
+    backdrop.lineTo(p2x, p2y);
+    backdrop.lineTo(p3x, p3y);
+    backdrop.lineTo(p4x, p4y);
+    backdrop.closePath();
+    backdrop.endFill();
+    root.addChild(backdrop);
+
+    const npcTex = gameTexture(npc.portrait);
+    if (isTextureReady(npcTex)) {
+      const clip = new PIXI.Graphics();
+      clip.beginFill(0xffffff, 1);
+      clip.moveTo(p1x, p1y);
+      clip.lineTo(p2x, p2y);
+      clip.lineTo(p3x, p3y);
+      clip.lineTo(p4x, p4y);
+      clip.closePath();
+      clip.endFill();
+
+      const spr = new PIXI.Sprite(npcTex);
+      fitSpriteInBox(spr, 164 * s, 164 * s);
+      spr.anchor.set(0.5, 1);
+      spr.rotation = tilt;
+      spr.position.set(117 * s, 196 * s);
+      spr.mask = clip;
+      spr.eventMode = 'none';
+      root.addChild(clip, spr);
+    }
+
+    const rim = new PIXI.Graphics();
+    rim.lineStyle(1.8, 0x3F2E1E, 0.9);
+    rim.moveTo(p1x, p1y);
+    rim.lineTo(p2x, p2y);
+    rim.lineTo(p3x, p3y);
+    rim.lineTo(p4x, p4y);
+    rim.closePath();
+    root.addChild(rim);
+
+    // 相纸底栏手写街坊名字
+    const nameTxt = makeText('heading', npc.name, SCENE_INK.ink, { size: 23 });
+    nameTxt.anchor.set(0.5);
+    nameTxt.rotation = tilt;
+    nameTxt.position.set(118 * s, 222 * s);
+    fitTextWidth(nameTxt, 148 * s);
+    root.addChild(nameTxt);
+
     return root;
   }
 
-  private _dishTile(order: NeighborOrder, x: number, y: number, size: number): PIXI.Container {
-    const root = new PIXI.Container();
-    const recipe = recipeById(order.recipeId);
-    const plate = new PIXI.Graphics();
-    drawItemSlotBox(plate, x, y, size, size, { radius: 11, rarity: recipe?.rarity ?? 'common' });
-    root.addChild(plate);
-    const dishTex = dishTexture(order.recipeId);
-    if (isTextureReady(dishTex)) {
-      const dish = new PIXI.Sprite(dishTex);
-      fitSpriteInBox(dish, size - 10, size - 10);
-      dish.anchor.set(0.5);
-      dish.position.set(x + size / 2, y + size / 2 - 1);
-      dish.eventMode = 'none';
-      root.addChild(dish);
+  private _makeClickableNeeds(
+    needs: Array<{ iconId: string; have: number; need: number }>,
+    maxW: number,
+  ): PIXI.Container {
+    const wrap = new PIXI.Container();
+    let x = 0;
+    const iconS = 42;
+    for (const item of needs) {
+      const ok = item.have >= item.need;
+      const g = new PIXI.Container();
+      const sp = sceneSprite(resolveItemAssetPath(item.iconId), iconS, iconS);
+      if (sp) {
+        sp.anchor.set(0.5);
+        sp.position.set(iconS / 2, 0);
+        g.addChild(sp);
+      }
+      const cnt = makeText('number', `${item.have}/${item.need}`, ok ? SCENE_INK.green : SCENE_INK.red, {
+        size: 24,
+      });
+      cnt.anchor.set(0, 0.5);
+      cnt.position.set(iconS + 4, 1);
+      g.addChild(cnt);
+
+      const cellW = iconS + 4 + Math.ceil(cnt.width);
+      g.position.set(x, 0);
+      g.eventMode = 'static';
+      g.cursor = 'pointer';
+      g.hitArea = new PIXI.Rectangle(-4, -24, cellW + 8, 48);
+      g.on('pointertap', (e) => {
+        e.stopPropagation();
+        const v = inspectFromItem(item.iconId);
+        if (!v) return;
+        AudioManager.play('ui_click');
+        this._inspect = v;
+        this.relayout();
+      });
+      wrap.addChild(g);
+      x += cellW + 14;
     }
-
-    root.eventMode = 'static';
-    root.cursor = 'pointer';
-    root.hitArea = new PIXI.Rectangle(x, y, size, size);
-    root.on('pointertap', (e) => {
-      e.stopPropagation();
-      const view = inspectFromRecipe(order.recipeId);
-      if (!view) return;
-      AudioManager.play('ui_click');
-      this._inspect = view;
-      this.relayout();
-    });
-    return root;
-  }
-
-  private _needTile(x: number, y: number, size: number, iconId: string, have: number, need: number): PIXI.Container {
-    const root = new PIXI.Container();
-    const plate = new PIXI.Graphics();
-    drawItemSlotBox(plate, x, y, size, size, { radius: 10, dimmed: have < need });
-    root.addChild(plate);
-    const iconTex = itemTexture(iconId);
-    if (isTextureReady(iconTex)) {
-      const icon = new PIXI.Sprite(iconTex);
-      fitSpriteInBox(icon, size - 12, size - 12);
-      icon.anchor.set(0.5);
-      icon.position.set(x + size / 2, y + size / 2 - 2);
-      icon.eventMode = 'none';
-      root.addChild(icon);
+    const totalW = Math.max(0, x - 14);
+    if (totalW > maxW && maxW > 60) {
+      wrap.scale.set(maxW / totalW);
     }
-
-    const badge = makeSlotBadge(`${have}/${need}`, have >= need ? 'olive' : 'lack', 13);
-    badge.node.position.set(x + size - badge.w - 2, y + size - badge.h - 2);
-    root.addChild(badge.node);
-
-    root.eventMode = 'static';
-    root.cursor = 'pointer';
-    root.hitArea = new PIXI.Rectangle(x, y, size, size);
-    root.on('pointertap', (e) => {
-      e.stopPropagation();
-      const view = inspectFromItem(iconId);
-      if (!view) return;
-      AudioManager.play('ui_click');
-      this._inspect = view;
-      this.relayout();
-    });
-    return root;
+    return wrap;
   }
 
   private _armTimer(): void {
     this._clearTimer();
-    this._timer = globalThis.setInterval(() => {
-      if (!this._isOpen || this._inspect) return;
-      KitchenManager.sweepNeighborOrders();
-      this.relayout();
-    }, 1000) as unknown as number;
+    this._timer = setInterval(() => {
+      if (!this._isOpen) return;
+      const now = Date.now();
+      let anyExpired = false;
+      for (const item of this._liveTimers) {
+        if (item.textNode.destroyed) continue;
+        const remain = item.expiresAt - now;
+        if (remain <= 0) {
+          anyExpired = true;
+          break;
+        }
+        item.textNode.text = formatOrderRemain(remain);
+        item.textNode.style.fill = remain < 15 * 60 * 1000 ? SCENE_INK.red : SCENE_INK.muted;
+      }
+      if (anyExpired && !this._adBusy) {
+        KitchenManager.sweepNeighborOrders();
+        if (this._isOpen) this.relayout();
+      }
+    }, 1000);
   }
 
   private _clearTimer(): void {
-    if (this._timer) globalThis.clearInterval?.(this._timer);
-    this._timer = 0;
+    if (this._timer) {
+      clearInterval(this._timer);
+      this._timer = null;
+    }
   }
 }

@@ -58,7 +58,7 @@
       },
       {
         "type": "glob",
-        "value": "subpkg_images/special_*.jpg"
+        "value": "subpkg_images/special_*"
       },
       {
         "type": "glob",
@@ -67,6 +67,10 @@
       {
         "type": "glob",
         "value": "subpkg_images/npc_*.png"
+      },
+      {
+        "type": "glob",
+        "value": "subpkg_images/scene_*.png"
       },
       {
         "type": "glob",
@@ -222,6 +226,18 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/dest_field_night.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dest_futou.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dest_guoyuan.jpg"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/dest_heyan.jpg"
       },
       {
@@ -266,7 +282,19 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/dest_tiantou.jpg"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/dish_ants_tree.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_apple_ribs.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_asparagus_lamb.png"
       },
       {
         "type": "file",
@@ -275,6 +303,10 @@
       {
         "type": "file",
         "value": "subpkg_images/dish_bamboo_pork.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_bitter_egg.png"
       },
       {
         "type": "file",
@@ -295,6 +327,10 @@
       {
         "type": "file",
         "value": "subpkg_images/dish_braised_hairtail.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_braised_lamb.png"
       },
       {
         "type": "file",
@@ -342,6 +378,10 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/dish_coconut_chicken.png"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/dish_corn_egg.png"
       },
       {
@@ -358,6 +398,10 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/dish_dragon_beef.png"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/dish_dried_tofu_pork.png"
       },
       {
@@ -371,6 +415,10 @@
       {
         "type": "file",
         "value": "subpkg_images/dish_garlic_clam.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_garlic_okra.png"
       },
       {
         "type": "file",
@@ -398,11 +446,23 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/dish_hawthorn_ribs.png"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/dish_home_tofu.png"
       },
       {
         "type": "file",
+        "value": "subpkg_images/dish_lemon_bass.png"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/dish_lettuce_salad.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_loofah_soup.png"
       },
       {
         "type": "file",
@@ -411,6 +471,14 @@
       {
         "type": "file",
         "value": "subpkg_images/dish_lotus_shrimp_box.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_lychee_ribs.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_mango_shrimp.png"
       },
       {
         "type": "file",
@@ -454,11 +522,31 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/dish_orange_wings.png"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/dish_oyster_egg.png"
       },
       {
         "type": "file",
         "value": "subpkg_images/dish_pan_hairtail.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_papaya_fish.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_pea_shrimp.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_pear_shrimp.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_pear_tremella.png"
       },
       {
         "type": "file",
@@ -471,6 +559,10 @@
       {
         "type": "file",
         "value": "subpkg_images/dish_perilla_cucumber.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_pineapple_pork.png"
       },
       {
         "type": "file",
@@ -519,6 +611,14 @@
       {
         "type": "file",
         "value": "subpkg_images/dish_sprout_chive.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_squid_stir.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/dish_steam_bass.png"
       },
       {
         "type": "file",
@@ -686,11 +786,23 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/market_card_tiantou_meat.jpg"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/market_cards.jpg"
       },
       {
         "type": "file",
         "value": "subpkg_images/market_cards_dukou.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_cards_futou.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_cards_guoyuan.jpg"
       },
       {
         "type": "file",
@@ -722,6 +834,10 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/market_cards_tiantou.jpg"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/market_overview.jpg"
       },
       {
@@ -731,6 +847,30 @@
       {
         "type": "file",
         "value": "subpkg_images/market_route_dukou.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_route_futou.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_route_futou_pier.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_route_futou_store.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_route_guoyuan.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_route_guoyuan_glass.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_route_guoyuan_orchard.jpg"
       },
       {
         "type": "file",
@@ -790,6 +930,26 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/market_route_tiantou.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_route_tiantou_pen.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/market_route_tiantou_ridge.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/npc_futou_hai.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/npc_guoyuan_tao.png"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/npc_heyan_uncle.png"
       },
       {
@@ -826,6 +986,10 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/npc_tiantou_zhou.png"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/npc_vendor.png"
       },
       {
@@ -834,7 +998,127 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/scene_cat_bowl.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_cat_bubble.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_cat_heart_tag.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_cat_mat.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_cat_nook_wall.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_cat_paw.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_club_basket.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_club_board.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_club_note.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_dex_book.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_dex_photo.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_dex_spot.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_dex_tab.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_dex_washi.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_fridge_tray.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_gacha_cushion.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_gacha_wall.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_menu_wall.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_order_photo.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_order_slip.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_order_wall.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_pk_cellar_wall.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_pk_hourglass.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_pk_ink_divider.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_pk_plaque.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_pk_plate.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_pk_recipe_sheet.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_pk_seal.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/scene_pk_tag_h.png"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/special_dry_bg.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/special_field_night_bg.jpg"
       },
       {
         "type": "file",
@@ -867,6 +1151,30 @@
       {
         "type": "file",
         "value": "subpkg_images/stall_pile_fish.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_futou_egg.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_futou_fish.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_futou_root.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_guoyuan_egg.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_guoyuan_leaf.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_guoyuan_root.png"
       },
       {
         "type": "file",
@@ -1026,6 +1334,18 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/stall_pile_tiantou_egg.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_tiantou_leaf.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_pile_tiantou_meat.png"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/stall_rummage_dukou_egg.jpg"
       },
       {
@@ -1039,6 +1359,30 @@
       {
         "type": "file",
         "value": "subpkg_images/stall_rummage_fish.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_futou_egg.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_futou_fish.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_futou_root.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_guoyuan_egg.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_guoyuan_leaf.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_guoyuan_root.jpg"
       },
       {
         "type": "file",
@@ -1207,6 +1551,18 @@
       {
         "type": "file",
         "value": "subpkg_images/stall_rummage_shanzhen_treasure.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_tiantou_egg.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_tiantou_leaf.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/stall_rummage_tiantou_meat.jpg"
       }
     ],
     "include": []

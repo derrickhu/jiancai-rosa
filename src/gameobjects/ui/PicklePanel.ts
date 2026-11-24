@@ -62,14 +62,14 @@ import {
 
 /** 老坛场景贴图：一面木墙 + 搁板 + 钉在墙上的配方纸，所有元素放进同一个场景里。 */
 const ART = {
-  wall: 'subpkg_kitchen/pk_cellar_wall.png',
-  sheet: 'subpkg_kitchen/pk_recipe_sheet.png',
-  plate: 'subpkg_kitchen/pk_plate.png',
-  tag: 'subpkg_kitchen/pk_tag_h.png',
-  seal: 'subpkg_kitchen/pk_seal.png',
-  plaque: 'subpkg_kitchen/pk_plaque.png',
-  hourglass: 'subpkg_kitchen/pk_hourglass.png',
-  divider: 'subpkg_kitchen/pk_ink_divider.png',
+  wall: 'subpkg_images/scene_pk_cellar_wall.png',
+  sheet: 'subpkg_images/scene_pk_recipe_sheet.png',
+  plate: 'subpkg_images/scene_pk_plate.png',
+  tag: 'subpkg_images/scene_pk_tag_h.png',
+  seal: 'subpkg_images/scene_pk_seal.png',
+  plaque: 'subpkg_images/scene_pk_plaque.png',
+  hourglass: 'subpkg_images/scene_pk_hourglass.png',
+  divider: 'subpkg_images/scene_pk_ink_divider.png',
 } as const;
 
 const INK = 0x2A2018;

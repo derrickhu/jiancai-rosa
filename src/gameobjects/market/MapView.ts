@@ -2,7 +2,7 @@ import * as PIXI from 'pixi.js';
 import { LANES, cardHint, cardName, isMysteryCard, type CardKind, type MarketId, type StallId } from '@/sim';
 import type { RouteOption } from '@/managers/RunManager';
 import { fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from '@/utils/assets';
-import { HUD_ICON, makeLabel } from '@/utils/ui';
+import { HUD_ICON, fitTextWidth, makeText } from '@/utils/ui';
 
 export const CARD_FRAME = 'subpkg_images/ui_card_frame.png';
 export const CARD_ATLAS = 'subpkg_images/market_cards.jpg';
@@ -13,6 +13,10 @@ const WIN = { x: 0.0727, y: 0.2333, w: 0.8545, h: 0.7034 };
 
 const ATLAS_COLS = 4;
 const ATLAS_ROWS = 3;
+
+const INK = 0x2A2018;
+const RED_INK = 0xB8361F;
+const GREEN_INK = 0x2F6E2A;
 
 /** 图集格位：叶菜/根茎/蛋豆/水产/岔路/死胡同/白捡/收费摊/空摊/人情/深处/背面。 */
 const STALL_SLOT: Record<StallId, number> = { leaf: 0, root: 1, egg: 2, fish: 3, meat: 2 };
@@ -34,6 +38,21 @@ const KIND_SLOT: Record<CardKind, number> = {
 const BACK_SLOT = 11;
 
 const _slots = new Map<string, PIXI.Texture>();
+const _mapWatched = new Set<string>();
+let _latestMapReady: (() => void) | undefined;
+
+function watchMapTex(path: string, onReady?: () => void): void {
+  if (!onReady || !path) return;
+  _latestMapReady = onReady;
+  const tex = gameTexture(path);
+  if (isTextureReady(tex)) return;
+  if (_mapWatched.has(path)) return;
+  _mapWatched.add(path);
+  whenTextureReady(path, () => {
+    _mapWatched.delete(path);
+    _latestMapReady?.();
+  });
+}
 
 function slotTexture(atlas: string, slot: number): PIXI.Texture | null {
   const key = `${atlas}#${slot}`;
@@ -45,7 +64,6 @@ function slotTexture(atlas: string, slot: number): PIXI.Texture | null {
   const ch = tex.height / ATLAS_ROWS;
   const col = slot % ATLAS_COLS;
   const row = Math.floor(slot / ATLAS_COLS);
-  // 内缩 1px，躲开 JPEG 在格子边界上的溢色
   const frame = new PIXI.Rectangle(col * cw + 1, row * ch + 1, cw - 2, ch - 2);
   const sub = new PIXI.Texture(tex.baseTexture, frame);
   _slots.set(key, sub);
@@ -72,95 +90,107 @@ function canChallengeSteelyard(opt: RouteOption): boolean {
   return isRummageOption(opt) && opt.fee > 0 && !opt.steelyardDone;
 }
 
-/** 卡面下沿：收费摊的价写在图上方空白处，这里只留件数或进不去的理由。 */
+/** 卡面下沿宣纸签：只留件数或进不去的简明理由。 */
 function infoLine(opt: RouteOption): string {
   if (!opt.revealed) return cardHint(opt.node, false);
   if (isRummageOption(opt)) {
     const stock = `剩 ${opt.left} 件`;
-    if (opt.waived) return `免单白翻 · ${stock}`;
-    if (opt.fee > 0 && !opt.steelyardDone) return `老杆秤减免 · ${stock}`;
+    if (opt.waived) return `免单 · ${stock}`;
+    if (opt.fee > 0 && !opt.steelyardDone) return `可称重 · ${stock}`;
     return opt.fee > 0 ? stock : `免费 · ${stock}`;
   }
   return cardHint(opt.node, true);
 }
 
-/** 卡面图上方价签：奶油底，钱不够时数字改红。原点在左中。 */
+/** 卡面牛皮宣纸价签（铜钉固定，钱不够改朱红墨字）。原点在左中。 */
 function makeFeeMark(fee: number, broke: boolean, size: number, onReady?: () => void): PIXI.Container {
   const root = new PIXI.Container();
   root.eventMode = 'none';
-  const num = makeLabel(String(fee), size, broke ? 0xC44A3A : 0x8B5A2B, {
-    fontWeight: '700',
-    stroke: 0xFFF6E8,
-    strokeThickness: Math.max(3, Math.round(size * 0.16)),
+  const fSize = Math.max(20, size);
+  const num = makeText('number', String(fee), broke ? RED_INK : INK, {
+    size: fSize,
+    stroke: 0xFFFBF0,
+    strokeWidth: 3,
   });
   num.anchor.set(0, 0.5);
-  const iconSize = Math.round(size * 0.95);
-  whenTextureReady(HUD_ICON.coin, () => onReady?.());
+  const iconSize = Math.round(fSize * 1.02);
+  watchMapTex(HUD_ICON.coin, onReady);
   const coin = new PIXI.Sprite(gameTexture(HUD_ICON.coin));
   const hasCoin = isTextureReady(coin.texture);
   if (hasCoin) fitSpriteInBox(coin, iconSize, iconSize);
   coin.anchor.set(0, 0.5);
   coin.eventMode = 'none';
-  const gap = Math.max(2, Math.round(size * 0.1));
-  const padX = Math.round(size * 0.32);
-  const padY = Math.round(size * 0.14);
-  const inner = num.width + (hasCoin ? gap + iconSize : 0);
+  const gap = 4;
+  const padX = 12;
+  const padY = 5;
+  const inner = (hasCoin ? iconSize + gap : 0) + num.width;
   const bw = inner + padX * 2;
   const bh = Math.max(iconSize, num.height) + padY * 2;
+
   const bg = new PIXI.Graphics();
-  bg.lineStyle(2, broke ? 0xC44A3A : 0xC4A574, 1);
-  bg.beginFill(broke ? 0xF3D2B4 : 0xFFF8F0, 0.94);
-  bg.drawRoundedRect(0, -bh / 2, bw, bh, bh / 2);
+  bg.beginFill(0x160E08, 0.22);
+  bg.drawRoundedRect(0, -bh / 2 + 2.5, bw, bh, 8);
   bg.endFill();
-  num.position.set(padX, 0);
-  coin.position.set(padX + num.width + gap, 0);
-  root.addChild(bg, num);
+  bg.lineStyle(2.2, broke ? RED_INK : INK, 1);
+  bg.beginFill(broke ? 0xFCE8E2 : 0xFAF0DA, 0.96);
+  bg.drawRoundedRect(0, -bh / 2, bw, bh, 8);
+  bg.endFill();
+
+  let x = padX;
+  if (hasCoin) {
+    coin.position.set(x, 0);
+    x += iconSize + gap;
+  }
+  num.position.set(x, 0);
+  root.addChild(bg);
   if (hasCoin) root.addChild(coin);
+  root.addChild(num);
   return root;
 }
 
-/** 人情免单：划掉原价，改挂绿色「免费」。 */
+/** 人情免单宣纸签：划掉原价，挂松绿「免单」。 */
 function makeWaivedMark(fee: number, size: number, onReady?: () => void): PIXI.Container {
   const root = new PIXI.Container();
   root.eventMode = 'none';
-  const old = makeLabel(String(fee), Math.round(size * 0.86), 0x8A6A40, {
-    fontWeight: '700',
-    stroke: 0xFFF6E8,
-    strokeThickness: Math.max(3, Math.round(size * 0.14)),
-  });
+  const fSize = Math.max(20, size);
+  const old = makeText('number', String(fee), 0x8A6A40, { size: fSize });
   old.anchor.set(0, 0.5);
   const strike = new PIXI.Graphics();
-  strike.lineStyle(2, 0xC44A3A, 0.95);
-  strike.moveTo(0, 0);
-  strike.lineTo(old.width, 0);
+  strike.lineStyle(2.4, RED_INK, 0.95);
+  strike.moveTo(-2, 0);
+  strike.lineTo(old.width + 2, 0);
   strike.eventMode = 'none';
   const oldWrap = new PIXI.Container();
   oldWrap.addChild(old, strike);
-  const free = makeLabel('免费', size, 0x3D7A38, {
+
+  const free = makeText('caption', '免单', GREEN_INK, {
+    size: fSize,
     fontWeight: '700',
-    stroke: 0xFFF6E8,
-    strokeThickness: Math.max(3, Math.round(size * 0.16)),
   });
   free.anchor.set(0, 0.5);
-  const iconSize = Math.round(size * 0.82);
-  whenTextureReady(HUD_ICON.coin, () => onReady?.());
+
+  const iconSize = Math.round(fSize * 0.9);
+  watchMapTex(HUD_ICON.coin, onReady);
   const coin = new PIXI.Sprite(gameTexture(HUD_ICON.coin));
   const hasCoin = isTextureReady(coin.texture);
   if (hasCoin) fitSpriteInBox(coin, iconSize, iconSize);
   coin.anchor.set(0, 0.5);
   coin.eventMode = 'none';
-  coin.alpha = 0.45;
-  const gap = Math.max(3, Math.round(size * 0.12));
-  const padX = Math.round(size * 0.28);
-  const padY = Math.round(size * 0.12);
-  const inner = old.width + gap + free.width + (hasCoin ? gap + iconSize : 0);
+  coin.alpha = 0.55;
+
+  const gap = 5;
+  const padX = 10;
+  const padY = 5;
+  const inner = (hasCoin ? iconSize + gap : 0) + old.width + gap + free.width;
   const bw = inner + padX * 2;
-  const bh = Math.max(iconSize, old.height, free.height) + padY * 2;
+  const bh = Math.max(iconSize, free.height) + padY * 2;
+
   const bg = new PIXI.Graphics();
-  bg.lineStyle(2, 0x6BA368, 1);
-  bg.beginFill(0xF3F6E8, 0.94);
-  bg.drawRoundedRect(0, -bh / 2, bw, bh, bh / 2);
+  bg.lineStyle(2.2, GREEN_INK, 1);
+  bg.beginFill(0xF1F8EC, 0.96);
+  bg.drawRoundedRect(0, -bh / 2, bw, bh, 8);
   bg.endFill();
+
   let x = padX;
   if (hasCoin) {
     coin.position.set(x, 0);
@@ -175,16 +205,14 @@ function makeWaivedMark(fee: number, size: number, onReady?: () => void): PIXI.C
   return root;
 }
 
-/** full 是脚下这排，peek/far 是前方，只看不点，越远越省字。 */
+/** full 是脚下这排，peek/far 是前方，只看不点，越远越清爽。 */
 export type CardMode = 'full' | 'peek' | 'far';
 
 export function makeRouteCard(opts: {
   option: RouteOption;
   width: number;
   mode?: CardMode;
-  /** 这个菜场自己的卡面图集。不传就用巷口那张。 */
   atlas?: string;
-  /** 有肉摊的菜场用独立卡面，不再借用蛋豆格。 */
   meatCard?: string;
   marketId?: MarketId;
   onReady?: () => void;
@@ -203,9 +231,9 @@ export function makeRouteCard(opts: {
       ? opts.meatCard
       : undefined;
 
-  whenTextureReady(CARD_FRAME, () => opts.onReady?.());
-  whenTextureReady(atlas, () => opts.onReady?.());
-  if (artPath) whenTextureReady(artPath, () => opts.onReady?.());
+  watchMapTex(CARD_FRAME, opts.onReady);
+  watchMapTex(atlas, opts.onReady);
+  if (artPath) watchMapTex(artPath, opts.onReady);
 
   const winX = Math.round(width * WIN.x);
   const winY = Math.round(height * WIN.y);
@@ -241,7 +269,6 @@ export function makeRouteCard(opts: {
     sp.width = winW;
     sp.height = winH;
     sp.eventMode = 'none';
-    // 进不去的卡压灰，但照旧看得见是什么
     if (locked) sp.tint = 0x8A8073;
     root.addChild(sp);
   } else {
@@ -271,54 +298,75 @@ export function makeRouteCard(opts: {
     root.addChild(edge);
   }
 
-  const showFee = option.revealed && (option.fee > 0 || option.waived);
-  const titleSize = Math.round(width * (mode === 'far' ? 0.15 : 0.125));
-  const title = makeLabel(cardName(option.node, option.revealed, opts.marketId), titleSize, 0xF6EDE0, {
-    fontWeight: '700',
-    dropShadow: true,
-    dropShadowColor: 0x2A2018,
-    dropShadowDistance: 2,
-    dropShadowBlur: 2,
-    dropShadowAlpha: 0.6,
+  // ── 顶部胡桃木匾摊位名（大字清晰描边，超宽自动等比收拢，不糊不溢） ───────
+  const titleSize = Math.max(22, Math.round(width * 0.135));
+  const title = makeText('heading', cardName(option.node, option.revealed, opts.marketId), 0xFFF7E6, {
+    size: titleSize,
+    stroke: 0x241408,
+    strokeWidth: 4,
   });
   title.anchor.set(0.5);
-  title.position.set(width / 2, height * 0.115);
+  fitTextWidth(title, width * 0.82);
+  title.position.set(width / 2, height * 0.118);
   root.addChild(title);
+
+  // ── 收费/免单宣纸价签 ───────────────────────────────────────────────────
+  const showFee = option.revealed && (option.fee > 0 || option.waived);
   if (showFee) {
     const mark = option.waived
-      ? makeWaivedMark(
-        option.listedFee,
-        Math.round(width * (mode === 'far' ? 0.11 : 0.092)),
-        opts.onReady,
-      )
-      : makeFeeMark(
-        option.fee,
-        feeBroke(option),
-        Math.round(width * (mode === 'far' ? 0.12 : 0.1)),
-        opts.onReady,
-      );
-    mark.position.set(Math.round((width - mark.width) / 2), winY + Math.round(winH * 0.09));
+      ? makeWaivedMark(option.listedFee, Math.max(20, Math.round(width * 0.105)), opts.onReady)
+      : makeFeeMark(option.fee, feeBroke(option), Math.max(20, Math.round(width * 0.11)), opts.onReady);
+    if (mark.width > winW - 10) mark.scale.set((winW - 10) / mark.width);
+    const mw = mark.width;
+    mark.position.set(Math.round((width - mw) / 2), winY + Math.round(winH * 0.11));
     root.addChild(mark);
   }
 
-  if (mode !== 'far') {
-    const stripH = Math.round(height * 0.115);
-    const stripY = height - stripH - Math.round(height * 0.055);
+  // ── 底部宣纸状态条（彻底去掉旧版半透明黑底胶囊！仅近排与关键中排显示宣纸条） ──
+  if (mode === 'full') {
+    const stripH = Math.max(36, Math.round(height * 0.12));
+    const stripY = height - stripH - Math.round(height * 0.052);
+    const sx = winX + 6;
+    const sw = winW - 12;
+
     const strip = new PIXI.Graphics();
-    strip.beginFill(locked ? 0x7A2E24 : 0x2A2018, 0.78);
-    strip.drawRoundedRect(winX + 4, stripY, winW - 8, stripH, stripH / 2);
+    strip.beginFill(0x160E08, 0.24);
+    strip.drawRoundedRect(sx, stripY + 2.5, sw, stripH, 7);
     strip.endFill();
+    strip.lineStyle(2, locked ? RED_INK : 0x5A3D24, 0.95);
+    strip.beginFill(locked ? 0xFCE8E2 : 0xFAF0DA, 0.96);
+    strip.drawRoundedRect(sx, stripY, sw, stripH, 7);
+    strip.endFill();
+    // Brass pin accents on left/right of paper slip
+    for (const px of [sx + 8, sx + sw - 8]) {
+      strip.lineStyle(0);
+      strip.beginFill(locked ? RED_INK : 0xC69548, 0.85);
+      strip.drawCircle(px, stripY + stripH / 2, 2.5);
+      strip.endFill();
+    }
     strip.eventMode = 'none';
     root.addChild(strip);
 
-    const info = makeLabel(
-      option.blocked && !feeBroke(option) ? option.blocked : infoLine(option),
-      Math.round(width * 0.085),
-      locked ? 0xFFD8CE : 0xF4EFE6,
-      { fontWeight: '600' },
-    );
+    const copy = option.blocked && !feeBroke(option) ? option.blocked : infoLine(option);
+    const info = makeText('caption', copy, locked ? RED_INK : INK, {
+      size: 21,
+      fontWeight: '700',
+    });
     info.anchor.set(0.5);
-    info.position.set(width / 2, stripY + stripH / 2);
+    fitTextWidth(info, sw - 26);
+    info.position.set(width / 2, stripY + stripH / 2 - 0.5);
+    root.addChild(info);
+  } else if (mode === 'peek' && option.revealed) {
+    const copy = option.blocked && !feeBroke(option) ? option.blocked : infoLine(option);
+    const info = makeText('caption', copy, locked ? 0xFFD8CE : 0xFFF8EC, {
+      size: 20,
+      fontWeight: '700',
+      stroke: 0x241408,
+      strokeWidth: 4,
+    });
+    info.anchor.set(0.5, 1);
+    fitTextWidth(info, winW - 12);
+    info.position.set(width / 2, winY + winH - 6);
     root.addChild(info);
   }
 
@@ -329,8 +377,7 @@ export function makeRouteCard(opts: {
     root.hitArea = new PIXI.Rectangle(0, 0, width, height);
     if (!locked && opts.onTap) root.on('pointertap', opts.onTap);
   } else {
-    // 前方的卡是情报不是按钮，压暗并且不吃点击
-    root.alpha = mode === 'peek' ? 0.9 : 0.74;
+    root.alpha = mode === 'peek' ? 0.92 : 0.76;
     root.eventMode = 'none';
   }
   return root;
@@ -355,36 +402,26 @@ function laneCenter(viewWidth: number, lane: number, slots = LANES): number {
 
 export interface RouteCell {
   option: RouteOption;
-  /** 卡片外壳，原点在卡中心，动画直接改它的 position / scale */
   card: PIXI.Container;
-  /** 车道中心的屏幕 x */
   cx: number;
-  /** 卡中心的屏幕 y，走路过渡要拿它当落点 */
   cy: number;
   top: number;
   bottom: number;
   width: number;
 }
 
-/** 交给场景做走路过渡：要按排拿到卡片本体和它该去的位置。 */
 export interface RouteMapView {
   root: PIXI.Container;
   links: PIXI.Graphics;
   rows: RouteCell[][];
 }
 
-/**
- * 脚下一排在最下，前方两排往上缩小。排间连线画出可达关系，
- * 玩家在点之前就能看出「走左边这张，最右边那张就够不着了」。
- */
 export function layoutRouteMap(opts: {
   rows: RouteOption[][];
   viewWidth: number;
   top: number;
-  /** 脚下那排卡的底线 */
   bottom: number;
   onPick: (nodeId: string) => void;
-  /** 全层进不去时让位给「绕过去」按钮，不画站位点 */
   showRoot?: boolean;
   atlas?: string;
   meatCard?: string;
@@ -403,7 +440,6 @@ export function layoutRouteMap(opts: {
     (room - ROW_GAP * (rows - 1))
     / (ROW_SCALES.slice(0, rows).reduce((a, b) => a + b, 0) * FRAME_RATIO),
   );
-  // 卡再窄就认不出缩略图了，到这条线才开始砍排
   const minBase = Math.round(opts.viewWidth * 0.245);
 
   let shown = Math.min(opts.rows.length, ROW_SCALES.length);
@@ -438,10 +474,9 @@ export function layoutRouteMap(opts: {
   }
 
   const lines = links;
-  // 底图明暗不定，米色线先垫一道深色描边才到处都看得见
   const linkPasses = [
-    { grow: 4, color: 0x2A2018, near: 0.45, far: 0.26 },
-    { grow: 0, color: 0xF4EFE6, near: 0.62, far: 0.38 },
+    { grow: 4, color: 0x2A2018, near: 0.48, far: 0.28 },
+    { grow: 0, color: 0xFAF0DA, near: 0.72, far: 0.42 },
   ];
   for (const pass of linkPasses) {
     for (let i = 0; i < placed.length - 1; i++) {
@@ -460,7 +495,7 @@ export function layoutRouteMap(opts: {
   if (opts.showRoot !== false) {
     const rootY = placed[0][0].bottom + 34;
     const cx = Math.round(opts.viewWidth / 2);
-    lines.lineStyle(5, 0xE07A3A, 0.55);
+    lines.lineStyle(5, 0xE07A3A, 0.58);
     placed[0].forEach((c) => {
       lines.moveTo(cx, rootY);
       lines.lineTo(c.cx, c.bottom - 4);
@@ -484,7 +519,6 @@ export function layoutRouteMap(opts: {
         onReady: opts.onReady,
         onTap: () => opts.onPick(cell.option.node.id),
       });
-      // 卡外面套一层、原点在卡中心：走路过渡要绕中心缩放
       face.position.set(-Math.round(cell.width / 2), -(cell.cy - cell.top));
       cell.card.addChild(face);
       cell.card.position.set(cell.cx, cell.cy);

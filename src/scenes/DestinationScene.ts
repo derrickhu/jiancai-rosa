@@ -7,49 +7,66 @@ import { Platform } from '@/core/PlatformService';
 import { KitchenManager } from '@/managers/KitchenManager';
 import { RunManager } from '@/managers/RunManager';
 import {
+  MARKET_PLAN,
+  VEHICLES,
+  buffIconPath,
   cookXpView,
-  staminaMax,
+  dailyMarketWeather,
+  explorePercent,
+  getSpecialMarket,
   isMarketUnlocked,
+  liveHudBuffs,
+  marketExploration,
+  marketExploreFoods,
   marketsForVehicle,
   neighborVehicle,
   ownsRouteToMarket,
   ownsVehicle,
+  specialLootIds,
   specialMarketForVehicle,
+  staminaMax,
   vehicleById,
-  vehicleOffer,
   vehicleForMarket,
-  getSpecialMarket,
+  vehicleOffer,
   type MarketDef,
   type SpecialMarketDef,
   type VehicleId,
-  explorePercent,
-  marketExploration,
-  liveHudBuffs,
-  dailyMarketWeather,
 } from '@/sim';
 import { AudioManager } from '@/core/AudioManager';
+import { OverlayManager } from '@/core/OverlayManager';
 import { ensureHudBuffPanel } from '@/gameobjects/ui/HudBuffPanel';
 import {
+  inspectFromItem,
+  makeItemInspectCard,
+  type ItemInspectView,
+} from '@/gameobjects/ui/ItemInspectCard';
+import {
   HUD_ICON,
-  PLAYER_LEVEL_HUD,
   UI_PALETTE,
   bindUiClick,
-  drawCraftCard,
-  drawRecessedWell,
   fillRect,
-  hudBuffRowY,
-  hudPillsY,
+  fitTextWidth,
   makeAdButton,
-  makeCraftProgressBar,
-  makeHudBuffRow,
-  makeLabel,
+  makeCoinButton,
+  makeHandProgressBar,
   makeMuteButton,
-  makePlayerLevelHud,
   makeSlicedButton,
-  makeStatPill,
+  makeText,
+  uiBarPaths,
 } from '@/utils/ui';
 import { VerticalScroller } from '@/utils/scroll';
-import { applyGray, applyFit, fitCover, fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from '@/utils/assets';
+import {
+  applyFit,
+  applyGray,
+  fitCover,
+  fitSpriteInBox,
+  gameTexture,
+  isTextureReady,
+  itemTexture,
+  resolveItemAssetPath,
+  watchTextures,
+  whenTextureReady,
+} from '@/utils/assets';
 import { OutingCurtain } from '@/gameobjects/ui/OutingCurtain';
 import { MarketLootPanel } from '@/gameobjects/ui/MarketLootPanel';
 import { marketBootPaths, specialBootPaths } from '@/utils/outingAssets';
@@ -60,24 +77,34 @@ import { TutorialGuard } from '@/systems/TutorialGuard';
 import { tryShowInterstitial } from '@/services/InterstitialAdService';
 
 const DEST_BG = 'subpkg_images/dest_street_bg.jpg';
-/** 走路一屏正好四张。更高的屏卡不再拉高，多出来的空落在列表里。 */
-const FIT_CARDS = 4;
-const CARD_GAP = 8;
-const CARD_H_MAX = 200;
-const CARD_H_MIN = 156;
-const DRAG_SLOP = 10;
-const VEHICLE_H = 214;
-const DOCK_TITLE_H = 40;
-const HOME_H = 60;
-const HOME_GAP = 28;
-const HOME_BOTTOM = 36;
-/** 招牌绳子探进顶栏，木牌本身抬到安全区附近。 */
-const TITLE_LIFT = 78;
-const BANNER_H = 176;
-const TITLE_FONT = 'Songti SC, STSong, PingFang SC, serif';
-const WALNUT = 0x8B5A2B;
+const DEST_ART = {
+  sheet: 'subpkg_images/scene_pk_recipe_sheet.png',
+  tag: 'subpkg_images/scene_pk_tag_h.png',
+  seal: 'subpkg_images/scene_pk_seal.png',
+  divider: 'subpkg_images/scene_pk_ink_divider.png',
+  photo: 'subpkg_images/scene_dex_photo.png',
+  washi: 'subpkg_images/scene_dex_washi.png',
+  tab: 'subpkg_images/scene_dex_tab.png',
+  spot: 'subpkg_images/scene_dex_spot.png',
+} as const;
+
+const INK = 0x2A2018;
+const INK_SOFT = 0x5A4430;
+const MUTED = 0x8A6E52;
+const RED_INK = 0xB8361F;
+const GREEN_INK = 0x3F7034;
+const CREAM = 0xFFF8EC;
 const TERRACOTTA = 0xC46A3A;
-/** 走路鞋团得紧，车要铺满盒子，看起来才比鞋大。 */
+
+const CARD_H = 228;
+const CARD_GAP = 14;
+const DRAG_SLOP = 10;
+const TAB_BAR_H = 54;
+const DOCK_H = 114;
+const HOME_H = 62;
+const TITLE_LIFT = 74;
+const BANNER_H = 166;
+
 const DOCK_ZOOM: Record<VehicleId, number> = {
   walk: 0.94,
   bike: 1.08,
@@ -89,23 +116,54 @@ export class DestinationScene implements Scene {
   readonly name = 'destinations';
   readonly container = new PIXI.Container();
   private _ui = new PIXI.Container();
+  private _inspectHost = new PIXI.Container();
+  private _inspect: ItemInspectView | null = null;
   private _scroller: VerticalScroller;
   private _browse: VehicleId = 'walk';
   private _loot = new MarketLootPanel();
   private _xiangkoGo: PIXI.Container | null = null;
   private _firstWeatherTag: PIXI.Container | null = null;
+  private _paintQueued = false;
+  private _watched = new Set<string>();
+
+  private _scheduleRelayout = (): void => {
+    if (!this.container.parent || this._paintQueued) return;
+    this._paintQueued = true;
+    const later = typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame
+      : (cb: () => void) => setTimeout(cb, 0);
+    later(() => {
+      this._paintQueued = false;
+      if (this.container.parent) this.relayout();
+    });
+  };
+
+  private _watchOnce(path: string): void {
+    if (!path || isTextureReady(gameTexture(path)) || this._watched.has(path)) return;
+    this._watched.add(path);
+    whenTextureReady(path, () => {
+      this._watched.delete(path);
+      this._scheduleRelayout();
+    });
+  }
 
   constructor() {
     this.container.eventMode = 'static';
     this.container.addChild(this._ui);
+    this._inspectHost.zIndex = 27;
+    this._inspectHost.visible = false;
     this._scroller = new VerticalScroller(this.container, {
       slop: DRAG_SLOP,
-      visible: () => !!this.container.parent && !this._loot._isOpen,
+      visible: () => !!this.container.parent && !this._loot._isOpen && !this._inspect,
     });
   }
 
   onEnter(): void {
     this._browse = KitchenManager.save.vehicle;
+    this._inspect = null;
+    this._paintQueued = false;
+    this._inspectHost.visible = false;
+    OverlayManager.container.addChild(this._inspectHost);
     this._scroller.enable();
     EventBus.on(EV.kitchenChanged, this._onKitchen);
     AudioManager.playBgm('outing');
@@ -117,14 +175,19 @@ export class DestinationScene implements Scene {
 
   onExit(): void {
     EventBus.off(EV.kitchenChanged, this._onKitchen);
+    this._paintQueued = false;
     this._scroller.disable();
     this._loot.close(true);
+    this._inspect = null;
+    this._inspectHost.visible = false;
+    this._inspectHost.removeChildren();
+    if (this._inspectHost.parent) this._inspectHost.parent.removeChild(this._inspectHost);
     TutorialOverlay.unregister('dest');
     TutorialOverlay.unregisterContextual('dest_ctx');
   }
 
   private _contextualTip(): TutorialTarget | null {
-    if (TutorialManager.isActive || this._loot._isOpen) return null;
+    if (TutorialManager.isActive || this._loot._isOpen || this._inspect) return null;
     if (KitchenManager.hasSeenGuide('guide_weather')) return null;
     const hole = stageRectOf(this._firstWeatherTag, 6);
     if (!hole) return null;
@@ -140,7 +203,7 @@ export class DestinationScene implements Scene {
   }
 
   private _onKitchen = (): void => {
-    if (this.container.parent) this.relayout();
+    this._scheduleRelayout();
   };
 
   tutorialRect(): { x: number; y: number; w: number; h: number; r?: number } | null {
@@ -152,130 +215,100 @@ export class DestinationScene implements Scene {
     this._xiangkoGo = null;
     this._firstWeatherTag = null;
     this._ui.removeChildren();
+    this._inspectHost.removeChildren();
+    this._inspectHost.visible = false;
     const w = Game.designWidth;
     const h = Game.logicHeight;
     this.container.hitArea = new PIXI.Rectangle(0, 0, w, h);
-    const redraw = () => {
-      if (this.container.parent) this.relayout();
-    };
+    const onReady = this._scheduleRelayout;
+
+    const watchList: string[] = [
+      DEST_BG,
+      HUD_ICON.destBanner,
+      HUD_ICON.player,
+      HUD_ICON.coin,
+      HUD_ICON.stamina,
+      HUD_ICON.clock,
+      HUD_ICON.peek,
+      HUD_ICON.home,
+      ...Object.values(DEST_ART),
+      ...uiBarPaths(),
+    ];
+    for (const p of watchList) this._watchOnce(p);
+
     const fallback = new PIXI.Graphics();
-    fillRect(fallback, 0, 0, w, h, 0x1E1A16);
+    fillRect(fallback, 0, 0, w, h, 0x261B12);
     this._ui.addChild(fallback);
     const bgTex = gameTexture(DEST_BG);
-    whenTextureReady(DEST_BG, redraw);
     if (isTextureReady(bgTex)) {
       const scene = new PIXI.Sprite(bgTex);
       applyFit(scene, fitCover(bgTex.width, bgTex.height, w, h));
       this._ui.addChild(scene);
     }
     const veil = new PIXI.Graphics();
-    fillRect(veil, 0, 0, w, h, 0x1A1410);
-    veil.alpha = 0.18;
+    fillRect(veil, 0, 0, w, h, 0x1A120B);
+    veil.alpha = 0.22;
     this._ui.addChild(veil);
 
     const top = Number.isFinite(Game.safeTop) ? Game.safeTop : 96;
-    const titleTop = Math.max(-28, top - TITLE_LIFT);
-    this._drawTitle(w, titleTop, redraw);
-    const pillsY = titleTop + BANNER_H + 8;
-    const skill = cookXpView(KitchenManager.save);
-    const profile = makePlayerLevelHud({
-      avatar: HUD_ICON.player,
-      level: skill.level,
-      text: skill.text,
-      fill: skill.fill,
-      onReady: redraw,
-    });
-    profile.position.set(12, pillsY);
-    this._ui.addChild(profile);
+    const titleTop = Math.max(-24, top - TITLE_LIFT);
+    this._drawTitle(w, titleTop);
 
-    const pillH = 44;
+    // ── 顶部厨艺与资源条 ────────────────────────────────────────────────────
+    const hudY = titleTop + BANNER_H + 4;
+    this._drawTopHud(w, hudY, onReady);
+
     const buffs = liveHudBuffs(KitchenManager.save);
-    const pillY = hudPillsY(pillsY, pillH);
-    const resX = 12 + PLAYER_LEVEL_HUD.avatar + PLAYER_LEVEL_HUD.gap + PLAYER_LEVEL_HUD.barW + 12;
-    const money = makeStatPill({
-      icon: HUD_ICON.coin,
-      text: `${KitchenManager.save.money}`,
-      width: 164,
-      onIconReady: redraw,
-    });
-    money.position.set(resX, pillY);
-    this._ui.addChild(money);
+    const hudBottom = hudY + 84 + (buffs.length ? 46 : 0);
 
-    const staMax = staminaMax(KitchenManager.save);
-    const staShort = KitchenManager.save.stamina < staMax;
-    const staPill = makeStatPill({
-      icon: HUD_ICON.stamina,
-      text: `${KitchenManager.save.stamina}/${staMax}`,
-      width: 188,
-      fill: KitchenManager.save.stamina / staMax,
-      fillColor: 0x6BA368,
-      plus: staShort,
-      pulsePlus: KitchenManager.save.stamina <= 0,
-      onTap: staShort
-        ? () => {
-          if (TutorialManager.isActive && !TutorialManager.isStep(TutorialStep.HINT_DOOR)) return;
-          void KitchenManager.offerShareStamina();
-        }
-        : undefined,
-      onIconReady: redraw,
-    });
-    staPill.position.set(resX + 172, pillY);
-    this._ui.addChild(staPill);
+    // ── 交通工具手绘路牌切页签 ──────────────────────────────────────────────
+    const tabsY = hudBottom + 6;
+    this._ui.addChild(this._vehicleTabStrip(20, tabsY, w - 40, TAB_BAR_H));
 
-    if (buffs.length) {
-      const row = makeHudBuffRow({
-        buffs,
-        onReady: redraw,
-        onTap: () => ensureHudBuffPanel().open(),
-      });
-      row.position.set(resX, hudBuffRowY(pillY, pillH));
-      this._ui.addChild(row);
-    }
-
-    const mute = makeMuteButton(44);
-    mute.position.set(w - 64, pillY);
-    this._ui.addChild(mute);
-
-    const listTop = pillsY + PLAYER_LEVEL_HUD.height + 8;
-    const bottomPad = Math.max(
-      HOME_BOTTOM,
-      (Number.isFinite(Game.safeBottom) ? Game.safeBottom : 0) + 24,
-    );
+    // ── 中部集市路线宣纸画片列表 ────────────────────────────────────────────
+    const listTop = tabsY + TAB_BAR_H + 8;
+    const bottomPad = Math.max(24, (Number.isFinite(Game.safeBottom) ? Game.safeBottom : 0) + 18);
     const homeY = h - HOME_H - bottomPad;
-    const dockY = homeY - HOME_GAP - VEHICLE_H - DOCK_TITLE_H;
-    const listH = Math.max(180, dockY - 8 - listTop);
-    const cardH = Math.max(
-      CARD_H_MIN,
-      Math.min(CARD_H_MAX, Math.floor((listH - (FIT_CARDS - 1) * CARD_GAP) / FIT_CARDS)),
-    );
-    const cardStep = cardH + CARD_GAP;
+    const dockY = homeY - 12 - DOCK_H;
+    const listH = Math.max(220, dockY - 10 - listTop);
+
     const offer = vehicleOffer(KitchenManager.save, this._browse);
     const spots = offer === 'locked' ? [] : marketsForVehicle(this._browse);
     const specialId = ownsVehicle(KitchenManager.save, this._browse)
       ? specialMarketForVehicle(this._browse)
       : null;
     const special = specialId ? getSpecialMarket(specialId) : null;
-    const cards = spots.length + (special ? 1 : 0);
-    const contentH = cards > 0 ? cards * cardH + Math.max(0, cards - 1) * CARD_GAP : listH;
+    const cardCount = spots.length + (special ? 1 : 0);
+    const cardStep = CARD_H + CARD_GAP;
+    const contentH = cardCount > 0 ? cardCount * CARD_H + Math.max(0, cardCount - 1) * CARD_GAP + 8 : listH;
+
     const list = new PIXI.Container();
     spots.forEach((market, i) => {
-      list.addChild(this._card(market, 24, i * cardStep, w - 48, cardH));
+      list.addChild(this._card(market, 20, i * cardStep, w - 40, CARD_H, onReady));
     });
     if (special) {
-      list.addChild(this._specialCard(special, 24, spots.length * cardStep, w - 48, cardH));
+      list.addChild(this._specialCard(special, 20, spots.length * cardStep, w - 40, CARD_H, onReady));
     }
-    if (!cards) {
-      const empty = makeLabel(
-        offer === 'locked' ? '先买上一辆才能开这辆' : '更远的菜场还在路上',
-        22,
-        0xFFF8F0,
-        { fontWeight: '600' },
-      );
+    if (!cardCount) {
+      const emptySlip = new PIXI.Container();
+      const sw = w - 80;
+      const sh = 150;
+      const sx = 40;
+      const sy = Math.max(16, Math.round((listH - sh) / 2));
+      this._drawSheetBg(emptySlip, sx, sy, sw, sh);
+      const prevRide = vehicleById(neighborVehicle(this._browse, -1));
+      const msg = offer === 'locked'
+        ? `先添置「${prevRide.name}」，才能打通这趟远路`
+        : '更远的市集还在探路中';
+      const empty = makeText('heading', msg, INK, { size: 26 });
       empty.anchor.set(0.5);
-      empty.position.set(w / 2, listH / 2);
-      list.addChild(empty);
+      fitTextWidth(empty, sw - 56);
+      empty.position.set(w / 2, sy + sh / 2);
+      emptySlip.addChild(empty);
+      list.addChild(emptySlip);
     }
     this._ui.addChild(list);
+
     if (contentH > listH) {
       const mask = new PIXI.Graphics();
       fillRect(mask, 0, listTop, w, listH, 0xffffff);
@@ -290,19 +323,39 @@ export class DestinationScene implements Scene {
       hit: { x: 0, y: listTop, w, h: listH },
     });
 
-    this._ui.addChild(this._vehicleDock(24, dockY, w - 48, VEHICLE_H + DOCK_TITLE_H, redraw));
-    this._ui.addChild(this._homeBtn((w - 280) / 2, homeY, 280, HOME_H, redraw));
+    // ── 底部座驾展示台 + 回家大木钮 ─────────────────────────────────────────
+    this._ui.addChild(this._vehicleDock(20, dockY, w - 40, DOCK_H, onReady));
+    this._ui.addChild(this._homeBtn((w - 296) / 2, homeY, 296, HOME_H, onReady));
+
+    if (this._inspect) {
+      this._inspectHost.visible = true;
+      OverlayManager.bringToFront();
+      this._inspectHost.addChild(makeItemInspectCard({
+        view: this._inspect,
+        qty: 1,
+        actions: false,
+        onQty: () => {},
+        onReady,
+        onClose: () => {
+          AudioManager.play('ui_close');
+          this._inspect = null;
+          this._inspectHost.visible = false;
+          this._inspectHost.removeChildren();
+        },
+      }));
+    }
+
     TutorialOverlay.refresh();
   }
 
-  private _drawTitle(w: number, top: number, onReady: () => void): void {
-    const bannerW = 380;
+  private _drawTitle(w: number, top: number): void {
+    const bannerW = 432;
     const bannerH = BANNER_H;
     const wrap = new PIXI.Container();
     wrap.position.set((w - bannerW) / 2, top);
     const path = HUD_ICON.destBanner;
+    this._watchOnce(path);
     const tex = gameTexture(path);
-    whenTextureReady(path, onReady);
     if (isTextureReady(tex)) {
       const sp = new PIXI.Sprite(tex);
       fitSpriteInBox(sp, bannerW, bannerH);
@@ -311,148 +364,659 @@ export class DestinationScene implements Scene {
       wrap.addChild(sp);
     } else {
       const g = new PIXI.Graphics();
-      g.lineStyle(2, 0x8B5A2B, 1);
-      g.beginFill(0xE8DCC8);
-      g.drawRoundedRect(24, 48, bannerW - 48, 96, 18);
+      g.lineStyle(3, INK, 1);
+      g.beginFill(0xFAF0DA);
+      g.drawRoundedRect(32, 44, bannerW - 64, 96, 16);
       g.endFill();
       wrap.addChild(g);
     }
-    const title = makeLabel('今晚去哪收摊', 30, 0x3A3228, { fontWeight: '700' });
+    const title = makeText('display', '今天去哪儿赶集', 0x4A2A12, {
+      size: 36,
+      stroke: 0xFFF5D8,
+      strokeWidth: 4,
+    });
     title.anchor.set(0.5);
-    title.position.set(bannerW / 2, bannerH * 0.58);
+    fitTextWidth(title, bannerW - 130);
+    title.position.set(bannerW / 2, bannerH * 0.59);
     wrap.addChild(title);
     this._ui.addChild(wrap);
   }
 
-  private _card(market: MarketDef, x: number, y: number, width: number, height: number): PIXI.Container {
+  private _drawTopHud(w: number, y: number, onReady: () => void): void {
+    const save = KitchenManager.save;
+    const skill = cookXpView(save);
+
+    const avatarR = 40;
+    const cx = 14 + avatarR;
+    const cy = y + avatarR + 2;
+    const wingX = cx + 14;
+    const wingW = 192;
+    const wingH = 74;
+    const wingY = cy - wingH / 2;
+
+    const wing = new PIXI.Graphics();
+    wing.beginFill(0x160E08, 0.28);
+    wing.drawRoundedRect(wingX - 18, wingY + 4, wingW + 18, wingH, 14);
+    wing.endFill();
+    wing.lineStyle(2.6, INK, 1);
+    wing.beginFill(0x7A4B24, 1);
+    wing.drawRoundedRect(wingX - 18, wingY, wingW + 18, wingH, 14);
+    wing.endFill();
+    wing.lineStyle(1.2, 0xDFB870, 0.8);
+    wing.beginFill(0xFAF0DA, 1);
+    wing.drawRoundedRect(wingX - 12, wingY + 5, wingW + 7, wingH - 11, 10);
+    wing.endFill();
+    this._ui.addChild(wing);
+
+    const contentLeft = cx + avatarR + 10;
+    const barW = wingX + wingW - 14 - contentLeft;
+    const lvTxt = makeText('heading', `厨艺 ${skill.level}级`, INK, { size: 23 });
+    lvTxt.anchor.set(0, 0.5);
+    lvTxt.position.set(contentLeft, wingY + 22);
+    fitTextWidth(lvTxt, barW);
+    this._ui.addChild(lvTxt);
+
+    const bar = makeHandProgressBar({
+      width: barW,
+      height: 22,
+      ratio: Math.max(0.06, skill.fill),
+      onReady,
+    });
+    bar.node.position.set(contentLeft, wingY + 42);
+    this._ui.addChild(bar.node);
+
+    const xpTxt = makeText('caption', skill.text, INK, {
+      size: 20,
+      fontWeight: '700',
+      stroke: 0xFFFDF8,
+      strokeWidth: 4,
+    });
+    xpTxt.anchor.set(0.5);
+    fitTextWidth(xpTxt, barW - 8);
+    xpTxt.position.set(contentLeft + barW / 2, wingY + 53);
+    this._ui.addChild(xpTxt);
+
+    const ring = new PIXI.Graphics();
+    ring.beginFill(0x160E08, 0.3);
+    ring.drawCircle(cx, cy + 3.5, avatarR + 1);
+    ring.endFill();
+    ring.lineStyle(3, INK, 1);
+    ring.beginFill(UI_PALETTE.brass, 1);
+    ring.drawCircle(cx, cy, avatarR);
+    ring.endFill();
+    ring.lineStyle(1.5, 0x6E441E, 0.9);
+    ring.beginFill(0xF8EEDC, 1);
+    ring.drawCircle(cx, cy, avatarR - 4.5);
+    ring.endFill();
+    this._ui.addChild(ring);
+
+    const pTex = gameTexture(HUD_ICON.player);
+    if (isTextureReady(pTex)) {
+      const mask = new PIXI.Graphics();
+      mask.beginFill(0xffffff);
+      mask.drawCircle(cx, cy, avatarR - 5.5);
+      mask.endFill();
+      const spr = new PIXI.Sprite(pTex);
+      const side = (avatarR - 5.5) * 2;
+      fitSpriteInBox(spr, side * 1.16, side * 1.16);
+      spr.anchor.set(0.5);
+      spr.position.set(cx, cy);
+      spr.mask = mask;
+      spr.eventMode = 'none';
+      this._ui.addChild(mask, spr);
+    }
+
+    const resX = 270;
+    const slipY = cy - 24;
+    const coinSlip = this._makeHudSlip({
+      icon: HUD_ICON.coin,
+      text: `${save.money}`,
+      width: 174,
+    });
+    coinSlip.position.set(resX, slipY);
+    this._ui.addChild(coinSlip);
+
+    const staMax = staminaMax(save);
+    const staShort = save.stamina < staMax;
+    const staSlip = this._makeHudSlip({
+      icon: HUD_ICON.stamina,
+      text: `${save.stamina}/${staMax}`,
+      width: 202,
+      ratio: save.stamina / Math.max(1, staMax),
+      plus: staShort,
+      pulsePlus: save.stamina <= 0,
+      onTap: staShort
+        ? () => {
+          if (TutorialManager.isActive && !TutorialManager.isStep(TutorialStep.HINT_DOOR)) return;
+          void KitchenManager.offerShareStamina();
+        }
+        : undefined,
+    });
+    staSlip.position.set(resX + 182, slipY);
+    this._ui.addChild(staSlip);
+
+    const mute = makeMuteButton(48);
+    mute.position.set(w - 64, slipY);
+    this._ui.addChild(mute);
+
+    const buffs = liveHudBuffs(save);
+    if (buffs.length) {
+      const buffRow = new PIXI.Container();
+      const bSize = 40;
+      buffs.forEach((buff, i) => {
+        const path = buffIconPath(buff.icon);
+        this._watchOnce(path);
+        const cell = new PIXI.Container();
+        const bg = new PIXI.Graphics();
+        bg.lineStyle(2.2, INK, 0.95);
+        bg.beginFill(0xFFF6E2, 0.98);
+        bg.drawCircle(bSize / 2, bSize / 2, bSize / 2 - 1);
+        bg.endFill();
+        cell.addChild(bg);
+        const bTex = gameTexture(path);
+        if (isTextureReady(bTex)) {
+          const sp = new PIXI.Sprite(bTex);
+          fitSpriteInBox(sp, bSize - 8, bSize - 8);
+          sp.anchor.set(0.5);
+          sp.position.set(bSize / 2, bSize / 2);
+          cell.addChild(sp);
+        }
+        cell.position.set(i * (bSize + 8), 0);
+        cell.eventMode = 'static';
+        cell.cursor = 'pointer';
+        cell.hitArea = new PIXI.Rectangle(0, 0, bSize, bSize);
+        cell.on('pointertap', (e) => {
+          e.stopPropagation();
+          AudioManager.play('ui_click');
+          ensureHudBuffPanel().open();
+        });
+        buffRow.addChild(cell);
+      });
+      buffRow.position.set(resX + 18, slipY + 54);
+      this._ui.addChild(buffRow);
+    }
+  }
+
+  private _makeHudSlip(opts: {
+    icon: string;
+    text: string;
+    width: number;
+    ratio?: number;
+    plus?: boolean;
+    pulsePlus?: boolean;
+    onTap?: () => void;
+  }): PIXI.Container {
+    const root = new PIXI.Container();
+    const h = 48;
+    const barX = 20;
+    const barW = opts.width - barX;
+
+    const bg = new PIXI.Graphics();
+    bg.beginFill(0x160E08, 0.26);
+    bg.drawRoundedRect(barX, 4, barW, h, 10);
+    bg.endFill();
+    bg.lineStyle(2.5, INK, 1);
+    bg.beginFill(0xFAF0DA, 0.98);
+    bg.drawRoundedRect(barX, 0, barW, h, 10);
+    bg.endFill();
+    bg.lineStyle(2, INK, 1);
+    bg.beginFill(0x7A4B24, 1);
+    bg.drawRoundedRect(barX + barW - 8, -1, 8, h + 2, 4);
+    bg.endFill();
+
+    if (opts.ratio !== undefined) {
+      const r = Math.max(0, Math.min(1, opts.ratio));
+      if (r > 0) {
+        const pad = 4;
+        const fw = Math.max(12, (barW - 14 - pad * 2) * r);
+        bg.lineStyle(0);
+        bg.beginFill(0x7BB36E, 0.42);
+        bg.drawRoundedRect(barX + pad, pad, fw, h - pad * 2, 6);
+        bg.endFill();
+      }
+    }
+    root.addChild(bg);
+
+    const num = makeText('number', opts.text, INK, {
+      size: 25,
+      stroke: 0xFFFDF8,
+      strokeWidth: 4,
+    });
+    num.anchor.set(0.5);
+    const availW = barW - (opts.plus ? 56 : 30);
+    fitTextWidth(num, availW);
+    num.position.set(barX + 18 + availW / 2, h / 2 - 0.5);
+    root.addChild(num);
+
+    this._watchOnce(opts.icon);
+    const icTex = gameTexture(opts.icon);
+    if (isTextureReady(icTex)) {
+      const sp = new PIXI.Sprite(icTex);
+      fitSpriteInBox(sp, 54, 54);
+      sp.anchor.set(0.5);
+      sp.position.set(22, h / 2);
+      sp.eventMode = 'none';
+      root.addChild(sp);
+    }
+
+    if (opts.plus) {
+      const plusWrap = new PIXI.Container();
+      plusWrap.position.set(opts.width - 18, h / 2);
+      plusWrap.eventMode = 'none';
+      const pg = new PIXI.Graphics();
+      pg.lineStyle(2.4, INK, 1);
+      pg.beginFill(opts.pulsePlus ? 0xD9412E : 0xC46234, 1);
+      pg.drawCircle(0, 0, 15);
+      pg.endFill();
+      pg.lineStyle(0);
+      pg.beginFill(CREAM, 1);
+      pg.drawRoundedRect(-7, -2, 14, 4, 2);
+      pg.drawRoundedRect(-2, -7, 4, 14, 2);
+      pg.endFill();
+      plusWrap.addChild(pg);
+      root.addChild(plusWrap);
+    }
+
+    if (opts.onTap) {
+      root.eventMode = 'static';
+      root.cursor = 'pointer';
+      root.hitArea = new PIXI.Rectangle(0, -4, opts.width + 6, h + 8);
+      root.on('pointerdown', (e) => e.stopPropagation());
+      root.on('pointertap', (e) => {
+        e.stopPropagation();
+        AudioManager.play('ui_click');
+        opts.onTap?.();
+      });
+    } else {
+      root.eventMode = 'none';
+    }
+    return root;
+  }
+
+  private _vehicleTabStrip(x: number, y: number, width: number, height: number): PIXI.Container {
+    const root = new PIXI.Container();
+    root.position.set(x, y);
+    const gap = 10;
+    const tabW = Math.floor((width - gap * (VEHICLES.length - 1)) / VEHICLES.length);
+    this._watchOnce(DEST_ART.tab);
+    const tabTex = gameTexture(DEST_ART.tab);
+
+    VEHICLES.forEach((v, idx) => {
+      const active = this._browse === v.id;
+      const offer = vehicleOffer(KitchenManager.save, v.id);
+      const cell = new PIXI.Container();
+      cell.position.set(idx * (tabW + gap), active ? 0 : 4);
+      const ch = active ? height : height - 4;
+
+      if (isTextureReady(tabTex)) {
+        const sp = new PIXI.Sprite(tabTex);
+        sp.width = tabW;
+        sp.height = ch;
+        if (!active) sp.tint = offer === 'owned' ? 0xE5D4B8 : 0xC9B8A0;
+        cell.addChild(sp);
+      } else {
+        const g = new PIXI.Graphics();
+        g.lineStyle(2.5, INK, 1);
+        g.beginFill(active ? 0xFFF7E2 : offer === 'owned' ? 0xE6D5B8 : 0xCEC0AA, 1);
+        g.drawRoundedRect(0, 0, tabW, ch, 12);
+        g.endFill();
+        cell.addChild(g);
+      }
+
+      if (active) {
+        const bar = new PIXI.Graphics();
+        bar.beginFill(RED_INK, 0.9);
+        bar.drawRoundedRect(18, ch - 7, tabW - 36, 4, 2);
+        bar.endFill();
+        cell.addChild(bar);
+      }
+
+      const txtCol = active ? INK : offer === 'owned' ? INK_SOFT : MUTED;
+      const lbl = makeText('heading', v.name, txtCol, { size: 24 });
+      lbl.anchor.set(0.5);
+      fitTextWidth(lbl, tabW - 20);
+      lbl.position.set(tabW / 2, ch / 2 - (active ? 2 : 0));
+      cell.addChild(lbl);
+
+      if (offer === 'buyable') {
+        const dot = new PIXI.Graphics();
+        dot.lineStyle(2, INK, 1);
+        dot.beginFill(0xE8A832, 1);
+        dot.drawCircle(tabW - 12, 10, 7);
+        dot.endFill();
+        cell.addChild(dot);
+      }
+
+      cell.eventMode = 'static';
+      cell.cursor = 'pointer';
+      cell.hitArea = new PIXI.Rectangle(0, 0, tabW, height);
+      cell.on('pointerdown', (e) => e.stopPropagation());
+      cell.on('pointertap', (e) => {
+        e.stopPropagation();
+        if (TutorialGuard.block('switchVehicle')) return;
+        AudioManager.play('ui_click');
+        this._browse = v.id;
+        if (ownsVehicle(KitchenManager.save, v.id)) {
+          KitchenManager.setVehicle(v.id);
+        }
+        this._scroller.reset();
+        this.relayout();
+      });
+      root.addChild(cell);
+    });
+    return root;
+  }
+
+  private _drawSheetBg(parent: PIXI.Container, x: number, y: number, w: number, h: number, goldTint = false): void {
+    const shadow = new PIXI.Graphics();
+    shadow.beginFill(0x120A05, 0.34);
+    shadow.drawRoundedRect(x + 4, y + 7, w - 4, h - 2, 14);
+    shadow.endFill();
+    parent.addChild(shadow);
+
+    const tex = gameTexture(DEST_ART.sheet);
+    if (isTextureReady(tex)) {
+      const k = w / tex.width;
+      const plane = new PIXI.NineSlicePlane(tex, 0, 120, 0, 110);
+      plane.width = tex.width;
+      plane.height = h / k;
+      plane.scale.set(k);
+      plane.position.set(x, y);
+      if (goldTint) plane.tint = 0xFFEFCA;
+      parent.addChild(plane);
+    } else {
+      const g = new PIXI.Graphics();
+      g.lineStyle(2.6, INK, 1);
+      g.beginFill(goldTint ? 0xFFF2CF : 0xF8ECD2, 1);
+      g.drawRoundedRect(x, y, w, h, 14);
+      g.endFill();
+      parent.addChild(g);
+    }
+  }
+
+  private _drawPostcardThumb(
+    parent: PIXI.Container,
+    thumbPath: string,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    dimmed: boolean,
+    badgeCopy: string | null,
+  ): void {
+    const card = new PIXI.Container();
+    card.position.set(x + w / 2, y + h / 2);
+    card.rotation = -0.022;
+
+    const frameG = new PIXI.Graphics();
+    frameG.beginFill(0x180F07, 0.22);
+    frameG.drawRoundedRect(-w / 2 + 2, -h / 2 + 4, w, h, 10);
+    frameG.endFill();
+    frameG.lineStyle(2.2, 0x4A3420, 1);
+    frameG.beginFill(0xFFFBF2, 1);
+    frameG.drawRoundedRect(-w / 2, -h / 2, w, h, 8);
+    frameG.endFill();
+    card.addChild(frameG);
+
+    const pad = 9;
+    const innerW = w - pad * 2;
+    const innerH = h - pad * 2 - 4;
+    const innerX = -w / 2 + pad;
+    const innerY = -h / 2 + pad;
+
+    const innerBg = new PIXI.Graphics();
+    innerBg.beginFill(0x2E2218, 1);
+    innerBg.drawRoundedRect(innerX, innerY, innerW, innerH, 5);
+    innerBg.endFill();
+    card.addChild(innerBg);
+
+    if (thumbPath) {
+      this._watchOnce(thumbPath);
+      const tex = gameTexture(thumbPath);
+      if (isTextureReady(tex)) {
+        const sp = new PIXI.Sprite(tex);
+        const fit = fitCover(tex.width, tex.height, innerW, innerH);
+        applyFit(sp, fit);
+        sp.position.set(innerX + fit.x, innerY + fit.y);
+        if (dimmed) sp.alpha = 0.42;
+        const mask = new PIXI.Graphics();
+        fillRect(mask, innerX, innerY, innerW, innerH, 0xffffff, 5);
+        sp.mask = mask;
+        card.addChild(mask, sp);
+      }
+    }
+
+    const washiTex = gameTexture(DEST_ART.washi);
+    if (isTextureReady(washiTex)) {
+      const ws = new PIXI.Sprite(washiTex);
+      ws.width = 76;
+      ws.height = 16;
+      ws.anchor.set(0.5);
+      ws.position.set(0, -h / 2 + 2);
+      card.addChild(ws);
+    }
+
+    if (dimmed) {
+      const seal = this._makeSeal('未开', 54);
+      seal.position.set(0, 0);
+      card.addChild(seal);
+    } else if (badgeCopy) {
+      const clockTex = gameTexture(HUD_ICON.clock);
+      const stepRow = new PIXI.Container();
+      let sx = 0;
+      if (isTextureReady(clockTex)) {
+        const cs = new PIXI.Sprite(clockTex);
+        fitSpriteInBox(cs, 24, 24);
+        cs.anchor.set(0, 0.5);
+        stepRow.addChild(cs);
+        sx = 26;
+      }
+      const st = makeText('caption', badgeCopy, 0xFFF8EC, {
+        size: 20,
+        fontWeight: '700',
+        stroke: 0x24150B,
+        strokeWidth: 5,
+      });
+      st.anchor.set(0, 0.5);
+      st.position.set(sx, 0);
+      stepRow.addChild(st);
+      stepRow.position.set(innerX + 8, innerY + innerH - 16);
+      card.addChild(stepRow);
+    }
+
+    card.eventMode = 'none';
+    parent.addChild(card);
+  }
+
+  private _makeSeal(text: string, size = 48): PIXI.Container {
+    const root = new PIXI.Container();
+    root.eventMode = 'none';
+    const tex = gameTexture(DEST_ART.seal);
+    if (isTextureReady(tex)) {
+      const sp = new PIXI.Sprite(tex);
+      fitSpriteInBox(sp, size, size);
+      sp.anchor.set(0.5);
+      root.addChild(sp);
+    } else {
+      const g = new PIXI.Graphics();
+      g.beginFill(0xC43426, 1);
+      g.drawRoundedRect(-size / 2, -size / 2, size, size, 8);
+      g.endFill();
+      root.addChild(g);
+    }
+    const t = makeText('caption', text, 0xFFF4E6, { size: 19, fontWeight: '700' });
+    t.anchor.set(0.5);
+    fitTextWidth(t, size - 8);
+    root.addChild(t);
+    root.rotation = -0.1;
+    return root;
+  }
+
+  private _drawSpecialtyPreview(
+    parent: PIXI.Container,
+    foodIds: string[],
+    x: number,
+    y: number,
+    unlocked: boolean,
+  ): void {
+    const row = new PIXI.Container();
+    row.position.set(x, y);
+    const lead = makeText('caption', '风物', MUTED, { size: 20, fontWeight: '700' });
+    lead.anchor.set(0, 0.5);
+    lead.position.set(0, 22);
+    row.addChild(lead);
+
+    const spotTex = gameTexture(DEST_ART.spot);
+    let ix = lead.width + 12;
+    for (const id of foodIds.slice(0, 4)) {
+      const p = resolveItemAssetPath(id);
+      this._watchOnce(p);
+      const cell = new PIXI.Container();
+      cell.position.set(ix, 0);
+
+      if (isTextureReady(spotTex)) {
+        const bg = new PIXI.Sprite(spotTex);
+        fitSpriteInBox(bg, 44, 44);
+        bg.anchor.set(0.5);
+        bg.position.set(22, 22);
+        bg.alpha = 0.35;
+        cell.addChild(bg);
+      } else {
+        const bg = new PIXI.Graphics();
+        bg.beginFill(0xEAD8BA, 0.65);
+        bg.drawCircle(22, 22, 20);
+        bg.endFill();
+        cell.addChild(bg);
+      }
+
+      const fTex = itemTexture(id);
+      if (isTextureReady(fTex)) {
+        const sp = new PIXI.Sprite(fTex);
+        fitSpriteInBox(sp, 40, 40);
+        sp.anchor.set(0.5);
+        sp.position.set(22, 22);
+        if (!unlocked) {
+          sp.tint = 0x5A4634;
+          sp.alpha = 0.55;
+        }
+        cell.addChild(sp);
+      }
+
+      if (unlocked && (!TutorialManager.isActive || TutorialManager.isStep(TutorialStep.HINT_DOOR))) {
+        cell.eventMode = 'static';
+        cell.cursor = 'pointer';
+        cell.hitArea = new PIXI.Rectangle(-2, -2, 48, 48);
+        cell.on('pointertap', (e) => {
+          e.stopPropagation();
+          if (this._scroller.moved) return;
+          AudioManager.play('ui_click');
+          this._inspect = inspectFromItem(id);
+          this.relayout();
+        });
+      }
+      row.addChild(cell);
+      ix += 50;
+    }
+    parent.addChild(row);
+  }
+
+  private _card(
+    market: MarketDef,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    onReady: () => void,
+  ): PIXI.Container {
     const root = new PIXI.Container();
     const save = KitchenManager.save;
     const routed = ownsRouteToMarket(save, market.id);
     const unlocked = routed && isMarketUnlocked(market.id, save.level);
     const needRide = vehicleForMarket(market.id);
-    const pad = Math.max(12, Math.round(height * 0.085));
-    const btnH = height < 176 ? 42 : 48;
 
-    const frame = new PIXI.Graphics();
-    frame.beginFill(0x160E08, 0.28);
-    frame.drawRoundedRect(x, y + 5, width, height, 20);
-    frame.endFill();
-    frame.lineStyle(2.8, UI_PALETTE.ink, 1);
-    frame.beginFill(UI_PALETTE.walnut, 1);
-    frame.drawRoundedRect(x, y, width, height, 20);
-    frame.endFill();
-    drawCraftCard(frame, x + 6, y + 5, width - 12, height - 11, {
-      radius: 15,
-      tone: unlocked ? 'ivory' : 'muted',
-    });
-    root.addChild(frame);
+    this._drawSheetBg(root, x, y, width, height, false);
+    if (!unlocked) root.alpha = 0.92;
 
-    const thumbH = height - pad * 2;
-    const thumbW = Math.round(Math.min(206, thumbH * (200 / 168)));
-    const thumbX = x + pad;
-    const thumbY = y + pad - 1;
-    const textX = thumbX + thumbW + 14;
-    const btnY = y + height - pad - btnH - 2;
-    const thumbBg = new PIXI.Graphics();
-    thumbBg.lineStyle(2.2, UI_PALETTE.ink, 1);
-    thumbBg.beginFill(0x2A221C, 1);
-    thumbBg.drawRoundedRect(thumbX, thumbY, thumbW, thumbH, 12);
-    thumbBg.endFill();
-    root.addChild(thumbBg);
+    const thumbX = x + 26;
+    const thumbY = y + 18;
+    const thumbW = 190;
+    const thumbH = height - 36;
+    const steps = MARKET_PLAN[market.id]?.steps ?? 12;
+    this._drawPostcardThumb(root, market.thumb, thumbX, thumbY, thumbW, thumbH, !unlocked, `${steps}步`);
 
-    if (market.thumb) {
-      const tex = gameTexture(market.thumb);
-      whenTextureReady(market.thumb, () => {
-        if (this.container.parent) this.relayout();
-      });
-      if (isTextureReady(tex)) {
-        const sprite = new PIXI.Sprite(tex);
-        const fit = fitCover(tex.width, tex.height, thumbW - 4, thumbH - 4);
-        applyFit(sprite, fit);
-        sprite.position.set(thumbX + 2 + fit.x, thumbY + 2 + fit.y);
-        if (!unlocked) sprite.alpha = 0.42;
-        const mask = new PIXI.Graphics();
-        fillRect(mask, thumbX + 2, thumbY + 2, thumbW - 4, thumbH - 4, 0xffffff, 10);
-        sprite.mask = mask;
-        root.addChild(mask);
-        root.addChild(sprite);
-      }
-    }
-    if (!unlocked) {
-      const lock = makeLabel('未解锁', 18, 0xFFF8F0, { fontWeight: '700' });
-      const chip = new PIXI.Graphics();
-      chip.lineStyle(2, UI_PALETTE.ink, 1);
-      chip.beginFill(0x3A2416, 0.85);
-      chip.drawRoundedRect(thumbX + (thumbW - 100) / 2, thumbY + (thumbH - 34) / 2, 100, 34, 17);
-      chip.endFill();
-      lock.anchor.set(0.5);
-      lock.position.set(thumbX + thumbW / 2, thumbY + thumbH / 2);
-      root.addChild(chip, lock);
-    }
+    const textX = thumbX + thumbW + 20;
+    // Inset right edge past top-right brass tack on scene_pk_recipe_sheet.png
+    const rightEdge = x + width - 86;
+    const bodyRight = x + width - 26;
+    const availW = bodyRight - textX;
 
-    const name = makeLabel(market.name, height < 176 ? 23 : 26, UI_PALETTE.ink, { fontWeight: '700' });
-    name.position.set(textX, y + pad - 2);
+    const name = makeText('title', market.name, INK, { size: 32 });
+    name.position.set(textX, y + 18);
     root.addChild(name);
 
     if (unlocked && !TutorialManager.isActive) {
       const weather = dailyMarketWeather(market.id);
       const shortTag = weather.shortDesc.split('·')[0].trim();
-      const tagTxt = makeLabel(`${weather.name}·${shortTag}`, 15, weather.pillInk, {
-        fontWeight: '700',
-      });
-      const tw = Math.ceil(tagTxt.width) + 20;
-      const th = 28;
-      const tx = x + width - pad - tw;
-      const ty = y + pad - 1;
-      const tagBg = new PIXI.Graphics();
-      tagBg.lineStyle(1.8, weather.pillInk, 0.85);
-      tagBg.beginFill(weather.pillFill, 1);
-      tagBg.drawRoundedRect(tx, ty, tw, th, th / 2);
-      tagBg.endFill();
-      tagTxt.anchor.set(0.5);
-      tagTxt.position.set(tx + tw / 2, ty + th / 2 + 0.5);
-      const weatherChip = new PIXI.Container();
-      weatherChip.addChild(tagBg, tagTxt);
+      const weatherChip = this._makeWeatherHangTag(`${weather.name}·${shortTag}`, weather.pillFill, weather.pillInk);
+      weatherChip.position.set(rightEdge, y + 36);
       root.addChild(weatherChip);
+      fitTextWidth(name, Math.max(120, rightEdge - textX - weatherChip.width - 12));
       if (!this._firstWeatherTag) this._firstWeatherTag = weatherChip;
+    } else {
+      fitTextWidth(name, rightEdge - textX);
     }
 
-    const hint = makeLabel(market.hint, height < 176 ? 17 : 18, UI_PALETTE.muted, {
-      wordWrap: true,
-      wordWrapWidth: width - (textX - x) - pad,
-    });
-    hint.position.set(textX, y + pad + 32);
+    const hint = makeText('body', market.hint, INK_SOFT, { size: 21 });
+    hint.position.set(textX, y + 60);
+    fitTextWidth(hint, availW);
     root.addChild(hint);
 
+    const dTex = gameTexture(DEST_ART.divider);
+    if (isTextureReady(dTex)) {
+      const div = new PIXI.Sprite(dTex);
+      div.width = availW;
+      div.height = 8;
+      div.alpha = 0.35;
+      div.position.set(textX, y + 92);
+      div.eventMode = 'none';
+      root.addChild(div);
+    }
+
+    const foods = marketExploreFoods(market.id);
+    this._drawSpecialtyPreview(root, foods, textX, y + 102, unlocked);
+
+    const btnH = 56;
+    const btnY = y + height - btnH - 16;
     if (unlocked) {
-      const goW = 158;
-      const gap = 12;
+      const goW = 186;
+      const goX = bodyRight - goW;
       const go = this._departBtn(
-        textX,
+        goX,
         btnY,
         goW,
         btnH,
         market.staminaCost,
         save.stamina < market.staminaCost,
         () => this._depart(market),
+        onReady,
       );
       root.addChild(go);
       if (market.id === 'xiangko') this._xiangkoGo = go;
-      root.addChild(this._exploreMeter(textX + goW + gap, btnY, btnH, market.id));
+      root.addChild(this._exploreMeter(textX, btnY + 4, goX - textX - 16, btnH - 8, market.id, onReady));
     } else {
-      const label = routed ? `厨艺 ${market.unlockLevel} 级开` : `需购${needRide.name}`;
+      const label = routed ? `厨艺 ${market.unlockLevel} 级开集` : `需添置${needRide.name}`;
       const need = makeSlicedButton({
         label,
-        width: 196,
+        width: 224,
         height: btnH,
         skin: 'cream',
         textColor: 0x7A6248,
-        onReady: () => {
-          if (this.container.parent) this.relayout();
-        },
+        fontSize: 23,
+        silent: true,
+        onReady,
       });
       need.eventMode = 'none';
-      need.position.set(textX, btnY);
+      need.position.set(bodyRight - 224, btnY);
       root.addChild(need);
       root.eventMode = 'static';
       root.cursor = 'pointer';
@@ -462,122 +1026,129 @@ export class DestinationScene implements Scene {
         AudioManager.play('ui_deny');
         Platform.showToast(
           routed
-            ? `${market.name} · 厨艺 ${market.unlockLevel} 解锁`
-            : `${market.name} · 买了${needRide.name}才能去`,
+            ? `${market.name} · 厨艺 ${market.unlockLevel} 级解锁`
+            : `${market.name} · 添置${needRide.name}后即可前往`,
         );
       });
     }
     return root;
   }
 
-  private _specialCard(market: SpecialMarketDef, x: number, y: number, width: number, height: number): PIXI.Container {
+  private _makeWeatherHangTag(text: string, fill: number, ink: number): PIXI.Container {
+    const wrap = new PIXI.Container();
+    const lbl = makeText('caption', text, ink, { size: 20, fontWeight: '700' });
+    const w = Math.ceil(lbl.width) + 26;
+    const h = 34;
+    const bg = new PIXI.Graphics();
+    bg.lineStyle(2, ink, 0.9);
+    bg.beginFill(fill, 0.98);
+    bg.drawRoundedRect(-w, -h / 2, w, h, 8);
+    bg.endFill();
+    bg.lineStyle(1.2, INK, 0.85);
+    bg.beginFill(0xE8BE66, 1);
+    bg.drawCircle(-w + 9, 0, 3);
+    bg.endFill();
+    lbl.anchor.set(0.5);
+    lbl.position.set(-w / 2 + 4, 0);
+    wrap.addChild(bg, lbl);
+    wrap.rotation = 0.02;
+    return wrap;
+  }
+
+  private _specialCard(
+    market: SpecialMarketDef,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    onReady: () => void,
+  ): PIXI.Container {
     const root = new PIXI.Container();
     const used = KitchenManager.specialVisitCount(market.id);
     const left = used < market.dailyLimit;
-    const pad = Math.max(12, Math.round(height * 0.085));
-    const btnH = height < 176 ? 42 : 48;
 
-    const frame = new PIXI.Graphics();
-    frame.beginFill(0x160E08, 0.28);
-    frame.drawRoundedRect(x, y + 5, width, height, 20);
-    frame.endFill();
-    frame.lineStyle(2.8, UI_PALETTE.ink, 1);
-    frame.beginFill(left ? 0xC98E2B : UI_PALETTE.walnut, 1);
-    frame.drawRoundedRect(x, y, width, height, 20);
-    frame.endFill();
-    drawCraftCard(frame, x + 6, y + 5, width - 12, height - 11, {
-      radius: 15,
-      tone: left ? 'gold' : 'muted',
-    });
-    root.addChild(frame);
+    this._drawSheetBg(root, x, y, width, height, left);
 
-    const thumbH = height - pad * 2;
-    const thumbW = Math.round(Math.min(206, thumbH * (200 / 168)));
-    const thumbX = x + pad;
-    const thumbY = y + pad - 1;
-    const textX = thumbX + thumbW + 14;
-    const btnY = y + height - pad - btnH - 2;
-    const thumbBg = new PIXI.Graphics();
-    thumbBg.lineStyle(2.2, UI_PALETTE.ink, 1);
-    thumbBg.beginFill(0x2A221C, 1);
-    thumbBg.drawRoundedRect(thumbX, thumbY, thumbW, thumbH, 12);
-    thumbBg.endFill();
-    root.addChild(thumbBg);
+    const thumbX = x + 26;
+    const thumbY = y + 18;
+    const thumbW = 190;
+    const thumbH = height - 36;
+    this._drawPostcardThumb(root, market.thumb, thumbX, thumbY, thumbW, thumbH, !left, `${market.rounds}手`);
 
-    if (market.thumb) {
-      const tex = gameTexture(market.thumb);
-      whenTextureReady(market.thumb, () => {
-        if (this.container.parent) this.relayout();
-      });
-      if (isTextureReady(tex)) {
-        const sprite = new PIXI.Sprite(tex);
-        const fit = fitCover(tex.width, tex.height, thumbW - 4, thumbH - 4);
-        applyFit(sprite, fit);
-        sprite.position.set(thumbX + 2 + fit.x, thumbY + 2 + fit.y);
-        if (!left) sprite.alpha = 0.42;
-        const mask = new PIXI.Graphics();
-        fillRect(mask, thumbX + 2, thumbY + 2, thumbW - 4, thumbH - 4, 0xffffff, 10);
-        sprite.mask = mask;
-        root.addChild(mask);
-        root.addChild(sprite);
-      }
-    }
+    const textX = thumbX + thumbW + 20;
+    const rightEdge = x + width - 86;
+    const bodyRight = x + width - 26;
+    const availW = bodyRight - textX;
 
-    const name = makeLabel(`✦ ${market.name}`, height < 176 ? 23 : 26, UI_PALETTE.ink, { fontWeight: '700' });
-    name.position.set(textX, y + pad - 2);
+    const name = makeText('title', market.name, INK, { size: 32 });
+    name.position.set(textX, y + 18);
     root.addChild(name);
 
-    const hint = makeLabel(market.hint, height < 176 ? 17 : 18, UI_PALETTE.muted, {
-      wordWrap: true,
-      wordWrapWidth: width - (textX - x) - pad,
-    });
-    hint.position.set(textX, y + pad + 32);
+    const seal = this._makeSeal('奇遇', 46);
+    seal.position.set(rightEdge - 24, y + 36);
+    root.addChild(seal);
+    fitTextWidth(name, rightEdge - textX - 56);
+
+    const hint = makeText('body', market.hint, INK_SOFT, { size: 21 });
+    hint.position.set(textX, y + 60);
+    fitTextWidth(hint, availW);
     root.addChild(hint);
 
+    const dTex = gameTexture(DEST_ART.divider);
+    if (isTextureReady(dTex)) {
+      const div = new PIXI.Sprite(dTex);
+      div.width = availW;
+      div.height = 8;
+      div.alpha = 0.35;
+      div.position.set(textX, y + 92);
+      div.eventMode = 'none';
+      root.addChild(div);
+    }
+
+    this._drawSpecialtyPreview(root, specialLootIds(market), textX, y + 102, true);
+
+    const btnH = 56;
+    const btnY = y + height - btnH - 16;
+
+    const remain = Math.max(0, market.dailyLimit - used);
+    const dailyTxt = makeText(
+      'body',
+      remain > 0 ? `今日可逛 ${remain}/${market.dailyLimit}` : `今日已逛完 ${used}/${market.dailyLimit}`,
+      remain > 0 ? GREEN_INK : RED_INK,
+      { size: 22, fontWeight: '700' },
+    );
+    dailyTxt.anchor.set(0, 0.5);
+    dailyTxt.position.set(textX, btnY + btnH / 2);
+    root.addChild(dailyTxt);
+
+    const peek = this._peekBtn(40);
+    peek.position.set(textX + dailyTxt.width + 10, btnY + (btnH - 40) / 2);
+    peek.on('pointertap', (e) => {
+      e.stopPropagation();
+      if (this._scroller.moved) return;
+      this._loot.openSpecial(market.id);
+    });
+    root.addChild(peek);
+
+    const goW = 196;
     const go = makeAdButton({
-      label: '看视频进',
-      width: 176,
+      label: '看视频赶集',
+      width: goW,
       height: btnH,
       skin: 'gold',
       disabled: !left,
-      onReady: () => {
-        if (this.container.parent) this.relayout();
-      },
+      onReady,
     });
-    go.position.set(textX, btnY);
+    go.position.set(bodyRight - goW, btnY);
     go.on('pointertap', () => {
       if (this._scroller.moved) return;
       this._enterSpecial(market);
     });
     root.addChild(go);
-    const chipX = textX + 186;
-    root.addChild(this._dailyChip(chipX, btnY, btnH, used, market.dailyLimit));
-    const peek = 36;
-    const btn = this._peekBtn(peek);
-    btn.position.set(chipX + 114 + 8, btnY + Math.round((btnH - peek) / 2));
-    btn.on('pointertap', (e) => {
-      e.stopPropagation();
-      if (this._scroller.moved) return;
-      this._loot.openSpecial(market.id);
-    });
-    root.addChild(btn);
+
     return root;
   }
 
-  private _dailyChip(x: number, y: number, h: number, used: number, limit: number): PIXI.Container {
-    const root = new PIXI.Container();
-    const chip = new PIXI.Graphics();
-    drawRecessedWell(chip, 0, 2, 114, h - 4, { radius: (h - 4) / 2 });
-    root.addChild(chip);
-    const n = makeLabel(`今日 ${used}/${limit}`, 17, used >= limit ? TERRACOTTA : UI_PALETTE.ink, { fontWeight: '700' });
-    n.anchor.set(0.5);
-    n.position.set(57, h / 2);
-    root.addChild(n);
-    root.position.set(x, y);
-    return root;
-  }
-
-  /** 出发和包子消耗挤在一颗钮上。不够就数字发金。 */
   private _departBtn(
     x: number,
     y: number,
@@ -586,15 +1157,14 @@ export class DestinationScene implements Scene {
     cost: number,
     short: boolean,
     onTap: () => void,
+    onReady: () => void,
   ): PIXI.Container {
     const btn = makeSlicedButton({
       label: '',
       width,
       height,
       skin: short ? 'terracotta' : 'olive',
-      onReady: () => {
-        if (this.container.parent) this.relayout();
-      },
+      onReady,
     });
     btn.position.set(x, y);
     btn.on('pointertap', () => {
@@ -603,37 +1173,35 @@ export class DestinationScene implements Scene {
     });
 
     const face = ((btn as any)._face as PIXI.Container | undefined) ?? btn;
-    const word = makeLabel('出发', 21, 0xFFF8F0, {
-      fontWeight: '700',
-      stroke: UI_PALETTE.ink,
-      strokeThickness: 3,
+    const word = makeText('heading', '出发', 0xFFF8F0, {
+      size: 26,
+      stroke: short ? INK : 0x1F3D1B,
+      strokeWidth: 4,
     });
     word.anchor.set(0, 0.5);
-    const icon = HUD_ICON.stamina;
-    whenTextureReady(icon, () => {
-      if (this.container.parent) this.relayout();
-    });
-    const tex = gameTexture(icon);
+
+    const tex = gameTexture(HUD_ICON.stamina);
     const bun = isTextureReady(tex) ? new PIXI.Sprite(tex) : null;
     if (bun) {
-      fitSpriteInBox(bun, 22, 22);
+      fitSpriteInBox(bun, 30, 30);
       bun.anchor.set(0.5);
       bun.eventMode = 'none';
     }
-    const n = makeLabel(`-${cost}`, 18, short ? 0xFFE27A : 0xFFF8F0, {
-      fontWeight: '700',
-      stroke: UI_PALETTE.ink,
-      strokeThickness: 3,
+    const n = makeText('number', `-${cost}`, short ? 0xFFE27A : 0xFFF8F0, {
+      size: 24,
+      stroke: INK,
+      strokeWidth: 4,
     });
     n.anchor.set(0, 0.5);
-    const clusterW = word.width + 4 + (bun ? 22 : 0) + 2 + n.width;
+
+    const clusterW = word.width + 8 + (bun ? 30 : 0) + 3 + n.width;
     let cx = Math.round((width - clusterW) / 2);
     const mid = height / 2 - 1;
     word.position.set(cx, mid);
-    cx += word.width + 4;
+    cx += word.width + 8;
     if (bun) {
-      bun.position.set(cx + 11, mid);
-      cx += 24;
+      bun.position.set(cx + 15, mid);
+      cx += 32;
       face.addChild(bun);
     }
     n.position.set(cx, mid);
@@ -641,26 +1209,29 @@ export class DestinationScene implements Scene {
     return btn;
   }
 
-  /** 探索度 + 放大镜 + 双层高光进度条。 */
   private _exploreMeter(
     x: number,
     y: number,
+    width: number,
     height: number,
     marketId: MarketDef['id'],
+    onReady: () => void,
   ): PIXI.Container {
     const root = new PIXI.Container();
     const view = marketExploration(KitchenManager.save, marketId);
     const pct = explorePercent(view);
-    const peek = 34;
-    const barW = 152;
+    const barW = Math.max(120, Math.min(184, width));
 
-    const label = makeLabel(`探索度 ${pct}%`, 18, UI_PALETTE.ink, { fontWeight: '700' });
-    label.position.set(2, 0);
+    const label = makeText('caption', `探索 ${pct}%`, view.complete ? GREEN_INK : INK, {
+      size: 21,
+      fontWeight: '700',
+    });
+    label.position.set(0, 0);
     root.addChild(label);
 
     if (view.complete) {
-      const btn = this._peekBtn(peek);
-      btn.position.set(label.width + 8, -4);
+      const btn = this._peekBtn(38);
+      btn.position.set(label.width + 8, -5);
       btn.on('pointertap', (e) => {
         e.stopPropagation();
         if (this._scroller.moved) return;
@@ -669,15 +1240,14 @@ export class DestinationScene implements Scene {
       root.addChild(btn);
     }
 
-    const barH = 16;
-    const bar = makeCraftProgressBar({
+    const bar = makeHandProgressBar({
       width: barW,
-      height: barH,
-      ratio: view.complete ? 1 : view.ratio,
-      scheme: view.complete ? 'olive' : 'amber',
+      height: 18,
+      ratio: Math.max(0.06, view.complete ? 1 : view.ratio),
+      onReady,
     });
-    bar.position.set(0, height - barH - 2);
-    root.addChild(bar);
+    bar.node.position.set(0, height - 18);
+    root.addChild(bar.node);
 
     root.position.set(x, y);
     return root;
@@ -686,9 +1256,7 @@ export class DestinationScene implements Scene {
   private _peekBtn(size: number): PIXI.Container {
     const root = new PIXI.Container();
     const path = HUD_ICON.peek;
-    whenTextureReady(path, () => {
-      if (this.container.parent) this.relayout();
-    });
+    this._watchOnce(path);
     const tex = gameTexture(path);
     if (isTextureReady(tex)) {
       const spr = new PIXI.Sprite(tex);
@@ -700,7 +1268,7 @@ export class DestinationScene implements Scene {
     }
     root.eventMode = 'static';
     root.cursor = 'pointer';
-    root.hitArea = new PIXI.Rectangle(0, 0, size, size);
+    root.hitArea = new PIXI.Rectangle(-4, -4, size + 8, size + 8);
     bindUiClick(root);
     return root;
   }
@@ -719,56 +1287,56 @@ export class DestinationScene implements Scene {
     const root = new PIXI.Container();
     const ride = vehicleById(this._browse);
     const offer = vehicleOffer(KitchenManager.save, ride.id);
-    const title = makeLabel('选择出行工具', 30, 0xFFF6EA, {
-      fontFamily: TITLE_FONT,
-      fontWeight: '700',
-      letterSpacing: 5,
-      stroke: 0x3A2416,
-      strokeThickness: 6,
-      lineJoin: 'round',
-      dropShadow: true,
-      dropShadowColor: '#2A2018',
-      dropShadowAlpha: 0.4,
-      dropShadowDistance: 2,
-      dropShadowAngle: Math.PI / 2,
-      dropShadowBlur: 0,
-    });
-    title.anchor.set(0.5);
-    title.position.set(x + width / 2, y + 20);
-    root.addChild(title);
 
-    const bodyY = y + DOCK_TITLE_H;
-    const bodyH = height - DOCK_TITLE_H;
-    const imgH = bodyH;
-    const imgW = width - 80;
-    const zoom = DOCK_ZOOM[ride.id];
-    const cx = x + width / 2;
-    const cy = bodyY + imgH / 2;
+    const bg = new PIXI.Graphics();
+    bg.beginFill(0x140B05, 0.34);
+    bg.drawRoundedRect(x + 2, y + 6, width - 4, height - 2, 16);
+    bg.endFill();
+    bg.lineStyle(2.6, INK, 1);
+    bg.beginFill(0xFAF0DA, 0.96);
+    bg.drawRoundedRect(x, y, width, height, 16);
+    bg.endFill();
+    bg.lineStyle(1.2, 0xC6A87E, 0.75);
+    bg.drawRoundedRect(x + 64, y + 8, width - 128, height - 16, 10);
+    root.addChild(bg);
 
-    whenTextureReady(ride.art, onReady);
+    this._watchOnce(ride.art);
     const tex = gameTexture(ride.art);
-    let artW = 200;
+    const artCx = x + 158;
+    const cy = y + height / 2;
     if (isTextureReady(tex)) {
       const sprite = new PIXI.Sprite(tex);
-      fitSpriteInBox(sprite, imgW * zoom, imgH * zoom);
+      const zoom = DOCK_ZOOM[ride.id];
+      fitSpriteInBox(sprite, 152 * zoom, (height - 12) * zoom);
       sprite.anchor.set(0.5);
-      sprite.position.set(cx, cy);
+      sprite.position.set(artCx, cy);
       sprite.eventMode = 'none';
       if (offer === 'buyable') applyGray(sprite);
-      if (offer === 'locked') sprite.tint = 0x14110E;
+      if (offer === 'locked') sprite.tint = 0x1A1410;
       root.addChild(sprite);
-      artW = sprite.width;
     }
 
+    const infoX = x + 252;
+    const infoMaxW = x + width - 74 - infoX;
+
     if (offer === 'buyable') {
-      const buy = makeSlicedButton({
-        label: `${ride.cost}`,
-        width: 168,
-        height: 44,
-        skin: 'terracotta',
+      const title = makeText('heading', `${ride.name} · 待添置`, INK, { size: 24 });
+      title.position.set(infoX, y + 14);
+      fitTextWidth(title, infoMaxW);
+      root.addChild(title);
+
+      const canAfford = KitchenManager.save.money >= ride.cost;
+      const buy = makeCoinButton({
+        prefix: '添置',
+        price: ride.cost,
+        width: Math.min(220, infoMaxW),
+        height: 50,
+        skin: canAfford ? 'gold' : 'cream',
+        textColor: canAfford ? INK : 0x8A7358,
+        fontSize: 24,
         onReady,
       });
-      buy.position.set(x + (width - 168) / 2, y + height - 44);
+      buy.position.set(infoX, y + 52);
       buy.on('pointertap', (e) => {
         e.stopPropagation();
         if (!KitchenManager.buyVehicle(ride.id)) return;
@@ -777,31 +1345,33 @@ export class DestinationScene implements Scene {
         this.relayout();
       });
       root.addChild(buy);
-      whenTextureReady(HUD_ICON.coin, onReady);
-      const coin = new PIXI.Sprite(gameTexture(HUD_ICON.coin));
-      if (isTextureReady(coin.texture)) {
-        fitSpriteInBox(coin, 30, 30);
-        coin.anchor.set(1, 0.5);
-        coin.position.set(x + (width - 168) / 2 + 52, y + height - 22);
-        coin.eventMode = 'none';
-        root.addChild(coin);
-      }
+    } else {
+      const badgeStr = offer === 'owned' ? '当前座驾' : '尚未开通';
+      const title = makeText('heading', `${ride.name} · ${badgeStr}`, offer === 'owned' ? INK : MUTED, { size: 25 });
+      title.position.set(infoX, y + 20);
+      fitTextWidth(title, infoMaxW);
+      root.addChild(title);
+
+      const blurb = makeText('body', ride.blurb, INK_SOFT, { size: 22 });
+      blurb.position.set(infoX, y + 60);
+      fitTextWidth(blurb, infoMaxW);
+      root.addChild(blurb);
     }
 
-    const arrowGap = 38;
-    root.addChild(this._arrow(cx - artW / 2 - arrowGap, cy, -1));
-    root.addChild(this._arrow(cx + artW / 2 + arrowGap, cy, 1));
+    root.addChild(this._arrow(x + 34, cy, -1));
+    root.addChild(this._arrow(x + width - 34, cy, 1));
     return root;
   }
 
   private _homeBtn(x: number, y: number, width: number, height: number, onReady: () => void): PIXI.Container {
     const root = new PIXI.Container();
     const btn = makeSlicedButton({
-      label: '回家',
+      label: '回小厨',
       width,
       height,
       skin: 'terracotta',
-      labelOffsetX: 22,
+      fontSize: 28,
+      labelOffsetX: 24,
       onReady,
     });
     btn.position.set(x, y);
@@ -812,12 +1382,12 @@ export class DestinationScene implements Scene {
       SceneManager.switchTo('kitchen');
     });
     root.addChild(btn);
-    whenTextureReady(HUD_ICON.home, onReady);
+    this._watchOnce(HUD_ICON.home);
     const house = new PIXI.Sprite(gameTexture(HUD_ICON.home));
     if (isTextureReady(house.texture)) {
       fitSpriteInBox(house, 58, 58);
       house.anchor.set(0.5);
-      house.position.set(x + 44, y + height / 2 - 2);
+      house.position.set(x + 56, y + height / 2 - 2);
       house.eventMode = 'none';
       root.addChild(house);
     }
@@ -830,7 +1400,7 @@ export class DestinationScene implements Scene {
     bg.beginFill(0x160E08, 0.28);
     bg.drawCircle(0, 3, 24);
     bg.endFill();
-    bg.lineStyle(2.8, UI_PALETTE.ink, 1);
+    bg.lineStyle(2.8, INK, 1);
     bg.beginFill(UI_PALETTE.brass, 1);
     bg.drawCircle(0, 0, 23);
     bg.endFill();
@@ -855,7 +1425,7 @@ export class DestinationScene implements Scene {
     root.position.set(cx, cy);
     root.eventMode = 'static';
     root.cursor = 'pointer';
-    root.hitArea = new PIXI.Circle(0, 0, 28);
+    root.hitArea = new PIXI.Circle(0, 0, 30);
     bindUiClick(root);
     root.on('pointertap', (e) => {
       e.stopPropagation();
@@ -865,10 +1435,7 @@ export class DestinationScene implements Scene {
   }
 
   private _depart(market: MarketDef): void {
-    if (TutorialManager.isActive && market.id !== 'xiangko') {
-      TutorialGuard.block('departOther');
-      return;
-    }
+    if (market.id !== 'xiangko' && TutorialGuard.block('departOther')) return;
     if (TutorialGuard.block(market.id === 'xiangko' ? 'departXiangko' : 'departOther')) return;
     if (!ownsRouteToMarket(KitchenManager.save, market.id)) {
       const ride = vehicleForMarket(market.id);
