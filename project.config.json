@@ -1132,7 +1132,27 @@
       },
       {
         "type": "file",
+        "value": "subpkg_images/special_action_drum.png"
+      },
+      {
+        "type": "file",
         "value": "subpkg_images/special_dry_bg.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/special_dry_tray_gold.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/special_dry_tray_raw.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/special_field_lantern.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/special_field_mound.png"
       },
       {
         "type": "file",
@@ -1141,6 +1161,18 @@
       {
         "type": "file",
         "value": "subpkg_images/special_fish_bg.jpg"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/special_fish_bobber.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/special_fish_rod.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/special_fish_splash.png"
       },
       {
         "type": "file",
@@ -1153,6 +1185,14 @@
       {
         "type": "file",
         "value": "subpkg_images/special_spice_jar_lid.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/special_spice_steam.png"
+      },
+      {
+        "type": "file",
+        "value": "subpkg_images/special_spice_table.png"
       },
       {
         "type": "file",

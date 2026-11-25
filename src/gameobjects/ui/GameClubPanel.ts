@@ -1,18 +1,20 @@
 import * as PIXI from 'pixi.js';
+import { analytics } from '@/analytics';
 import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { TutorialOverlay } from '@/gameobjects/ui/TutorialOverlay';
 import { Platform } from '@/core/PlatformService';
 import { KitchenManager } from '@/managers/KitchenManager';
-import { dailyGameClubPack } from '@/sim';
+import { destroyDisplayChildren } from '@/utils/destroy';
+import { dailyGameClubPack, itemRarity } from '@/sim';
 import { fetchDailyPostCount, isGameClubButtonSupported } from '@/services/GameClubService';
 import {
   HUD_ICON,
   UI_KIT,
+  attachSpriteContour,
   fitTextWidth,
   makeHandProgressBar,
-  makeRarityFlare,
   makeSlicedButton,
   makeText,
   uiBarPaths,
@@ -48,7 +50,6 @@ const ART = {
   board: 'subpkg_images/scene_club_board.png',
   note: 'subpkg_images/scene_club_note.png',
   basket: 'subpkg_images/scene_club_basket.png',
-  flare: 'subpkg_kitchen/ui_pickup_flare.png',
 } as const;
 
 const W = 720;
@@ -90,7 +91,8 @@ export class GameClubPanel extends PIXI.Container {
       Platform.showToast('游戏圈仅微信内可用');
       return;
     }
-    if (!this._isOpen) AudioManager.play('ui_click');
+    const wasOpen = this._isOpen;
+    if (!wasOpen) AudioManager.play('ui_click');
     this._isOpen = true;
     this.visible = true;
     this._inspect = null;
@@ -98,6 +100,9 @@ export class GameClubPanel extends PIXI.Container {
     OverlayManager.bringToFront();
     void this._refreshStatus();
     this._syncNativeButton();
+    if (!wasOpen) {
+      analytics.trackWelfareAction({ channel: 'wx_game_club', action: 'open' });
+    }
   }
 
   close(silent = false): void {
@@ -108,7 +113,7 @@ export class GameClubPanel extends PIXI.Container {
     this._paintQueued = false;
     this._clearReturnTimers();
     this._destroyNativeButton();
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
     TutorialOverlay.refresh();
   }
 
@@ -125,7 +130,7 @@ export class GameClubPanel extends PIXI.Container {
   };
 
   relayout(): void {
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
     this._enterRoot = null;
     if (!this._isOpen) {
       this._destroyNativeButton();
@@ -264,11 +269,7 @@ export class GameClubPanel extends PIXI.Container {
     basketCy: number,
   ): void {
     const claimed = KitchenManager.hasClaimedGameClubToday();
-
-    const flare = makeRarityFlare('epic', 310);
-    flare.alpha = claimed ? 0.25 : 0.58;
-    flare.position.set(cx, basketCy - 38);
-    scene.addChild(flare);
+    const claimable = KitchenManager.canClaimGameClub(this._postCount);
 
     const basket = sceneSprite(ART.basket, 356, 238);
     if (basket) {
@@ -276,9 +277,12 @@ export class GameClubPanel extends PIXI.Container {
       basket.position.set(cx, basketCy + 16);
       if (claimed) basket.alpha = 0.72;
       scene.addChild(basket);
+      if (claimable && !claimed) {
+        attachSpriteContour(scene, basket, 'god', { selected: true, thicknessScale: 0.9 });
+      }
     }
 
-    // 篮中实物（2 味珍稀鲜货 + 菜谱券，点击食材可看详情）
+    // 篮中实物（2 味珍稀鲜货 + 菜谱券，点击食材可看详情，轻巧贴边轮廓光不脏羊皮纸）
     const totalItems = pack.foods.length + 1;
     const stepX = 104;
     const startX = cx - ((totalItems - 1) * stepX) / 2;
@@ -295,6 +299,9 @@ export class GameClubPanel extends PIXI.Container {
         fitSpriteInBox(sp, 86, 86);
         sp.anchor.set(0.5);
         node.addChild(sp);
+        if (!claimed) {
+          attachSpriteContour(node, sp, itemRarity(f.defId), { thicknessScale: 0.85 });
+        }
       }
       if (f.qty > 1) {
         const q = makeText('number', `×${f.qty}`, SCENE_INK.red, {
@@ -330,6 +337,9 @@ export class GameClubPanel extends PIXI.Container {
     if (tSp) {
       tSp.anchor.set(0.5);
       ticketNode.addChild(tSp);
+      if (!claimed) {
+        attachSpriteContour(ticketNode, tSp, 'epic', { thicknessScale: 0.85 });
+      }
     }
     const tq = makeText('number', `×${pack.tickets}`, SCENE_INK.gold, {
       size: 24,
@@ -459,6 +469,14 @@ export class GameClubPanel extends PIXI.Container {
     }
     const res = KitchenManager.claimGameClubDaily(this._postCount);
     if (!res.ok) return;
+    analytics.trackWelfareAction({
+      channel: 'wx_game_club',
+      action: 'claim',
+      goldGained: res.foldGold,
+      ticketsGained: res.tickets,
+      foodsCount: res.foods.reduce((s, f) => s + f.qty, 0),
+      postCount: this._postCount,
+    });
     const origin = from ?? { x: Game.designWidth / 2, y: Math.round(Game.logicHeight * 0.62) };
     const firstFood = res.foods.find((f) => !f.folded);
     playRewardCollect({

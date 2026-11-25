@@ -12,11 +12,11 @@ import {
   fridgeKind,
   getItem,
   itemRarity,
-  rarityLabel,
   recipeById,
   recipeEatLabel,
   recipeRarity,
   recipeSellPrice,
+  resolveRarityTier,
   sellPrice,
   type FridgeItem,
   type Quality,
@@ -28,11 +28,11 @@ import {
   UI_BTN,
   UI_KIT,
   UI_PALETTE,
+  attachSpriteContour,
   bindUiClick,
   fillRect,
   fitTextWidth,
   makeCoinButton,
-  makeRarityFlare,
   makeSlicedButton,
   makeText,
 } from '@/utils/ui';
@@ -52,6 +52,7 @@ import {
   drawInkDivider,
   drawSceneClose,
   drawStretchSheet,
+  makeRaritySeal,
   makeSealStamp,
   sceneArtPaths,
   sceneSprite,
@@ -74,6 +75,13 @@ export interface ItemInspectView {
   priceLine?: string;
 }
 
+function cleanFoodBlurb(defId: string, raw: string, quality: Quality): string {
+  if (quality === 'rotten') return raw;
+  if (defId === 'tofu') return '嫩得像刚睡醒，白玉一方，下汤煎烧都鲜滑。';
+  if (defId === 'dried_tofu') return '压得紧实的豆香小方，切丝小炒最下饭。';
+  return raw;
+}
+
 export function inspectFromFridge(it: FridgeItem): ItemInspectView {
   const dish = fridgeKind(it) === 'dish';
   const recipe = dish && it.defId ? recipeById(it.defId as RecipeId) : undefined;
@@ -90,9 +98,10 @@ export function inspectFromFridge(it: FridgeItem): ItemInspectView {
       note = '市井鲜材';
     }
   }
+  const rawBlurb = fridgeItemBlurb(it);
   return {
     title: fridgeItemName(it),
-    blurb: fridgeItemBlurb(it),
+    blurb: dish ? rawBlurb : cleanFoodBlurb(it.defId, rawBlurb, it.quality),
     kind: dish ? 'dish' : 'food',
     defId: it.defId,
     quality: it.quality,
@@ -139,7 +148,7 @@ export function inspectFromFood(opts: {
       title: displayName(opts.defId, inspected, opts.quality),
       blurb: opts.quality === 'rotten'
         ? (def.blurbRotten ?? '放久了，连自己都认不出自己。')
-        : look.blurb,
+        : cleanFoodBlurb(lookId, look.blurb, opts.quality),
       kind: 'food',
       defId: lookId,
       quality: opts.quality,
@@ -190,7 +199,6 @@ export function makeItemInspectCard(opts: {
       UI_KIT.btnGold,
       UI_BTN.terracotta,
       UI_BTN.cream,
-      'subpkg_kitchen/ui_pickup_flare.png',
       iconPath,
     ],
     () => opts.onReady?.(),
@@ -284,14 +292,10 @@ export function makeItemInspectCard(opts: {
 
   drawStretchSheet(card, SCENE_ART.sheet, 0, 0, cardW, cardH, 140, 120);
 
-  // ── 顶部实物区：成菜去底盘大尺寸直呈（配柔和墨影），食材/道具保留青花瓷碟托底 ──
+  // ── 顶部实物区：成菜去底盘大尺寸直呈（配柔和墨影），食材/道具保留青花瓷碟托底，轮廓光紧贴实物边缘 ──
   const plateCx = 134;
   const plateCy = 132;
-  if (view.quality !== 'rotten' && (view.rarity !== 'common' || view.kind === 'dish')) {
-    const flare = makeRarityFlare(view.rarity, 208);
-    flare.position.set(plateCx, plateCy - 8);
-    card.addChild(flare);
-  }
+  const visualTier = resolveRarityTier(view.rarity, view.quality);
 
   const plateW = 176;
   let itemTex: PIXI.Texture;
@@ -318,6 +322,12 @@ export function makeItemInspectCard(opts: {
       icon.position.set(plateCx, plateCy - 6);
       icon.eventMode = 'none';
       card.addChild(icon);
+      if (view.quality !== 'rotten') {
+        attachSpriteContour(card, icon, visualTier, {
+          selected: visualTier !== 'common',
+          thicknessScale: 1.08,
+        });
+      }
     }
   } else {
     const plate = sceneSprite(SCENE_ART.plate, plateW);
@@ -334,6 +344,12 @@ export function makeItemInspectCard(opts: {
       icon.position.set(plateCx, plateCy + 32);
       icon.eventMode = 'none';
       card.addChild(icon);
+      if (view.quality !== 'rotten') {
+        attachSpriteContour(card, icon, visualTier, {
+          selected: visualTier !== 'common',
+          thicknessScale: 1.05,
+        });
+      }
     }
   }
 
@@ -348,11 +364,13 @@ export function makeItemInspectCard(opts: {
     card.addChild(qtyMark);
   }
 
-  // 右侧文字与朱印品阶章（避开宣纸右上黄铜图钉）
+  // 右侧文字与品阶色篆印（避开宣纸右上黄铜图钉）
   const infoX = 242;
   const infoR = cardW - padX;
   const sealSize = 58;
-  const seal = makeSealStamp(rarityLabel(view.rarity), sealSize, -0.09);
+  const seal = view.quality === 'rotten'
+    ? makeSealStamp('变质', sealSize, -0.09)
+    : makeRaritySeal(visualTier, sealSize, -0.09);
   seal.position.set(infoR - 36, 82);
   card.addChild(seal);
 

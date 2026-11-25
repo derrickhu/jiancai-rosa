@@ -5,14 +5,14 @@ import { OverlayManager } from '@/core/OverlayManager';
 import { Ease, TweenManager } from '@/core/TweenManager';
 import { getItem, itemRarity } from '@/sim/items';
 import { fitSpriteInBox, gameTexture, isTextureFailed, isTextureReady, resolveItemAssetPath, whenTextureReady } from './assets';
-import { HUD_ICON, PLAYER_LEVEL_HUD, makeRarityFlare } from './ui';
+import { destroyDisplayNode } from './destroy';
+import { HUD_ICON, PLAYER_LEVEL_HUD, attachSpriteContour } from './ui';
 
 const COIN = HUD_ICON.coin;
 const TICKET = 'subpkg_images/ui_menu_ticket.png';
 const Z = 200;
 const SIZE = 18;
 const FACE = 168;
-const FLARE = 320;
 
 let _layer: PIXI.Container | null = null;
 let _gainLayer: PIXI.Container | null = null;
@@ -145,7 +145,7 @@ export function playCoinCollect(
         coin.scale.set(base * pop);
       },
       onComplete: () => {
-        if (!coin.destroyed) coin.destroy();
+        destroyDisplayNode(coin);
         if (i === 0) AudioManager.play('coin_gain');
         finish();
       },
@@ -257,12 +257,12 @@ function _flyGain(opts: {
   wrap.position.set(opts.from.x, opts.from.y);
   wrap.scale.set(0.2);
   wrap.alpha = 0;
-  const glow = makeRarityFlare(opts.rarity, FLARE);
   const sprite = new PIXI.Sprite(opts.tex);
   sprite.anchor.set(0.5);
   fitSpriteInBox(sprite, face, face);
   sprite.eventMode = 'none';
-  wrap.addChild(glow, sprite);
+  wrap.addChild(sprite);
+  attachSpriteContour(wrap, sprite, opts.rarity, { onDark: true, selected: true });
   layer.addChild(wrap);
   if (opts.sfx !== false) {
     AudioManager.playGain();
@@ -297,8 +297,7 @@ function _flyGain(opts: {
         duration: 0.18,
         delay: 0.5,
         onComplete: () => {
-          if (wrap.parent) wrap.parent.removeChild(wrap);
-          if (!wrap.destroyed) wrap.destroy({ children: true });
+          destroyDisplayNode(wrap);
           _maybeClearGain();
           opts.onDone?.();
         },
@@ -329,8 +328,9 @@ function _gainHost(): PIXI.Container | null {
 
 function _maybeClearGain(): void {
   if (!_gainLayer || _gainLayer.children.length) return;
-  if (!_gainLayer.destroyed) _gainLayer.destroy({ children: true });
+  const layer = _gainLayer;
   _gainLayer = null;
+  destroyDisplayNode(layer);
 }
 
 function _makeCoin(): { coin: PIXI.Sprite; base: number } {
@@ -343,7 +343,7 @@ function _makeCoin(): { coin: PIXI.Sprite; base: number } {
 
 function _clear(): void {
   if (!_layer) return;
-  for (const child of _layer.children) TweenManager.cancelTarget(child);
-  if (!_layer.destroyed) _layer.destroy({ children: true });
+  const layer = _layer;
   _layer = null;
+  destroyDisplayNode(layer);
 }

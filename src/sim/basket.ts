@@ -12,7 +12,6 @@ export interface BasketItem {
   rot: 0 | 1;
   pinned: boolean;
   dampened: boolean;
-  broken?: boolean;
 }
 
 export interface BasketPocket {
@@ -172,23 +171,6 @@ function occupancyMap(state: BasketState, ignoreUid?: string): Map<string, Baske
   return map;
 }
 
-function neighborsOf(cells: Array<{ x: number; y: number }>): Array<{ x: number; y: number }> {
-  const self = new Set(cells.map((c) => `${c.x},${c.y}`));
-  const out: Array<{ x: number; y: number }> = [];
-  const seen = new Set<string>();
-  for (const c of cells) {
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const x = c.x + dx;
-      const y = c.y + dy;
-      const key = `${x},${y}`;
-      if (self.has(key) || seen.has(key)) continue;
-      seen.add(key);
-      out.push({ x, y });
-    }
-  }
-  return out;
-}
-
 export function canPlace(
   state: BasketState,
   draft: Pick<BasketItem, 'uid' | 'defId' | 'x' | 'y' | 'rot'>,
@@ -207,40 +189,7 @@ export function canPlace(
 
   if (def.zone === 'wet') {
     if (!cells.every((c) => acceptsWet(state, c.x, c.y))) {
-      return { ok: false, reason: '湿货必须放湿区' };
-    }
-  }
-
-  if (def.live) {
-    const wetBottom = BASKET_FLEX_ROWS + state.wetRows - 1;
-    const onBottom = cells.some((c) => isFoamWetCell(state, c.x, c.y) && c.y === wetBottom);
-    if (!onBottom) return { ok: false, reason: '活物要贴湿区底边' };
-  }
-
-  const neighborItems = new Set<BasketItem>();
-  for (const n of neighborsOf(cells)) {
-    const other = occ.get(`${n.x},${n.y}`);
-    if (other) neighborItems.add(other);
-  }
-
-  if (def.fragile) {
-    for (const other of neighborItems) {
-      const od = getItem(other.defId);
-      if (od.bulky || od.live || od.hard) return { ok: false, reason: '鸡蛋挨着硬货会碎' };
-    }
-  }
-  if (def.squeezable) {
-    for (const other of neighborItems) {
-      if (getItem(other.defId).live) return { ok: false, reason: '豆腐挨着活物会挤烂' };
-    }
-  }
-  for (const other of neighborItems) {
-    const od = getItem(other.defId);
-    if (od.fragile && (def.bulky || def.live || def.hard)) {
-      return { ok: false, reason: '会挤碎旁边的蛋' };
-    }
-    if (od.squeezable && def.live) {
-      return { ok: false, reason: '会挤烂旁边的豆腐' };
+      return { ok: false, reason: '湿货需放入左侧湿货区' };
     }
   }
 
@@ -257,6 +206,60 @@ function isWetCell(state: BasketState, x: number, y: number): boolean {
   return basketCellKind(state, x, y) === 'wet';
 }
 
+export interface BasketZoneStats {
+  wetUsed: number;
+  wetTotal: number;
+  dryUsed: number;
+  dryTotal: number;
+  flexUsed: number;
+  flexTotal: number;
+}
+
+export function basketZoneStats(state: BasketState): BasketZoneStats {
+  const occ = occupancyMap(state);
+  let wetUsed = 0;
+  let wetTotal = 0;
+  let dryUsed = 0;
+  let dryTotal = 0;
+  let flexUsed = 0;
+  let flexTotal = 0;
+  for (let y = 0; y < state.rows; y++) {
+    for (let x = 0; x < state.cols; x++) {
+      const kind = basketCellKind(state, x, y);
+      if (kind === 'none') continue;
+      const used = occ.has(`${x},${y}`) ? 1 : 0;
+      if (kind === 'wet') {
+        wetTotal += 1;
+        wetUsed += used;
+      } else if (kind === 'dry') {
+        dryTotal += 1;
+        dryUsed += used;
+      } else if (kind === 'flex') {
+        flexTotal += 1;
+        flexUsed += used;
+      }
+    }
+  }
+  return { wetUsed, wetTotal, dryUsed, dryTotal, flexUsed, flexTotal };
+}
+
+function candidateBias(state: BasketState, def: ItemDef, x: number, y: number, rot: 0 | 1): number {
+  const { w, h } = footprint(def, rot);
+  let bias = 0;
+  if (def.zone === 'wet') {
+    const wetTop = BASKET_FLEX_ROWS;
+    const wetBottom = BASKET_FLEX_ROWS + state.wetRows - 1;
+    // 窄列水桶里避免 2×1 横条卡在中间行把水桶拦腰截断
+    if (w >= state.wetCols && h === 1 && y > wetTop && y < wetBottom) {
+      bias += 6;
+    }
+    bias += y * 0.35 + x * 0.12;
+  } else {
+    bias += y * 0.3 + Math.max(0, x - state.wetCols) * 0.12;
+  }
+  return bias;
+}
+
 /** 干货先扫干区，湿货先扫湿区；广告通用行往后排。near 用来旋转后就近挪一格。 */
 function sortedOrigins(
   state: BasketState,
@@ -265,22 +268,24 @@ function sortedOrigins(
   near?: { x: number; y: number },
 ): Array<{ x: number; y: number }> {
   const { w, h } = footprint(def, rot);
-  const out: Array<{ x: number; y: number; score: number; dist: number }> = [];
+  const out: Array<{ x: number; y: number; score: number; dist: number; bias: number }> = [];
   for (let y = 0; y <= state.rows - h; y++) {
     for (let x = 0; x <= state.cols - w; x++) {
       const cells = occupiedCells({ defId: def.id, x, y, rot });
       if (cells.some((c) => basketCellKind(state, c.x, c.y) === 'none')) continue;
       const wet = cells.filter((c) => isWetCell(state, c.x, c.y)).length;
       const flex = cells.filter((c) => basketCellKind(state, c.x, c.y) === 'flex').length;
-      let score = wet * 10 + flex;
+      let score = wet * 20 + flex * 3;
       if (def.zone === 'wet') {
-        score = cells.every((c) => acceptsWet(state, c.x, c.y)) ? flex : 99;
+        if (!cells.every((c) => acceptsWet(state, c.x, c.y))) continue;
+        score = flex * 3;
       }
       const dist = near ? Math.abs(x - near.x) + Math.abs(y - near.y) : 0;
-      out.push({ x, y, score, dist });
+      const bias = near ? 0 : candidateBias(state, def, x, y, rot);
+      out.push({ x, y, score, dist, bias });
     }
   }
-  out.sort((a, b) => a.score - b.score || a.dist - b.dist || a.y - b.y || a.x - b.x);
+  out.sort((a, b) => a.score - b.score || a.dist - b.dist || a.bias - b.bias || a.y - b.y || a.x - b.x);
   return out;
 }
 
@@ -302,11 +307,31 @@ export function tryAutoPlace(
 ): BasketItem | null {
   const def = getItem(item.defId);
   const rots: Array<0 | 1> = def.w === def.h ? [0] : [0, 1];
+  const merged: Array<{ x: number; y: number; rot: 0 | 1; score: number; bias: number }> = [];
   for (const rot of rots) {
-    for (const { x, y } of sortedOrigins(state, def, rot)) {
-      if (canPlace(state, { uid: item.uid, defId: item.defId, x, y, rot }).ok) {
-        return sealItem(state, { ...item, x, y, rot });
+    const { w, h } = footprint(def, rot);
+    // 窄列湿区长条货轻微偏好竖放（1×2），减少横条割裂列空间
+    const rotBias = def.zone === 'wet' && state.wetCols <= 2 && w > h ? 0.8 : 0;
+    for (let y = 0; y <= state.rows - h; y++) {
+      for (let x = 0; x <= state.cols - w; x++) {
+        const cells = occupiedCells({ defId: def.id, x, y, rot });
+        if (cells.some((c) => basketCellKind(state, c.x, c.y) === 'none')) continue;
+        const wet = cells.filter((c) => isWetCell(state, c.x, c.y)).length;
+        const flex = cells.filter((c) => basketCellKind(state, c.x, c.y) === 'flex').length;
+        let score = wet * 20 + flex * 3;
+        if (def.zone === 'wet') {
+          if (!cells.every((c) => acceptsWet(state, c.x, c.y))) continue;
+          score = flex * 3;
+        }
+        const bias = candidateBias(state, def, x, y, rot) + rotBias;
+        merged.push({ x, y, rot, score, bias });
       }
+    }
+  }
+  merged.sort((a, b) => a.score - b.score || a.bias - b.bias || a.y - b.y || a.x - b.x || a.rot - b.rot);
+  for (const cand of merged) {
+    if (canPlace(state, { uid: item.uid, defId: item.defId, x: cand.x, y: cand.y, rot: cand.rot }).ok) {
+      return sealItem(state, { ...item, x: cand.x, y: cand.y, rot: cand.rot });
     }
   }
   return null;
@@ -525,4 +550,499 @@ export function validPlacements(
     }
   }
   return found;
+}
+
+/** 拖放预览红框时，给出该落点被拒的准确原因。 */
+export function diagnoseCellBlock(
+  state: BasketState,
+  draft: Pick<BasketItem, 'uid' | 'defId' | 'x' | 'y' | 'rot'>,
+): string | null {
+  const others = overlappingOthers(state, draft);
+  const ignore = new Set([draft.uid, ...others.map((it) => it.uid)]);
+  const cleared: BasketState = {
+    ...state,
+    items: state.items.filter((it) => !ignore.has(it.uid)),
+  };
+  const res = canPlace(cleared, draft);
+  return res.ok ? null : res.reason;
+}
+
+type DraftItem = Omit<BasketItem, 'x' | 'y' | 'rot' | 'pinned' | 'dampened'>;
+
+interface PackCandidate {
+  x: number;
+  y: number;
+  rot: 0 | 1;
+  cells: number[];
+  score: number;
+}
+
+interface PackEntry {
+  base: DraftItem;
+  def: ItemDef;
+  allowDampen: boolean;
+  groupKey: string;
+  candidates: PackCandidate[];
+  origPos?: { x: number; y: number; rot: 0 | 1 };
+}
+
+function buildPackCandidates(
+  state: BasketState,
+  def: ItemDef,
+  allowDampen: boolean,
+  fixedGrid: Int16Array,
+  origPos?: { x: number; y: number; rot: 0 | 1 },
+): PackCandidate[] {
+  const cols = state.cols;
+  const rows = state.rows;
+  const rots: Array<0 | 1> = def.w === def.h ? [0] : [0, 1];
+  const out: PackCandidate[] = [];
+
+  for (const rot of rots) {
+    const { w, h } = footprint(def, rot);
+    const rotBias = def.zone === 'wet' && state.wetCols <= 2 && w > h ? 0.6 : 0;
+    for (let y = 0; y <= rows - h; y++) {
+      for (let x = 0; x <= cols - w; x++) {
+        const rawCells = occupiedCells({ defId: def.id, x, y, rot });
+        let invalid = false;
+        let wetCount = 0;
+        let flexCount = 0;
+        for (const c of rawCells) {
+          const kind = basketCellKind(state, c.x, c.y);
+          if (kind === 'none') {
+            invalid = true;
+            break;
+          }
+          if (fixedGrid[c.y * cols + c.x] !== -1) {
+            invalid = true;
+            break;
+          }
+          if (def.zone === 'wet' && !acceptsWet(state, c.x, c.y)) {
+            invalid = true;
+            break;
+          }
+          if (def.zone === 'dry' && !allowDampen && isFoamWetCell(state, c.x, c.y)) {
+            invalid = true;
+            break;
+          }
+          if (kind === 'wet') wetCount += 1;
+          else if (kind === 'flex') flexCount += 1;
+        }
+        if (invalid) continue;
+
+        const baseScore = def.zone === 'wet'
+          ? flexCount * 4
+          : wetCount * 24 + flexCount * 4;
+        const stayBonus = origPos && origPos.x === x && origPos.y === y && origPos.rot === rot ? -0.15 : 0;
+        const score = baseScore + candidateBias(state, def, x, y, rot) + rotBias + stayBonus;
+        out.push({
+          x,
+          y,
+          rot,
+          cells: rawCells.map((c) => c.y * cols + c.x),
+          score,
+        });
+      }
+    }
+  }
+
+  out.sort((a, b) => a.score - b.score || a.y - b.y || a.x - b.x || a.rot - b.rot);
+  return out;
+}
+
+function solvePack(
+  state: BasketState,
+  fixed: BasketItem[],
+  specs: Array<{ base: DraftItem; allowDampen: boolean; origPos?: { x: number; y: number; rot: 0 | 1 } }>,
+  budget = 3600,
+): BasketItem[] | null {
+  if (specs.length === 0) return fixed.slice();
+  const cols = state.cols;
+  const rows = state.rows;
+  const totalGrid = cols * rows;
+  const fixedGrid = new Int16Array(totalGrid).fill(-1);
+
+  let freeValidCells = 0;
+  let freeWetAcceptCells = 0;
+  for (let i = 0; i < fixed.length; i++) {
+    for (const c of occupiedCells(fixed[i])) {
+      fixedGrid[c.y * cols + c.x] = i;
+    }
+  }
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const kind = basketCellKind(state, x, y);
+      if (kind === 'none' || fixedGrid[y * cols + x] !== -1) continue;
+      freeValidCells += 1;
+      if (acceptsWet(state, x, y)) freeWetAcceptCells += 1;
+    }
+  }
+
+  let needTotalCells = 0;
+  let needWetCells = 0;
+  for (const sp of specs) {
+    const def = getItem(sp.base.defId);
+    const area = def.w * def.h;
+    needTotalCells += area;
+    if (def.zone === 'wet') needWetCells += area;
+  }
+  if (needTotalCells > freeValidCells || needWetCells > freeWetAcceptCells) return null;
+
+  const entries: PackEntry[] = [];
+  for (const sp of specs) {
+    const def = getItem(sp.base.defId);
+    // 同一分组键用于全等物品对称剪枝（忽略 origPos 微调以保证候选序完全一致）
+    const groupKey = `${def.id}|${sp.allowDampen ? 1 : 0}`;
+    const candidates = buildPackCandidates(state, def, sp.allowDampen, fixedGrid);
+    if (candidates.length === 0) return null;
+    entries.push({
+      base: sp.base,
+      def,
+      allowDampen: sp.allowDampen,
+      groupKey,
+      candidates,
+      origPos: sp.origPos,
+    });
+  }
+
+  // 最受限优先（MRV + 大件优先 + 同组相邻以便组合剪枝）
+  entries.sort((a, b) => {
+    const areaDiff = b.def.w * b.def.h - a.def.w * a.def.h;
+    if (areaDiff !== 0) return areaDiff;
+    const candDiff = a.candidates.length - b.candidates.length;
+    if (candDiff !== 0) return candDiff;
+    if (a.groupKey !== b.groupKey) return a.groupKey.localeCompare(b.groupKey);
+    return 0;
+  });
+
+  const dynGrid = new Int16Array(totalGrid).fill(-1);
+  const chosenIdx = new Int32Array(entries.length).fill(-1);
+  let steps = 0;
+
+  const dfs = (depth: number): boolean => {
+    if (depth >= entries.length) return true;
+    if (steps >= budget) return false;
+    const entry = entries[depth];
+    const cands = entry.candidates;
+    const samePrev = depth > 0 && entries[depth - 1].groupKey === entry.groupKey;
+    const startK = samePrev ? chosenIdx[depth - 1] + 1 : 0;
+
+    for (let k = startK; k < cands.length; k++) {
+      steps += 1;
+      if (steps > budget) return false;
+      const cand = cands[k];
+
+      let blocked = false;
+      for (let ci = 0; ci < cand.cells.length; ci++) {
+        if (dynGrid[cand.cells[ci]] !== -1) {
+          blocked = true;
+          break;
+        }
+      }
+      if (blocked) continue;
+
+      for (let ci = 0; ci < cand.cells.length; ci++) {
+        dynGrid[cand.cells[ci]] = depth;
+      }
+      chosenIdx[depth] = k;
+
+      if (dfs(depth + 1)) return true;
+
+      for (let ci = 0; ci < cand.cells.length; ci++) {
+        dynGrid[cand.cells[ci]] = -1;
+      }
+      chosenIdx[depth] = -1;
+    }
+    return false;
+  };
+
+  if (!dfs(0)) return null;
+
+  const result: BasketItem[] = fixed.slice();
+  let verifyState: BasketState = { ...state, items: fixed.slice() };
+  for (let i = 0; i < entries.length; i++) {
+    const cand = entries[i].candidates[chosenIdx[i]];
+    const sealed = sealItem(state, {
+      ...entries[i].base,
+      x: cand.x,
+      y: cand.y,
+      rot: cand.rot,
+    });
+    if (!canPlace(verifyState, sealed).ok) return null;
+    verifyState = { ...verifyState, items: [...verifyState.items, sealed] };
+    result.push(sealed);
+  }
+  return result;
+}
+
+function stripPos(it: BasketItem): DraftItem {
+  return {
+    uid: it.uid,
+    defId: it.defId,
+    quality: it.quality,
+    inspected: it.inspected,
+    freshness: it.freshness,
+  };
+}
+
+/**
+ * 自动旋转与紧凑腾挪入篮：
+ * 当常规 tryAutoPlace 因空隙碎片失败、但总格数足够时，
+ * 对篮内未锁定的物品按干湿分区与长宽尺寸做无损旋转与重排。
+ */
+export function tryAutoPackBasket(
+  state: BasketState,
+  draft: DraftItem,
+): { state: BasketState; placed: BasketItem } | null {
+  const direct = tryAutoPlace(state, draft);
+  if (direct) {
+    return {
+      state: { ...state, items: [...state.items, direct] },
+      placed: direct,
+    };
+  }
+
+  const draftDef = getItem(draft.defId);
+  // 若空篮都放不下（如 1×4 带鱼进 2×3 初始水桶），直接跳过搜索
+  if (validPlacements({ ...state, items: [] }, draft.uid, draft.defId).length === 0) {
+    return null;
+  }
+
+  const pinned = state.items.filter((it) => it.pinned);
+  const unpinned = state.items.filter((it) => !it.pinned);
+
+  // 阶段 A：若新物品是湿货，先仅重排湿区/通用格物品，极速响应
+  if (draftDef.zone === 'wet') {
+    const pureDryFixed: BasketItem[] = [];
+    const wetMovable: BasketItem[] = [];
+    for (const it of unpinned) {
+      const d = getItem(it.defId);
+      const onlyDry = d.zone === 'dry'
+        && !it.dampened
+        && occupiedCells(it).every((c) => basketCellKind(state, c.x, c.y) === 'dry');
+      if (onlyDry) pureDryFixed.push(it);
+      else wetMovable.push(it);
+    }
+    const packedWet = solvePack(
+      state,
+      [...pinned, ...pureDryFixed],
+      [
+        ...wetMovable.map((it) => ({
+          base: stripPos(it),
+          allowDampen: it.dampened,
+          origPos: { x: it.x, y: it.y, rot: it.rot },
+        })),
+        { base: draft, allowDampen: false },
+      ],
+      1800,
+    );
+    if (packedWet) {
+      const placed = packedWet.find((it) => it.uid === draft.uid);
+      if (placed) return { state: { ...state, items: packedWet }, placed };
+    }
+  }
+
+  // 阶段 B：全篮按干湿分区与尺寸协同重排（顺带把借占湿区/通用格的干货挪回干区）
+  const baseSpecs = unpinned.map((it) => ({
+    base: stripPos(it),
+    allowDampen: it.dampened,
+    origPos: { x: it.x, y: it.y, rot: it.rot },
+  }));
+  const packedAll = solvePack(
+    state,
+    pinned,
+    [...baseSpecs, { base: draft, allowDampen: false }],
+    4000,
+  );
+  if (packedAll) {
+    const placed = packedAll.find((it) => it.uid === draft.uid);
+    if (placed) return { state: { ...state, items: packedAll }, placed };
+  }
+
+  // 阶段 C：干货在干区全满时，允许借用空余湿格拼摆
+  if (draftDef.zone === 'dry') {
+    const packedSpill = solvePack(
+      state,
+      pinned,
+      [...baseSpecs, { base: draft, allowDampen: true }],
+      2200,
+    );
+    if (packedSpill) {
+      const placed = packedSpill.find((it) => it.uid === draft.uid);
+      if (placed) return { state: { ...state, items: packedSpill }, placed };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 菜篮面板「一键码齐」：先将篮内物品按最优紧凑度重排（顺带把借放湿区的干货归回干区），
+ * 再尽可能把暂存木案上的待装食材逐件码入菜篮。
+ */
+export function repackBasketWithStaging<T extends DraftItem>(
+  state: BasketState,
+  staging: readonly T[] = [],
+  priorityUid?: string | null,
+): {
+  state: BasketState;
+  placedStaging: BasketItem[];
+  remainingStaging: T[];
+  movedCount: number;
+} {
+  const prevByUid = new Map(state.items.map((it) => [it.uid, it]));
+  let working = state;
+
+  // 1. 先紧凑归置篮内现有物品（优先全归干区；若干区容量不足再保留借放湿格）
+  const pinned = working.items.filter((it) => it.pinned);
+  const unpinned = working.items.filter((it) => !it.pinned);
+  if (unpinned.length > 0) {
+    const dryClean = solvePack(
+      working,
+      pinned,
+      unpinned.map((it) => ({
+        base: stripPos(it),
+        allowDampen: false,
+        origPos: { x: it.x, y: it.y, rot: it.rot },
+      })),
+      3200,
+    );
+    if (dryClean) {
+      working = { ...working, items: dryClean };
+    } else {
+      const keepDamp = solvePack(
+        working,
+        pinned,
+        unpinned.map((it) => ({
+          base: stripPos(it),
+          allowDampen: it.dampened,
+          origPos: { x: it.x, y: it.y, rot: it.rot },
+        })),
+        3200,
+      );
+      if (keepDamp) working = { ...working, items: keepDamp };
+    }
+  }
+
+  // 2. 将暂存食材按「当前选中优先 → 湿货优先 → 大件优先」依次尝试腾挪入篮
+  const orderedStaging = staging.slice().sort((a, b) => {
+    if (priorityUid) {
+      if (a.uid === priorityUid && b.uid !== priorityUid) return -1;
+      if (b.uid === priorityUid && a.uid !== priorityUid) return 1;
+    }
+    const da = getItem(a.defId);
+    const db = getItem(b.defId);
+    if (da.zone !== db.zone) return da.zone === 'wet' ? -1 : 1;
+    return db.w * db.h - da.w * da.h;
+  });
+
+  const placedMap = new Map<string, BasketItem>();
+  for (const item of orderedStaging) {
+    const res = tryAutoPackBasket(working, item);
+    if (res) {
+      working = res.state;
+      const latest = working.items.find((it) => it.uid === item.uid) ?? res.placed;
+      placedMap.set(item.uid, latest);
+    }
+  }
+
+  // 更新所有从暂存装入物品在最终棋盘上的坐标
+  const placedStaging: BasketItem[] = [];
+  const remainingStaging: T[] = [];
+  for (const orig of staging) {
+    if (placedMap.has(orig.uid)) {
+      const finalItem = working.items.find((it) => it.uid === orig.uid) ?? placedMap.get(orig.uid)!;
+      placedStaging.push(finalItem);
+    } else {
+      remainingStaging.push(orig);
+    }
+  }
+
+  let movedCount = placedStaging.length;
+  for (const it of working.items) {
+    const old = prevByUid.get(it.uid);
+    if (old && (old.x !== it.x || old.y !== it.y || old.rot !== it.rot)) {
+      movedCount += 1;
+    }
+  }
+
+  return { state: working, placedStaging, remainingStaging, movedCount };
+}
+
+/**
+ * 精准诊断某食材为何放不进当前菜篮，返回直观的干湿分区与尺寸提示文案。
+ */
+export function diagnoseCannotPlace(state: BasketState, defId: string): string {
+  const def = getItem(defId);
+  const needCells = def.w * def.h;
+  const shape = `${def.w}×${def.h}`;
+  const stats = basketZoneStats(state);
+  const freeWet = (stats.wetTotal - stats.wetUsed) + (stats.flexTotal - stats.flexUsed);
+  const freeDry = (stats.dryTotal - stats.dryUsed) + (stats.flexTotal - stats.flexUsed);
+  const freeAll = (stats.wetTotal - stats.wetUsed) + (stats.dryTotal - stats.dryUsed) + (stats.flexTotal - stats.flexUsed);
+
+  // 1. 连空篮都放不下的大尺寸货（如初始 2×3 水桶遇到 1×4 带鱼/河鳗）
+  if (validPlacements({ ...state, items: [] }, '__diag__', defId).length === 0) {
+    const withFlex = unlockBasketFlex(state);
+    if (!state.flexUnlocked && validPlacements({ ...withFlex, items: [] }, '__diag__', defId).length > 0) {
+      return `${def.name}占 ${shape} 格，当前水桶高度不够（点菜篮顶排添一层竹屉即可装下）`;
+    }
+    return def.zone === 'wet'
+      ? `${def.name}占 ${shape} 格，当前水桶尺寸放不下（回厨房升级泡沫箱可扩容）`
+      : `${def.name}占 ${shape} 格，当前菜篮尺寸放不下（回厨房升级菜篮可扩容）`;
+  }
+
+  // 2. 湿货专项诊断（湿货需放入左侧湿货区或顶排通用格）
+  if (def.zone === 'wet') {
+    let dryInWetCells = 0;
+    for (const it of state.items) {
+      if (getItem(it.defId).zone === 'dry') {
+        for (const c of occupiedCells(it)) {
+          if (acceptsWet(state, c.x, c.y)) dryInWetCells += 1;
+        }
+      }
+    }
+    if (dryInWetCells > 0 && freeWet + dryInWetCells >= needCells) {
+      return `有干货占了 ${dryInWetCells} 格湿区，打开菜篮把干货挪回右侧干区即可装下${def.name}`;
+    }
+
+    if (freeWet === 0) {
+      if (freeDry > 0) {
+        return !state.flexUnlocked
+          ? '左侧湿货区已满（湿货需放左侧湿货区，可在顶排添一层通用竹屉）'
+          : '左侧湿货区已满（湿货不能放干货区，可在菜篮丢弃或挪出小件腾位）';
+      }
+      return !state.flexUnlocked
+        ? '菜篮已装满，可在顶排添一层通用竹屉或丢掉小件腾位'
+        : '菜篮已彻底装满，先丢掉小件腾出空位吧';
+    }
+
+    if (freeWet < needCells) {
+      return !state.flexUnlocked
+        ? `湿货区仅剩 ${freeWet} 格，放不下 ${shape} 的${def.name}（可开顶排通用竹屉或腾位）`
+        : `湿货区仅剩 ${freeWet} 格，放不下 ${shape} 的${def.name}`;
+    }
+
+    // 剩余湿格数够，但形状受限（如 2×4 水桶里 1×4 带鱼占满一列，剩 1×4 放不下 2×2 鱼蟹）
+    return !state.flexUnlocked
+      ? `湿货区剩 ${freeWet} 格但列宽被占，摆不下 ${shape} 的${def.name}（可开顶排通用格或换位）`
+      : `湿货区剩 ${freeWet} 格但空隙形状摆不下 ${shape} 的${def.name}，可在菜篮调整腾位`;
+  }
+
+  // 3. 干货专项诊断
+  if (freeAll === 0) {
+    return !state.flexUnlocked
+      ? '菜篮已装满，可在菜篮顶排看视频添一层通用竹屉'
+      : '菜篮已装满，先丢掉一件小菜腾位吧';
+  }
+
+  if (freeAll < needCells) {
+    return !state.flexUnlocked
+      ? `菜篮仅剩 ${freeAll} 格，放不下 ${shape} 的${def.name}（可开顶排通用竹屉扩容）`
+      : `菜篮仅剩 ${freeAll} 格，放不下 ${shape} 的${def.name}`;
+  }
+
+  return !state.flexUnlocked
+    ? `剩余空隙摆不下 ${shape} 的${def.name}（可在菜篮调整位置，或开顶排通用竹屉）`
+    : `剩余空隙摆不下 ${shape} 的${def.name}，可在菜篮调整或丢掉小件腾位`;
 }

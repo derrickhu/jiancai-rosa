@@ -4,6 +4,7 @@ import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { eventVoice, neighborRewardChips, type RunEventLog } from '@/sim';
 import { fitSpriteInBox, gameTexture, isTextureReady, resolveItemAssetPath, watchTextures } from '@/utils/assets';
+import { destroyDisplayChildren } from '@/utils/destroy';
 import {
   HUD_ICON,
   UI_KIT,
@@ -68,7 +69,7 @@ export class EventPanel extends PIXI.Container {
     this._log = null;
     this._onChoice = null;
     this._paintQueued = false;
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
   }
 
   private _scheduleRelayout = (): void => {
@@ -84,7 +85,7 @@ export class EventPanel extends PIXI.Container {
   };
 
   relayout(): void {
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
     const log = this._log;
     if (!this._isOpen || !log) return;
 

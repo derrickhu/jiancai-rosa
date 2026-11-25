@@ -17,12 +17,29 @@ export { detectMinigamePlatform };
 class PlatformServiceClass {
   readonly name: PlatformName;
   private readonly _api: any;
+  private readonly _flushHooks = new Set<() => void>();
+
+  /** 同步写/删磁盘跨桥调用计数（用于压测验证游戏交互期间 0 同步阻塞写盘）。 */
+  storageSyncCount = 0;
+  getStorageSyncCount = 0;
+  storageAsyncCount = 0;
 
   constructor() {
     this.name = detectMinigamePlatform();
     this._api = getNativePlatformApi(this.name);
     const apiLabel = this.name === 'douyin' ? 'tt' : this.name === 'wechat' ? 'wx' : 'none';
     console.log(`[Platform] 当前平台: ${this.name}, api=${apiLabel}, gameKey=${getScopedGameKey(this.name)}`);
+  }
+
+  registerEmergencyFlush(hook: () => void): () => void {
+    this._flushHooks.add(hook);
+    return () => this._flushHooks.delete(hook);
+  }
+
+  private _runEmergencyFlushHooks(): void {
+    for (const hook of this._flushHooks) {
+      try { hook(); } catch (e) { console.warn('[Platform] emergency flush hook 异常:', e); }
+    }
   }
 
   get backendPlatformCode(): BackendPlatformCode {
@@ -77,6 +94,7 @@ class PlatformServiceClass {
   }
 
   getStorageSync(key: string): string | null {
+    this.getStorageSyncCount += 1;
     const physicalKey = this.storageKey(key);
     try {
       if (this._api?.getStorageSync) {
@@ -88,6 +106,7 @@ class PlatformServiceClass {
   }
 
   setStorageSync(key: string, value: string): void {
+    this.storageSyncCount += 1;
     const physicalKey = this.storageKey(key);
     try {
       if (this._api?.setStorageSync) {
@@ -99,6 +118,7 @@ class PlatformServiceClass {
   }
 
   removeStorageSync(key: string): void {
+    this.storageSyncCount += 1;
     const physicalKey = this.storageKey(key);
     try {
       if (this._api?.removeStorageSync) {
@@ -107,6 +127,51 @@ class PlatformServiceClass {
       }
       if (typeof localStorage !== 'undefined') localStorage.removeItem(physicalKey);
     } catch (_) {}
+  }
+
+  setStorageAsync(key: string, value: string): Promise<void> {
+    this.storageAsyncCount += 1;
+    const physicalKey = this.storageKey(key);
+    if (this._api && typeof this._api.setStorage === 'function') {
+      return new Promise<void>((resolve) => {
+        try {
+          this._api.setStorage({
+            key: physicalKey,
+            data: value,
+            complete: () => resolve(),
+          });
+        } catch (_) {
+          resolve();
+        }
+      });
+    }
+    return Promise.resolve().then(() => {
+      try {
+        if (typeof localStorage !== 'undefined') localStorage.setItem(physicalKey, value);
+      } catch (_) {}
+    });
+  }
+
+  removeStorageAsync(key: string): Promise<void> {
+    this.storageAsyncCount += 1;
+    const physicalKey = this.storageKey(key);
+    if (this._api && typeof this._api.removeStorage === 'function') {
+      return new Promise<void>((resolve) => {
+        try {
+          this._api.removeStorage({
+            key: physicalKey,
+            complete: () => resolve(),
+          });
+        } catch (_) {
+          resolve();
+        }
+      });
+    }
+    return Promise.resolve().then(() => {
+      try {
+        if (typeof localStorage !== 'undefined') localStorage.removeItem(physicalKey);
+      } catch (_) {}
+    });
   }
 
   request(opts: {
@@ -312,6 +377,7 @@ class PlatformServiceClass {
   }
 
   restartMiniProgram(): boolean {
+    this._runEmergencyFlushHooks();
     try {
       if (typeof this._api?.restartMiniProgram !== 'function') return false;
       this._api.restartMiniProgram();
@@ -323,11 +389,35 @@ class PlatformServiceClass {
   }
 
   onHide(callback: () => void): void {
-    try { this._api?.onHide?.(callback); } catch (_) {}
+    try {
+      this._api?.onHide?.(() => {
+        try {
+          callback();
+        } finally {
+          this._runEmergencyFlushHooks();
+        }
+      });
+    } catch (_) {}
   }
 
   onShow(callback: (res?: any) => void): void {
     try { this._api?.onShow?.(callback); } catch (_) {}
+  }
+
+  onMemoryWarning(callback: (res?: { level?: number }) => void): void {
+    try {
+      this._api?.onMemoryWarning?.((res?: { level?: number }) => {
+        try {
+          callback(res);
+        } finally {
+          this._runEmergencyFlushHooks();
+        }
+      });
+    } catch (_) {}
+  }
+
+  triggerGC(): void {
+    try { this._api?.triggerGC?.(); } catch (_) {}
   }
 
   setClipboard(text: string): void {
@@ -668,3 +758,23 @@ if (!_global.__platformService) {
   _global.__platformService = new PlatformServiceClass();
 }
 export const Platform: PlatformServiceClass = _global.__platformService;
+
+const _perfDiagnostics = {
+  get storageSyncCount(): number {
+    return Platform.storageSyncCount;
+  },
+  get getStorageSyncCount(): number {
+    return Platform.getStorageSyncCount;
+  },
+  get storageAsyncCount(): number {
+    return Platform.storageAsyncCount;
+  },
+  resetStorageCounts(): void {
+    Platform.storageSyncCount = 0;
+    Platform.getStorageSyncCount = 0;
+    Platform.storageAsyncCount = 0;
+  },
+};
+const _perfTarget = _global.__jiancaiPerf || (_global.__jiancaiPerf = {});
+Object.defineProperties(_perfTarget, Object.getOwnPropertyDescriptors(_perfDiagnostics));
+(globalThis as any).__jiancaiPerf = _perfTarget;

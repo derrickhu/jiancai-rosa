@@ -111,13 +111,11 @@ import {
   isTextureFailed,
   isTextureReady,
   mapNorm,
-  preloadTextures,
   retryTexture,
-  watchTextures,
+  trimTexturesToBudget,
   whenTextureReady,
 } from '@/utils/assets';
 import { kitchenBootPaths } from '@/utils/bootAssets';
-import { PANEL_SHELL, dailyMenuPanelPaths, orderPanelPaths } from '@/utils/panelAssets';
 import { setKitchenFridgeHudPos, setKitchenGachaHudPos } from '@/utils/coinCollect';
 import { OutingCurtain } from '@/gameobjects/ui/OutingCurtain';
 import { destinationBootPaths } from '@/utils/outingAssets';
@@ -125,13 +123,13 @@ import { RunManager } from '@/managers/RunManager';
 import { TutorialManager, TutorialStep } from '@/managers/TutorialManager';
 import { TutorialOverlay, stageRectOf, worldRectToStage, type SpotlightRect, type TutorialTarget } from '@/gameobjects/ui/TutorialOverlay';
 import { TutorialGuard } from '@/systems/TutorialGuard';
+import { destroyDisplayChildren, isStageMounted } from '@/utils/destroy';
 
 type HotspotId = 'door' | 'basket' | 'fridge' | 'foam' | 'board';
 type UpgradePick = FurnId | 'house';
 
 const DRAG_SLOP = 14;
 const HOUSE_UPGRADE_SHIFT_X = 50;
-const KITCHEN_SLIP = 'subpkg_kitchen/ui_kitchen_slip.png';
 
 const KITCHEN_SCENE_ART = {
   plaque: 'subpkg_images/scene_pk_plaque.png',
@@ -177,20 +175,31 @@ export class KitchenScene implements Scene {
   private _picklePropNode: PIXI.Container | null = null;
   private _catPropNode: PIXI.Container | null = null;
   private _offerTimer = 0;
+  private _overlayTrimTimer: ReturnType<typeof setTimeout> | null = null;
+  private _inKitchen = false;
+  private _dirtyUnderOverlay = false;
   private _onChange = () => {
+    const blocking = this._overlayBlocking();
     const fx = KitchenManager.consumeCookFx();
-    if (fx) playCookReadyFx(fx);
+    if (fx && !blocking) playCookReadyFx(fx);
     if (KitchenManager.consumeNudgeOffer()) this._queueNeighborOffer();
-    this._warmPanelArt();
-    this.relayout();
+    if (blocking) {
+      this._dirtyUnderOverlay = true;
+      return;
+    }
+    this._scheduleRelayout();
   };
   private _onTutorialStep = () => {
-    if (this.container.parent && !this._itemDrag) this.relayout();
+    if (!this.container.parent || this._itemDrag) return;
+    if (this._overlayBlocking() && !TutorialManager.isStep(TutorialStep.COOK_DISH)) {
+      this._dirtyUnderOverlay = true;
+      return;
+    }
+    this.relayout();
   };
   private _onTutorialCompleted = () => {
     if (!this.container.parent) return;
     KitchenManager.beginKitchenVisit();
-    this._warmPanelArt();
     this._queueNeighborOffer();
     this.relayout();
   };
@@ -217,16 +226,67 @@ export class KitchenScene implements Scene {
   private _watched = new Set<string>();
 
   private _scheduleRelayout = (): void => {
-    if (!this.container.parent || this._itemDrag || this._paintQueued) return;
+    if (!this.container.parent || this._itemDrag) return;
+    if (this._overlayBlocking()) {
+      this._dirtyUnderOverlay = true;
+      return;
+    }
+    if (this._paintQueued) return;
     this._paintQueued = true;
     const later = typeof requestAnimationFrame === 'function'
       ? requestAnimationFrame
       : (cb: () => void) => setTimeout(cb, 0);
     later(() => {
       this._paintQueued = false;
-      if (this.container.parent && !this._itemDrag) this.relayout();
+      if (!this.container.parent || this._itemDrag) return;
+      if (this._overlayBlocking()) {
+        this._dirtyUnderOverlay = true;
+        return;
+      }
+      this.relayout();
     });
   };
+
+  private _flushDirtyUnderOverlay = (): void => {
+    if (!this._inKitchen || !this.container.parent || !this._dirtyUnderOverlay) return;
+    if (!this._overlayBlocking()) {
+      this._scheduleRelayout();
+    }
+  };
+
+  private _clearOverlayTrimTimer(): void {
+    if (this._overlayTrimTimer) {
+      clearTimeout(this._overlayTrimTimer);
+      this._overlayTrimTimer = null;
+    }
+  }
+
+  private _scheduleOverlayTextureTrim(): void {
+    this._clearOverlayTrimTimer();
+    this._overlayTrimTimer = setTimeout(() => {
+      this._overlayTrimTimer = null;
+      if (!this._inKitchen || !this.container.parent || this._overlayBlocking()) return;
+      const evicted = trimTexturesToBudget(45, true);
+      if (evicted > 0) {
+        Platform.triggerGC();
+      }
+    }, 60);
+  }
+
+  private _hookPanelClose(panel: { close: (...args: any[]) => any }): void {
+    const anyPanel = panel as any;
+    if (anyPanel.__kitchenCloseHooked) return;
+    anyPanel.__kitchenCloseHooked = true;
+    const orig = panel.close.bind(panel);
+    panel.close = (...args: any[]) => {
+      const res = orig(...args);
+      this._flushDirtyUnderOverlay();
+      if (this._inKitchen && this.container.parent && !this._overlayBlocking()) {
+        this._scheduleOverlayTextureTrim();
+      }
+      return res;
+    };
+  }
 
   private _watchOnce(path: string): void {
     if (!path || isTextureReady(gameTexture(path)) || this._watched.has(path)) return;
@@ -263,7 +323,7 @@ export class KitchenScene implements Scene {
     this.container.addChild(this._ui);
     this._viewClip.eventMode = 'none';
     this._world.mask = this._viewClip;
-    this._fridge.onChange = () => this.relayout();
+    this._fridge.onChange = () => this._scheduleRelayout();
     this._daily.onCook = (recipeId) => {
       this._daily.close();
       this._cook.open(recipeId);
@@ -276,9 +336,31 @@ export class KitchenScene implements Scene {
       this._pickle.close();
       this._cook.open(recipeId);
     };
-    ensureRecipeUnlockPanel();
-    ensureCookLevelUpPanel();
-    ensureTutorialGiftPanel();
+    const unlockPanel = ensureRecipeUnlockPanel();
+    const levelUpPanel = ensureCookLevelUpPanel();
+    const giftPanel = ensureTutorialGiftPanel();
+    const buffPanel = ensureHudBuffPanel();
+    for (const p of [
+      this._fridge,
+      this._cook,
+      this._recipeBook,
+      this._dex,
+      this._orders,
+      this._daily,
+      this._gacha,
+      this._event,
+      this._gameClub,
+      this._welfare,
+      this._upgrade,
+      this._pickle,
+      this._strayCat,
+      unlockPanel,
+      levelUpPanel,
+      giftPanel,
+      buffPanel,
+    ]) {
+      this._hookPanelClose(p);
+    }
     this.container.eventMode = 'static';
     this._world.eventMode = 'static';
     this._ui.eventMode = 'passive';
@@ -291,6 +373,8 @@ export class KitchenScene implements Scene {
   }
 
   onEnter(): void {
+    this._inKitchen = true;
+    this._clearOverlayTrimTimer();
     EventBus.on(EV.kitchenChanged, this._onChange);
     EventBus.on(EV.tutorialStepChanged, this._onTutorialStep);
     EventBus.on(EV.tutorialCompleted, this._onTutorialCompleted);
@@ -313,13 +397,13 @@ export class KitchenScene implements Scene {
     TutorialOverlay.register('kitchen', () => this.tutorialRect());
     TutorialOverlay.registerContextual('kitchen_ctx', () => this._contextualTip());
     this._bootRetryLeft = 8;
+    this._dirtyUnderOverlay = false;
     this.relayout();
     AudioManager.playBgm('kitchen');
     if (!TutorialManager.isActive) {
       ensureCookLevelUpPanel().present();
       ensureRecipeUnlockPanel().present();
       KitchenManager.beginKitchenVisit();
-      this._warmPanelArt();
       this._queueNeighborOffer();
     }
     this._startP2Watch();
@@ -337,9 +421,17 @@ export class KitchenScene implements Scene {
     this._p2WatchTimer = setInterval(() => {
       if (!this.container.parent || this._itemDrag || this._drag) return;
       const sig = this._p2Signature();
-      if (sig !== this._lastP2Sig) {
+      if (this._overlayBlocking()) {
+        if (sig !== this._lastP2Sig) {
+          this._lastP2Sig = sig;
+          this._dirtyUnderOverlay = true;
+        }
+        return;
+      }
+      if (this._dirtyUnderOverlay || sig !== this._lastP2Sig) {
         this._lastP2Sig = sig;
-        this.relayout();
+        this._dirtyUnderOverlay = false;
+        this._scheduleRelayout();
       }
     }, 2000);
   }
@@ -349,19 +441,6 @@ export class KitchenScene implements Scene {
       clearInterval(this._p2WatchTimer);
       this._p2WatchTimer = null;
     }
-  }
-
-  private _warmPanelArt(): void {
-    void preloadTextures(dailyMenuPanelPaths(KitchenManager.save));
-    void preloadTextures(orderPanelPaths(KitchenManager.save, KitchenManager.liveNeighborOrders()));
-    void preloadTextures([
-      ...PANEL_SHELL.cook,
-      ...PANEL_SHELL.fridge,
-      ...PANEL_SHELL.dex,
-      ...PANEL_SHELL.gacha,
-      ...PANEL_SHELL.strayCat,
-      ...PANEL_SHELL.gameClub,
-    ]);
   }
 
   private _overlayBlocking(): boolean {
@@ -385,6 +464,8 @@ export class KitchenScene implements Scene {
   }
 
   onExit(): void {
+    this._inKitchen = false;
+    this._clearOverlayTrimTimer();
     EventBus.off(EV.kitchenChanged, this._onChange);
     EventBus.off(EV.tutorialStepChanged, this._onTutorialStep);
     EventBus.off(EV.tutorialCompleted, this._onTutorialCompleted);
@@ -399,6 +480,7 @@ export class KitchenScene implements Scene {
     try { Platform.api?.offTouchCancel?.(this._onUp); } catch (_) {}
     this._endDrag();
     this._paintQueued = false;
+    this._dirtyUnderOverlay = false;
     TweenManager.cancelTarget(this._panTween);
     this._clearOfferTimer();
     this._stopP2Watch();
@@ -425,13 +507,25 @@ export class KitchenScene implements Scene {
     clearCookReadyFx();
     TutorialOverlay.unregister('kitchen');
     TutorialOverlay.unregisterContextual('kitchen_ctx');
+    this._toWindowTab = null;
+    this._toDoorTab = null;
+    this._gachaBtn = null;
+    this._picklePropNode = null;
+    this._catPropNode = null;
+    this._furnRoots.clear();
+    this._spotRects.clear();
+    this._tableUpgradeRect = null;
+    this._upgradeConfirmRect = null;
+    destroyDisplayChildren(this._world);
+    destroyDisplayChildren(this._ui);
   }
 
   relayout(): void {
+    this._dirtyUnderOverlay = false;
     if (!Platform.isDevtools) this._gm = false;
     this._fridge.prune();
-    this._world.removeChildren();
-    this._ui.removeChildren();
+    destroyDisplayChildren(this._world);
+    destroyDisplayChildren(this._ui);
     this._toWindowTab = null;
     this._toDoorTab = null;
     this._gachaBtn = null;
@@ -993,14 +1087,14 @@ export class KitchenScene implements Scene {
     mute.on('pointerdown', (e: PIXI.FederatedPointerEvent) => e.stopPropagation());
     this._ui.addChild(mute);
 
-    // 4. 左侧功能入口木牌列（22pt 标签 + 20pt 朱印角标）
-    const STEP = 114;
-    let slotY = top + 114;
+    // 4. 左侧功能入口木牌列（紧凑间距稳排最多 5 个入口，绝不跳到右上角与「窗边角 ▶」重叠）
+    const STEP = 108;
+    let slotY = top + 108;
     this._drawDexHud(redraw, slotY);
     slotY += STEP;
 
-    const dailyUnlocked = !TutorialManager.isActive || TutorialManager.isStep(TutorialStep.HINT_DOOR);
-    if (dailyUnlocked && KitchenManager.save.dailyMenu) {
+    const postTutUnlocked = !TutorialManager.isActive || TutorialManager.isStep(TutorialStep.HINT_DOOR);
+    if (postTutUnlocked && KitchenManager.save.dailyMenu) {
       this._drawDailyMenuHud(redraw, slotY);
       slotY += STEP;
     }
@@ -1013,24 +1107,14 @@ export class KitchenScene implements Scene {
       slotY += STEP;
     }
 
-    // 社区/抖音福利入口：若左栏已有 4 个则挂到右上角静音钮下方，保持左侧通透不拥挤
-    let rightSlotY = row2Y + 62;
-    if (Platform.isWechat) {
-      if (slotY <= top + 114 + STEP * 3) {
-        this._drawGameClubHud(redraw, slotY, 14);
-        slotY += STEP;
-      } else {
-        this._drawGameClubHud(redraw, rightSlotY, w - 98);
-        rightSlotY += STEP;
-      }
+    // 社区/抖音福利入口：始终固定在左侧功能栏（引导进入 HINT_DOOR 或结业后即展示）
+    if (postTutUnlocked && Platform.isWechat) {
+      this._drawGameClubHud(redraw, slotY, 14);
+      slotY += STEP;
     }
-    if (Platform.isDouyin && DouyinWelfareManager.hasEntry) {
-      if (slotY <= top + 114 + STEP * 3) {
-        this._drawWelfareHud(redraw, slotY, 14);
-        slotY += STEP;
-      } else {
-        this._drawWelfareHud(redraw, rightSlotY, w - 98);
-      }
+    if (postTutUnlocked && Platform.isDouyin && DouyinWelfareManager.hasEntry) {
+      this._drawWelfareHud(redraw, slotY, 14);
+      slotY += STEP;
     }
 
     // 5. 右缘切视角挂签（窗边角 ▶ / ◀ 回门口）
@@ -1233,14 +1317,14 @@ export class KitchenScene implements Scene {
       root.addChild(plusWrap);
       if (opts.pulsePlus) {
         const pulse = (): void => {
-          if (plusWrap.destroyed || !plusWrap.parent) return;
+          if (!isStageMounted(plusWrap)) return;
           TweenManager.to({
             target: plusWrap.scale,
             props: { x: 1.18, y: 1.18 },
             duration: 0.42,
             ease: Ease.easeOutQuad,
             onComplete: () => {
-              if (plusWrap.destroyed || !plusWrap.parent) return;
+              if (!isStageMounted(plusWrap)) return;
               TweenManager.to({
                 target: plusWrap.scale,
                 props: { x: 1, y: 1 },
@@ -1684,12 +1768,18 @@ export class KitchenScene implements Scene {
   }
 
   private _drawGameClubHud(redraw: () => void, y: number, x = 14): void {
+    const canClaimGift = !KitchenManager.hasClaimedGameClubToday();
     const btn = this._makeKitchenEntryBtn({
       icon: HUD_ICON.gameClub,
       fallbackText: '圈',
       label: '游戏圈',
+      badgeText: canClaimGift ? '领' : undefined,
+      badgeTone: 'red',
       onReady: redraw,
-      onTap: () => this._gameClub.open(),
+      onTap: () => {
+        if (TutorialManager.isActive && !TutorialManager.isStep(TutorialStep.HINT_DOOR)) return;
+        this._gameClub.open();
+      },
     });
     btn.position.set(x, y);
     this._ui.addChild(btn);
@@ -1944,7 +2034,7 @@ export class KitchenScene implements Scene {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // 灶台与冰箱手绘木夹便签（放大至 22pt 高可读墨字，拒绝蚂蚁小字）
+  // 灶台前裙板窄横签 & 冰箱门磁吸迷你便签（小巧克制，绝不遮锅挡冰箱或撞升级箭头）
   // ═══════════════════════════════════════════════════════════════════════════
 
   private _drawKitchenSlip(): void {
@@ -1971,82 +2061,134 @@ export class KitchenScene implements Scene {
     }
     if (!lines.length) return;
     const pot = this._cookHitRect();
-    const noteW = 220;
-    this._mountOilSlip(
-      Math.max(24, pot.x + pot.w * 0.46 - noteW / 2),
-      pot.y - 36,
-      noteW,
+    this._mountCompactSlip({
+      centerX: pot.x + pot.w * 0.48,
+      minX: 116,
+      y: pot.y + pot.h * 0.88,
+      minW: 148,
+      maxW: 176,
       lines,
-      22,
-    );
+      fontSize: 19,
+      variant: 'apron',
+    });
   }
 
   private _drawFridgeSlip(): void {
     const rows = computeFridgeSlip(KitchenManager.save);
     if (!rows.length) return;
     const door = this._furnSpriteRect('fridge');
-    const noteW = 204;
-    this._mountOilSlip(
-      Math.round(door.x + (door.w - noteW) * 0.5),
-      door.y - 34,
-      noteW,
-      rows.map((row) => ({
+    const maxW = Math.round(Math.min(148, Math.max(118, door.w * 0.82)));
+    const minW = Math.min(maxW, 118);
+    const estH = rows.length > 1 ? 66 : 38;
+    const targetY = Math.min(
+      Math.max(door.y + 24, door.y + door.h - estH - 12),
+      Math.round(door.y + door.h * 0.48),
+    );
+    this._mountCompactSlip({
+      centerX: door.x + door.w * 0.46,
+      minX: Math.max(24, Math.round(door.x - 4)),
+      y: targetY,
+      minW,
+      maxW,
+      lines: rows.map((row) => ({
         text: row.text,
         color: row.tone === 'full' ? RED_INK : INK,
         onTap: () => this._fridge.open(row.tab),
       })),
-      21,
-    );
+      fontSize: 19,
+      variant: 'magnet',
+    });
   }
 
-  private _mountOilSlip(
-    x: number,
-    y: number,
-    noteW: number,
-    lines: Array<{ text: string; color: number; onTap: () => void }>,
-    fontSize = 22,
-  ): void {
-    this._watchOnce(KITCHEN_SLIP);
-    const tex = gameTexture(KITCHEN_SLIP);
-    const ratio = isTextureReady(tex) && tex.width > 0 ? tex.height / tex.width : 457 / 720;
-    const noteH = Math.max(lines.length > 1 ? 148 : 120, Math.round(noteW * ratio));
-    const root = new PIXI.Container();
-    root.position.set(x, y);
-    if (isTextureReady(tex)) {
-      const paper = new PIXI.Sprite(tex);
-      paper.width = noteW;
-      paper.height = noteH;
-      paper.eventMode = 'none';
-      root.addChild(paper);
-    } else {
-      const paper = new PIXI.Graphics();
-      paper.lineStyle(2.4, INK, 0.92);
-      paper.beginFill(0xFAF0DA, 0.96);
-      paper.drawRoundedRect(0, 14, noteW, noteH - 14, 10);
-      paper.endFill();
-      paper.eventMode = 'none';
-      root.addChild(paper);
-    }
-    const textX = noteW * 0.11;
-    const textW = noteW * 0.78;
-    // 下移至木夹子底沿以下 (0.43 * noteH)，确保首行文字绝不碰夹子
-    const textTop = noteH * 0.43;
-    const textH = noteH * 0.45;
-    const lineH = textH / Math.max(1, lines.length);
-    let cy = textTop;
-    for (const line of lines) {
-      const row = makeText('body', line.text, line.color, {
+  private _mountCompactSlip(opts: {
+    centerX: number;
+    minX: number;
+    y: number;
+    minW: number;
+    maxW: number;
+    lines: Array<{ text: string; color: number; onTap: () => void }>;
+    fontSize: number;
+    variant: 'apron' | 'magnet';
+  }): void {
+    const { lines, fontSize, variant } = opts;
+    const textNodes = lines.map((line) =>
+      makeText('body', line.text, line.color, {
         size: fontSize,
         fontWeight: '700',
-        stroke: 0xFFFDF7,
-        strokeWidth: 3,
-      });
+        stroke: 0xFFFDF8,
+        strokeWidth: 2.6,
+      }),
+    );
+    const naturalW = Math.max(...textNodes.map((t) => Math.ceil(t.width)));
+    const padX = variant === 'magnet' ? 18 : 22;
+    const noteW = Math.max(opts.minW, Math.min(opts.maxW, naturalW + padX));
+    const singleH = variant === 'magnet' ? 38 : 40;
+    const multiH = variant === 'magnet' ? 66 : 68;
+    const noteH = lines.length > 1 ? multiH : singleH;
+    const x = Math.max(opts.minX, Math.round(opts.centerX - noteW / 2));
+    const y = Math.min(Game.logicHeight - noteH - 18, Math.round(opts.y));
+
+    const root = new PIXI.Container();
+    root.position.set(x, y);
+
+    const paper = new PIXI.Graphics();
+    // 柔和贴面投影
+    paper.beginFill(0x160E08, 0.22);
+    paper.drawRoundedRect(2, 3.5, noteW, noteH, 8);
+    paper.endFill();
+    // 温润窄宣纸底签
+    paper.lineStyle(2, INK, 0.94);
+    paper.beginFill(0xFCF3DF, 0.97);
+    paper.drawRoundedRect(0, 0, noteW, noteH, 8);
+    paper.endFill();
+    // 内衬淡褐细边
+    paper.lineStyle(1, 0xDFC394, 0.75);
+    paper.drawRoundedRect(3, 3, noteW - 6, noteH - 6, 6);
+
+    if (lines.length > 1) {
+      const midY = Math.round(noteH / 2);
+      paper.lineStyle(1, 0xCBB089, 0.55);
+      paper.moveTo(10, midY);
+      paper.lineTo(noteW - 10, midY);
+    }
+
+    if (variant === 'magnet') {
+      // 顶部袖珍朱砂圆磁贴（几乎不外凸，绝不碰上方升级箭头）
+      const mx = noteW / 2;
+      paper.lineStyle(1.8, INK, 0.95);
+      paper.beginFill(0xD24630, 1);
+      paper.drawCircle(mx, 1.5, 5.2);
+      paper.endFill();
+      paper.lineStyle(0);
+      paper.beginFill(0xFFE6DA, 0.85);
+      paper.drawCircle(mx - 1.5, 0, 1.6);
+      paper.endFill();
+    } else {
+      // 灶台裙板横签四角袖珍铜钉
+      paper.lineStyle(1.4, INK, 0.85);
+      paper.beginFill(0xC99642, 1);
+      paper.drawCircle(8, 8, 2.8);
+      paper.drawCircle(noteW - 8, 8, 2.8);
+      paper.endFill();
+    }
+    paper.eventMode = 'none';
+    root.addChild(paper);
+
+    const padTop = variant === 'magnet' ? 5 : 4;
+    const innerH = noteH - padTop - 4;
+    const lineH = innerH / Math.max(1, lines.length);
+    const maxTextW = noteW - (variant === 'magnet' ? 16 : 22);
+
+    lines.forEach((line, idx) => {
+      const row = textNodes[idx];
       row.anchor.set(0.5);
-      fitTextWidth(row, textW);
-      row.position.set(textX + textW / 2, cy + lineH / 2);
+      fitTextWidth(row, maxTextW);
+      const cy = padTop + idx * lineH;
+      row.position.set(noteW / 2, cy + lineH / 2 - 0.5);
+
       const hit = new PIXI.Graphics();
       hit.beginFill(0xffffff, 0.001);
-      hit.drawRect(textX - 4, cy, textW + 8, lineH);
+      hit.drawRect(0, cy, noteW, lineH);
       hit.endFill();
       hit.eventMode = 'static';
       hit.cursor = 'pointer';
@@ -2056,10 +2198,10 @@ export class KitchenScene implements Scene {
         line.onTap();
       });
       root.addChild(row, hit);
-      cy += lineH;
-    }
+    });
+
     root.eventMode = 'static';
-    root.hitArea = new PIXI.Rectangle(0, 0, noteW, noteH);
+    root.hitArea = new PIXI.Rectangle(-2, -2, noteW + 4, noteH + 4);
     root.cursor = 'pointer';
     root.on('pointerdown', (e) => e.stopPropagation());
     root.on('pointertap', (e) => {
@@ -2534,7 +2676,7 @@ export class KitchenScene implements Scene {
       tag.addChild(dot);
 
       const bob = (): void => {
-        if (tag.destroyed || !tag.parent) return;
+        if (!isStageMounted(tag)) return;
         const y0 = tag.y;
         TweenManager.to({
           target: tag,
@@ -2542,7 +2684,7 @@ export class KitchenScene implements Scene {
           duration: 0.55,
           ease: Ease.easeOutQuad,
           onComplete: () => {
-            if (tag.destroyed || !tag.parent) return;
+            if (!isStageMounted(tag)) return;
             TweenManager.to({
               target: tag,
               props: { y: y0 },

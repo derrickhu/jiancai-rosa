@@ -75,6 +75,7 @@ import { TutorialManager, TutorialStep } from '@/managers/TutorialManager';
 import { TutorialOverlay, stageRectOf, type TutorialTarget } from '@/gameobjects/ui/TutorialOverlay';
 import { TutorialGuard } from '@/systems/TutorialGuard';
 import { tryShowInterstitial } from '@/services/InterstitialAdService';
+import { destroyDisplayChildren } from '@/utils/destroy';
 
 const DEST_BG = 'subpkg_images/dest_street_bg.jpg';
 const DEST_ART = {
@@ -176,11 +177,15 @@ export class DestinationScene implements Scene {
   onExit(): void {
     EventBus.off(EV.kitchenChanged, this._onKitchen);
     this._paintQueued = false;
+    this._scroller.clear();
     this._scroller.disable();
     this._loot.close(true);
+    this._xiangkoGo = null;
+    this._firstWeatherTag = null;
     this._inspect = null;
     this._inspectHost.visible = false;
-    this._inspectHost.removeChildren();
+    destroyDisplayChildren(this._inspectHost);
+    destroyDisplayChildren(this._ui);
     if (this._inspectHost.parent) this._inspectHost.parent.removeChild(this._inspectHost);
     TutorialOverlay.unregister('dest');
     TutorialOverlay.unregisterContextual('dest_ctx');
@@ -214,8 +219,9 @@ export class DestinationScene implements Scene {
   relayout(): void {
     this._xiangkoGo = null;
     this._firstWeatherTag = null;
-    this._ui.removeChildren();
-    this._inspectHost.removeChildren();
+    this._scroller.clear();
+    destroyDisplayChildren(this._ui);
+    destroyDisplayChildren(this._inspectHost);
     this._inspectHost.visible = false;
     const w = Game.designWidth;
     const h = Game.logicHeight;
@@ -340,7 +346,7 @@ export class DestinationScene implements Scene {
           AudioManager.play('ui_close');
           this._inspect = null;
           this._inspectHost.visible = false;
-          this._inspectHost.removeChildren();
+          destroyDisplayChildren(this._inspectHost);
         },
       }));
     }
@@ -1055,6 +1061,37 @@ export class DestinationScene implements Scene {
     return wrap;
   }
 
+  private _makeSpecialPlayTag(id: SpecialMarketDef['id']): { node: PIXI.Container; width: number } {
+    const META: Record<SpecialMarketDef['id'], { label: string; fill: number; stroke: number; ink: number; dot: number }> = {
+      spice_night: { label: '闻香揭罐', fill: 0xFFF0D4, stroke: 0xA84B20, ink: 0x8C3814, dot: 0xE07028 },
+      riverside_fish: { label: '夜泊看漂', fill: 0xE6F4F1, stroke: 0x2E6E74, ink: 0x1D5258, dot: 0x3A959E },
+      oldtown_dry: { label: '颠匾收货', fill: 0xFFF3CF, stroke: 0xA06A18, ink: 0x7A4B0C, dot: 0xE29B24 },
+      field_night: { label: '提灯夜摘', fill: 0xEAF5DF, stroke: 0x3F7230, ink: 0x2B571E, dot: 0x62A844 },
+    };
+    const style = META[id];
+    const node = new PIXI.Container();
+    node.eventMode = 'none';
+    const lbl = makeText('caption', style.label, style.ink, { size: 18, fontWeight: '700' });
+    const w = Math.ceil(lbl.width) + 28;
+    const h = 30;
+    const bg = new PIXI.Graphics();
+    bg.beginFill(0x24150B, 0.12);
+    bg.drawRoundedRect(1, -h / 2 + 2, w, h, h / 2);
+    bg.endFill();
+    bg.lineStyle(1.8, style.stroke, 0.92);
+    bg.beginFill(style.fill, 0.98);
+    bg.drawRoundedRect(0, -h / 2, w, h, h / 2);
+    bg.endFill();
+    bg.lineStyle(1, style.stroke, 0.7);
+    bg.beginFill(style.dot, 1);
+    bg.drawCircle(11, 0, 3.4);
+    bg.endFill();
+    lbl.anchor.set(0, 0.5);
+    lbl.position.set(19, -0.5);
+    node.addChild(bg, lbl);
+    return { node, width: w };
+  }
+
   private _specialCard(
     market: SpecialMarketDef,
     x: number,
@@ -1073,24 +1110,29 @@ export class DestinationScene implements Scene {
     const thumbY = y + 18;
     const thumbW = 190;
     const thumbH = height - 36;
-    this._drawPostcardThumb(root, market.thumb, thumbX, thumbY, thumbW, thumbH, !left, `${market.rounds}手`);
+    this._drawPostcardThumb(root, market.thumb, thumbX, thumbY, thumbW, thumbH, !left, `免体力·${market.rounds}手`);
 
     const textX = thumbX + thumbW + 20;
     const rightEdge = x + width - 86;
     const bodyRight = x + width - 26;
     const availW = bodyRight - textX;
 
-    const name = makeText('title', market.name, INK, { size: 32 });
-    name.position.set(textX, y + 18);
+    const seal = this._makeSeal('奇遇', 44);
+    seal.position.set(rightEdge - 20, y + 35);
+    root.addChild(seal);
+
+    const playTag = this._makeSpecialPlayTag(market.id);
+    const name = makeText('title', market.name, INK, { size: 31 });
+    name.position.set(textX, y + 17);
+    const maxNameW = Math.max(116, (rightEdge - 44) - textX - playTag.width - 16);
+    fitTextWidth(name, maxNameW);
     root.addChild(name);
 
-    const seal = this._makeSeal('奇遇', 46);
-    seal.position.set(rightEdge - 24, y + 36);
-    root.addChild(seal);
-    fitTextWidth(name, rightEdge - textX - 56);
+    playTag.node.position.set(textX + name.width + 10, y + 35);
+    root.addChild(playTag.node);
 
     const hint = makeText('body', market.hint, INK_SOFT, { size: 21 });
-    hint.position.set(textX, y + 60);
+    hint.position.set(textX, y + 59);
     fitTextWidth(hint, availW);
     root.addChild(hint);
 
@@ -1100,46 +1142,72 @@ export class DestinationScene implements Scene {
       div.width = availW;
       div.height = 8;
       div.alpha = 0.35;
-      div.position.set(textX, y + 92);
+      div.position.set(textX, y + 90);
       div.eventMode = 'none';
       root.addChild(div);
     }
 
-    this._drawSpecialtyPreview(root, specialLootIds(market), textX, y + 102, true);
+    this._drawSpecialtyPreview(root, specialLootIds(market), textX, y + 99, true);
 
-    const btnH = 56;
-    const btnY = y + height - btnH - 16;
+    const btnH = 58;
+    const btnY = y + height - btnH - 15;
+    const goW = 208;
+    const goX = bodyRight - goW;
 
     const remain = Math.max(0, market.dailyLimit - used);
     const dailyTxt = makeText(
       'body',
-      remain > 0 ? `今日可逛 ${remain}/${market.dailyLimit}` : `今日已逛完 ${used}/${market.dailyLimit}`,
+      remain > 0 ? `今日可逛 ${remain}/${market.dailyLimit}` : `今日已逛 ${used}/${market.dailyLimit}`,
       remain > 0 ? GREEN_INK : RED_INK,
-      { size: 22, fontWeight: '700' },
+      { size: 21, fontWeight: '700' },
     );
     dailyTxt.anchor.set(0, 0.5);
+    const peekSize = 40;
+    const leftClusterMaxW = goX - textX - 16;
+    fitTextWidth(dailyTxt, Math.max(96, leftClusterMaxW - peekSize - 10));
     dailyTxt.position.set(textX, btnY + btnH / 2);
     root.addChild(dailyTxt);
 
-    const peek = this._peekBtn(40);
-    peek.position.set(textX + dailyTxt.width + 10, btnY + (btnH - 40) / 2);
+    const peekWrap = new PIXI.Container();
+    const peekBg = new PIXI.Graphics();
+    peekBg.beginFill(0x24150B, 0.14);
+    peekBg.drawCircle(peekSize / 2, peekSize / 2 + 2, peekSize / 2 - 1);
+    peekBg.endFill();
+    peekBg.lineStyle(1.8, 0x8A6236, 0.9);
+    peekBg.beginFill(0xFFF7E4, 0.96);
+    peekBg.drawCircle(peekSize / 2, peekSize / 2, peekSize / 2 - 1);
+    peekBg.endFill();
+    peekWrap.addChild(peekBg);
+    const peek = this._peekBtn(peekSize - 8);
+    peek.position.set(4, 4);
     peek.on('pointertap', (e) => {
       e.stopPropagation();
       if (this._scroller.moved) return;
       this._loot.openSpecial(market.id);
     });
-    root.addChild(peek);
+    peekWrap.addChild(peek);
+    peekWrap.position.set(textX + dailyTxt.width + 10, btnY + (btnH - peekSize) / 2);
+    root.addChild(peekWrap);
 
-    const goW = 196;
+    if (left) {
+      const btnGlow = new PIXI.Graphics();
+      btnGlow.beginFill(0xF5B82E, 0.22);
+      btnGlow.drawRoundedRect(goX - 3, btnY - 2, goW + 6, btnH + 5, 16);
+      btnGlow.endFill();
+      btnGlow.eventMode = 'none';
+      root.addChild(btnGlow);
+    }
+
     const go = makeAdButton({
-      label: '看视频赶集',
+      label: left ? '免费寻鲜' : '明日再来',
       width: goW,
       height: btnH,
       skin: 'gold',
+      textColor: 0x3B1F08,
       disabled: !left,
       onReady,
     });
-    go.position.set(bodyRight - goW, btnY);
+    go.position.set(goX, btnY);
     go.on('pointertap', () => {
       if (this._scroller.moved) return;
       this._enterSpecial(market);

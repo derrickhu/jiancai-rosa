@@ -4,7 +4,7 @@ import { nextUid, type ExtractedItem } from './run';
 import type { VehicleId } from './vehicles';
 
 export type SpecialMarketId = 'spice_night' | 'riverside_fish' | 'oldtown_dry' | 'field_night';
-export type SpecialFlavor = 'spice' | 'fish' | 'dry';
+export type SpecialFlavor = 'spice' | 'fish' | 'dry' | 'field';
 export type TimingGrade = 'early' | 'hit' | 'late';
 
 export interface SpecialDrop {
@@ -130,7 +130,7 @@ export const SPECIAL_MARKETS: SpecialMarketDef[] = [
     rounds: SPECIAL_ROUNDS,
     thumb: 'subpkg_images/dest_field_night.jpg',
     bg: 'subpkg_images/special_field_night_bg.jpg',
-    flavor: 'dry',
+    flavor: 'field',
     cue: '亮了就摘',
     bgmMarket: 'laocheng',
     targetPool: [
@@ -187,6 +187,11 @@ export function resolveSpecialDrop(
     if (grade !== 'hit') return null;
     return { defId: pickSpecialDrop(def.targetPool, rng), quality: 'fresh' };
   }
+  if (def.flavor === 'field') {
+    if (grade === 'late') return null;
+    if (grade === 'early') return { defId: pickSpecialDrop(def.consolationPool, rng), quality: 'common' };
+    return { defId: pickSpecialDrop(def.targetPool, rng), quality: 'fresh' };
+  }
   if (grade === 'late') return null;
   if (grade === 'early') return { defId: pickSpecialDrop(def.consolationPool, rng), quality: 'common' };
   return { defId: pickSpecialDrop(def.targetPool, rng), quality: 'fresh' };
@@ -208,7 +213,7 @@ export function specialResultLine(
     if (grade === 'late') return '线松了';
     return `上来了·${name}`;
   }
-  if (def.id === 'field_night') {
+  if (def.flavor === 'field' || def.id === 'field_night') {
     if (grade === 'early') return name ? `还没熟·${name}` : '还没熟';
     if (grade === 'late') return '摘晚了';
     return `摘到了·${name}`;

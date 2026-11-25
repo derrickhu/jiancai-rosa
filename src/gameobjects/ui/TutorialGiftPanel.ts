@@ -8,10 +8,11 @@ import { EV } from '@/config/events';
 import { TUTORIAL_GIFT_COINS, TUTORIAL_GIFT_TICKETS, TutorialManager, TutorialStep } from '@/managers/TutorialManager';
 import { kitchenGachaHudPos, playCoinCollect, playTicketCollect } from '@/utils/coinCollect';
 import { watchTextures } from '@/utils/assets';
+import { destroyDisplayChildren } from '@/utils/destroy';
 import {
   HUD_ICON,
   UI_KIT,
-  makeRarityFlare,
+  attachSpriteContour,
   makeSlicedButton,
   makeText,
 } from '@/utils/ui';
@@ -35,7 +36,6 @@ const ART = {
   basket: 'subpkg_images/scene_club_basket.png',
   title: 'subpkg_kitchen/ui_tutorial_gift_title.png',
   menuTicket: 'subpkg_images/ui_menu_ticket.png',
-  flare: 'subpkg_kitchen/ui_pickup_flare.png',
 } as const;
 
 const W = 684;
@@ -99,7 +99,7 @@ export class TutorialGiftPanel extends PIXI.Container {
     this._claiming = false;
     this._celebrate = false;
     this._paintQueued = false;
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
     void silent;
   }
 
@@ -117,7 +117,7 @@ export class TutorialGiftPanel extends PIXI.Container {
 
   relayout(): void {
     this._stopFx();
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
     if (!this._isOpen) return;
 
     watchTextures(
@@ -165,18 +165,18 @@ export class TutorialGiftPanel extends PIXI.Container {
     }
     scene.addChild(plaqueWrap);
 
-    // 顶部温暖竹编礼篮实物 + 透明通道金色霞光
-    const topFlare = makeRarityFlare('legendary', 340);
-    topFlare.alpha = 0.65;
-    topFlare.position.set(W / 2, 158);
-    scene.addChild(topFlare);
-
+    // 顶部温暖竹编礼篮实物 + 贴边暖金轮廓光
     const basketWrap = new PIXI.Container();
     basketWrap.position.set(W / 2, 162);
     const basketSp = sceneSprite(ART.basket, 248, 168);
     if (basketSp) {
       basketSp.anchor.set(0.5);
       basketWrap.addChild(basketSp);
+      attachSpriteContour(basketWrap, basketSp, 'god', {
+        onDark: true,
+        selected: true,
+        thicknessScale: 1.0,
+      });
     }
     scene.addChild(basketWrap);
 
@@ -213,14 +213,12 @@ export class TutorialGiftPanel extends PIXI.Container {
     const rewardGroup = new PIXI.Container();
     scene.addChild(rewardGroup);
 
-    const coinFlare = makeRarityFlare('rare', 168);
-    coinFlare.position.set(leftCx, plateCy - 10);
-    rewardGroup.addChild(coinFlare);
-
     const coinPlate = makePlateItem({
       iconPath: HUD_ICON.coin,
       plateW: 152,
       iconSize: 88,
+      rarity: 'god',
+      contourOpts: { selected: true, thicknessScale: 0.92 },
     });
     coinPlate.position.set(leftCx, plateCy);
     rewardGroup.addChild(coinPlate);
@@ -233,14 +231,12 @@ export class TutorialGiftPanel extends PIXI.Container {
     unit1.position.set(leftCx, plateCy + 94);
     rewardGroup.addChild(amt1, unit1);
 
-    const ticketFlare = makeRarityFlare('epic', 168);
-    ticketFlare.position.set(rightCx, plateCy - 10);
-    rewardGroup.addChild(ticketFlare);
-
     const ticketPlate = makePlateItem({
       iconPath: ART.menuTicket,
       plateW: 152,
       iconSize: 96,
+      rarity: 'epic',
+      contourOpts: { selected: true, thicknessScale: 0.92 },
     });
     ticketPlate.position.set(rightCx, plateCy);
     rewardGroup.addChild(ticketPlate);

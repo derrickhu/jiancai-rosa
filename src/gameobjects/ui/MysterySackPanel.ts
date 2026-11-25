@@ -1,18 +1,26 @@
 import * as PIXI from 'pixi.js';
+import { analytics } from '@/analytics';
 import { AudioManager } from '@/core/AudioManager';
 import { Ease, TweenManager } from '@/core/TweenManager';
 import { OverlayManager } from '@/core/OverlayManager';
 import { Platform } from '@/core/PlatformService';
 import { warmupAdScene } from '@/services/RewardedAdService';
 import { RunManager } from '@/managers/RunManager';
-import { RARITY_STYLE, getItem, itemRarity, type MysterySackPrize, type Rarity } from '@/sim';
+import { destroyDisplayChildren } from '@/utils/destroy';
+import {
+  getItem,
+  itemRarity,
+  rarityStyleOf,
+  resolveRarityTier,
+  type MysterySackPrize,
+  type RarityTier,
+} from '@/sim';
 import {
   MARKET_PROP_ART,
   P0_ART,
   UI_KIT,
   fitTextWidth,
   makeAdButton,
-  makeRarityFlare,
   makeSlicedButton,
   makeText,
 } from '@/utils/ui';
@@ -30,6 +38,7 @@ import {
   drawStretchSheet,
   makeHangTag,
   makePlateItem,
+  makeRaritySeal,
   makeSceneRoot,
   makeSealStamp,
   sceneArtPaths,
@@ -39,7 +48,6 @@ import {
 const ART = {
   wall: 'subpkg_images/scene_gacha_wall.png',
   menuTicket: 'subpkg_images/ui_menu_ticket.png',
-  flare: 'subpkg_kitchen/ui_pickup_flare.png',
 } as const;
 
 const W = 720;
@@ -80,7 +88,7 @@ export class MysterySackPanel extends PIXI.Container {
     this.visible = false;
     this._adBusy = false;
     this._paintQueued = false;
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
   }
 
   private _stopAnims(): void {
@@ -103,14 +111,14 @@ export class MysterySackPanel extends PIXI.Container {
     });
   };
 
-  private _prizeMeta(p: MysterySackPrize): { name: string; rarity: Rarity; isTicket: boolean; iconPath: string } {
+  private _prizeMeta(p: MysterySackPrize): { name: string; tier: RarityTier; isTicket: boolean; iconPath: string } {
     if (p.kind === 'ticket') {
-      return { name: `菜谱券 ×${p.qty}`, rarity: 'epic', isTicket: true, iconPath: ART.menuTicket };
+      return { name: `菜谱券 ×${p.qty}`, tier: 'epic', isTicket: true, iconPath: ART.menuTicket };
     }
     const def = getItem(p.defId);
     return {
       name: def.name,
-      rarity: itemRarity(p.defId),
+      tier: resolveRarityTier(itemRarity(p.defId), p.quality),
       isTicket: false,
       iconPath: resolveItemAssetPath(p.defId),
     };
@@ -118,7 +126,7 @@ export class MysterySackPanel extends PIXI.Container {
 
   relayout(): void {
     this._stopAnims();
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
     if (!this._isOpen) return;
     const ms = RunManager.run?.pendingMysterySack;
     if (!ms) {
@@ -269,8 +277,15 @@ export class MysterySackPanel extends PIXI.Container {
         col.cursor = 'pointer';
         col.hitArea = new PIXI.Rectangle(cx - 98, 314, 196, tableY + 30 + btnH - 314);
         col.on('pointertap', () => {
+          const marketId = RunManager.run?.marketId;
           const res = RunManager.pickMysterySack(i);
           if (!res.ok) return;
+          analytics.trackMysterySackSettle({
+            marketId,
+            action: 'pick_one',
+            ticketsGained: res.isTicket ? 1 : 0,
+            itemsGained: res.isTicket ? 0 : 1,
+          });
           AudioManager.play(res.isTicket ? 'recipe_paper' : 'event_pop');
           Platform.showToast(`拆出好货：${res.label}！`, 'success');
           this.relayout();
@@ -308,36 +323,47 @@ export class MysterySackPanel extends PIXI.Container {
       const isPicked = ms.pickedIdx === i;
       const isTaken = isPicked || ms.sweptByAd;
       const meta = this._prizeMeta(prize);
+      const style = rarityStyleOf(meta.tier);
 
       const dishWrap = new PIXI.Container();
       dishWrap.position.set(cx, tableY - 26);
-
-      if (isTaken) {
-        const flare = makeRarityFlare(meta.rarity, 196);
-        flare.position.set(0, -14);
-        dishWrap.addChild(flare);
-      }
 
       const plate = makePlateItem({
         iconPath: meta.iconPath,
         plateW: 164,
         iconSize: meta.isTicket ? 108 : 102,
         dim: !isTaken,
+        rarity: meta.tier,
+        contourOpts: {
+          onDark: isTaken || meta.tier !== 'common',
+          selected: isTaken && meta.tier !== 'common',
+          alpha: isTaken ? undefined : 0.65,
+        },
       });
       dishWrap.addChild(plate);
 
+      if (meta.tier !== 'common') {
+        const tierSeal = makeRaritySeal(meta.tier, 42, 0.08, meta.isTicket ? '秘券' : undefined);
+        tierSeal.position.set(-56, -46);
+        if (!isTaken) tierSeal.alpha = 0.78;
+        dishWrap.addChild(tierSeal);
+      }
+
       if (isTaken) {
-        const stamp = makeSealStamp('收入', 50, -0.1);
+        const stamp = makeSealStamp('收入', 48, -0.1);
         stamp.position.set(56, -48);
         dishWrap.addChild(stamp);
       }
       scene.addChild(dishWrap);
 
       // 宣纸单对应列写出大字品名与状态（下移至 sheetTop+58 彻底避开两侧黄铜图钉）
-      const nameColor = isTaken ? (RARITY_STYLE[meta.rarity]?.ink ?? INK) : SCENE_INK.muted;
+      const nameColor = meta.tier === 'common'
+        ? (isTaken ? INK : SCENE_INK.muted)
+        : style.ink;
       const nameLbl = makeText('title', meta.name, nameColor, { size: 26 });
       nameLbl.anchor.set(0.5, 0);
       nameLbl.position.set(cx, sheetTop + 58);
+      if (!isTaken && meta.tier !== 'common') nameLbl.alpha = 0.74;
       fitTextWidth(nameLbl, 176);
       scene.addChild(nameLbl);
 
@@ -382,8 +408,15 @@ export class MysterySackPanel extends PIXI.Container {
           'stall_favor',
           () => {
             this._adBusy = false;
+            const marketId = RunManager.run?.marketId;
             const res = RunManager.sweepMysterySacksByAd();
             if (res.ok) {
+              analytics.trackMysterySackSettle({
+                marketId,
+                action: 'ad_sweep',
+                ticketsGained: res.tickets,
+                itemsGained: Math.max(0, res.labels.length - res.tickets),
+              });
               AudioManager.play(res.tickets > 0 ? 'recipe_paper' : 'event_pop');
               Platform.showToast(`全收下啦：${res.labels.join(' · ')}！`, 'success');
             }

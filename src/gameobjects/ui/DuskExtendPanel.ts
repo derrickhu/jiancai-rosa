@@ -1,18 +1,20 @@
 import * as PIXI from 'pixi.js';
+import { analytics } from '@/analytics';
 import { AudioManager } from '@/core/AudioManager';
 import { Ease, TweenManager } from '@/core/TweenManager';
 import { OverlayManager } from '@/core/OverlayManager';
 import { Platform } from '@/core/PlatformService';
 import { warmupAdScene } from '@/services/RewardedAdService';
 import { RunManager } from '@/managers/RunManager';
+import { destroyDisplayChildren } from '@/utils/destroy';
 import { DUSK_EXTEND_STEPS } from '@/sim';
 import { watchTextures } from '@/utils/assets';
 import {
   P0_ART,
   UI_KIT,
+  attachSpriteContour,
   fitTextWidth,
   makeAdButton,
-  makeRarityFlare,
   makeSlicedButton,
   makeText,
 } from '@/utils/ui';
@@ -27,7 +29,6 @@ import {
   sceneSprite,
 } from './scenePanel';
 
-const FLARE = 'subpkg_kitchen/ui_pickup_flare.png';
 const W = 660;
 const H = 900;
 const INK = SCENE_INK.ink;
@@ -67,7 +68,7 @@ export class DuskExtendPanel extends PIXI.Container {
     this.visible = false;
     this._busy = false;
     this._paintQueued = false;
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
   }
 
   private _scheduleRelayout = (): void => {
@@ -91,7 +92,7 @@ export class DuskExtendPanel extends PIXI.Container {
 
   relayout(): void {
     this._stopLampAnim();
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
     if (!this._isOpen) return;
 
     watchTextures(
@@ -100,7 +101,6 @@ export class DuskExtendPanel extends PIXI.Container {
         P0_ART.duskFlashlight,
         P0_ART.adClapper,
         UI_KIT.btnGold,
-        FLARE,
         ...sceneArtPaths(),
       ],
       this._scheduleRelayout,
@@ -146,13 +146,8 @@ export class DuskExtendPanel extends PIXI.Container {
     title.position.set(W / 2, Math.round(H * 0.105));
     scene.addChild(title);
 
-    // 舞台中央：透明通道暖金发散光 + 老式铁皮手电筒实物 + 朱印
+    // 舞台中央：老式铁皮手电筒实物贴边暖金轮廓光 + 朱印
     const centerY = Math.round(H * 0.365);
-    const flare = makeRarityFlare('legendary', 420);
-    flare.alpha = 0.72;
-    flare.position.set(W / 2, centerY);
-    scene.addChild(flare);
-
     const lampWrap = new PIXI.Container();
     lampWrap.position.set(W / 2, centerY);
     lampWrap.eventMode = 'none';
@@ -160,6 +155,11 @@ export class DuskExtendPanel extends PIXI.Container {
     if (flash) {
       flash.anchor.set(0.5);
       lampWrap.addChild(flash);
+      attachSpriteContour(lampWrap, flash, 'god', {
+        onDark: true,
+        selected: true,
+        thicknessScale: 1.1,
+      });
     }
     scene.addChild(lampWrap);
     this._lamp = lampWrap;
@@ -224,6 +224,12 @@ export class DuskExtendPanel extends PIXI.Container {
     homeBtn.position.set(startX, btnY);
     homeBtn.on('pointertap', () => {
       if (this._busy) return;
+      analytics.trackDuskExtendChoice({
+        marketId: RunManager.run?.marketId,
+        action: 'go_home',
+        stepsAdded: 0,
+        basketItems: RunManager.basket.items.length,
+      });
       this.close(true);
       RunManager.declineDuskExtend();
     });
@@ -245,6 +251,12 @@ export class DuskExtendPanel extends PIXI.Container {
       Platform.showRewardedVideo(
         'dusk_steps',
         () => {
+          analytics.trackDuskExtendChoice({
+            marketId: RunManager.run?.marketId,
+            action: 'extend_ad',
+            stepsAdded: DUSK_EXTEND_STEPS,
+            basketItems: RunManager.basket.items.length,
+          });
           this.close(true);
           RunManager.extendDuskSteps(DUSK_EXTEND_STEPS);
         },

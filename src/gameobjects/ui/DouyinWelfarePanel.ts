@@ -3,6 +3,7 @@
  * 「去侧边栏」「添加到桌面」必须停在 pointertap 的同步栈里，不能包 await。
  */
 import * as PIXI from 'pixi.js';
+import { analytics } from '@/analytics';
 import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
@@ -11,6 +12,7 @@ import { DOUYIN_GAME_NAME, DOUYIN_WELFARE } from '@/config/DouyinWelfareConfig';
 import { DouyinWelfareManager } from '@/managers/DouyinWelfareManager';
 import { DesktopEntry, SidebarEntry } from '@/platform/douyinEntry';
 import { watchTextures } from '@/utils/assets';
+import { destroyDisplayChildren } from '@/utils/destroy';
 import {
   HUD_ICON,
   UI_KIT,
@@ -63,12 +65,16 @@ export class DouyinWelfarePanel extends PIXI.Container {
 
   open(): void {
     if (!Platform.isDouyin) return;
-    if (!this._isOpen) AudioManager.play('ui_click');
+    const wasOpen = this._isOpen;
+    if (!wasOpen) AudioManager.play('ui_click');
     this._isOpen = true;
     this.visible = true;
     DesktopEntry.refreshStatus();
     this.relayout();
     OverlayManager.bringToFront();
+    if (!wasOpen) {
+      analytics.trackWelfareAction({ channel: 'dy_sidebar', action: 'open' });
+    }
   }
 
   close(silent = false): void {
@@ -76,7 +82,7 @@ export class DouyinWelfarePanel extends PIXI.Container {
     this._isOpen = false;
     this.visible = false;
     this._paintQueued = false;
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
   }
 
   refreshIfOpen(): void {
@@ -96,7 +102,7 @@ export class DouyinWelfarePanel extends PIXI.Container {
   };
 
   relayout(): void {
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
     if (!this._isOpen) return;
 
     watchTextures(
@@ -325,12 +331,20 @@ export class DouyinWelfarePanel extends PIXI.Container {
       return;
     }
     if (SidebarEntry.isFromSidebar()) {
-      if (DouyinWelfareManager.claimSidebarReward()) this.relayout();
+      if (DouyinWelfareManager.claimSidebarReward()) {
+        analytics.trackWelfareAction({
+          channel: 'dy_sidebar',
+          action: 'claim',
+          goldGained: DOUYIN_WELFARE.sidebarCoins,
+        });
+        this.relayout();
+      }
       return;
     }
     SidebarEntry.navigate({
       onFail: () => Platform.showToast('请从抖音首页侧边栏进入'),
     });
+    analytics.trackWelfareAction({ channel: 'dy_sidebar', action: 'navigate' });
   }
 
   private _onDesktopTap(): void {
@@ -339,16 +353,33 @@ export class DouyinWelfarePanel extends PIXI.Container {
       return;
     }
     if (DesktopEntry.alreadyAdded) {
-      if (DouyinWelfareManager.claimDesktopReward()) this.relayout();
+      if (DouyinWelfareManager.claimDesktopReward()) {
+        analytics.trackWelfareAction({
+          channel: 'dy_desktop',
+          action: 'claim',
+          goldGained: DOUYIN_WELFARE.desktopCoins,
+        });
+        this.relayout();
+      }
       return;
     }
     const started = DesktopEntry.add({
       onSuccess: () => {
-        DouyinWelfareManager.claimDesktopReward();
+        if (DouyinWelfareManager.claimDesktopReward()) {
+          analytics.trackWelfareAction({
+            channel: 'dy_desktop',
+            action: 'claim',
+            goldGained: DOUYIN_WELFARE.desktopCoins,
+          });
+        }
         if (this._isOpen) this.relayout();
       },
       onFail: () => Platform.showToast('添加失败，请重试'),
     });
-    if (!started) Platform.showToast('当前环境不支持添加到桌面');
+    if (!started) {
+      Platform.showToast('当前环境不支持添加到桌面');
+      return;
+    }
+    analytics.trackWelfareAction({ channel: 'dy_desktop', action: 'navigate' });
   }
 }

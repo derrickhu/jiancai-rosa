@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js';
+import { analytics } from '@/analytics';
 import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
@@ -6,6 +7,7 @@ import { Platform } from '@/core/PlatformService';
 import { warmupAdScene } from '@/services/RewardedAdService';
 import { Ease, TweenManager } from '@/core/TweenManager';
 import { KitchenManager } from '@/managers/KitchenManager';
+import { destroyDisplayChildren } from '@/utils/destroy';
 import {
   DAILY_AD_LIMITS,
   PICKLE_FORMULAS,
@@ -32,13 +34,13 @@ import {
   P0_ART,
   P2_ART,
   UI_KIT,
+  attachSpriteContour,
   fillRect,
   fitTextWidth,
   makeAdButton,
   makeCloseButton,
   makeCoinButton,
   makeHandProgressBar,
-  makeRarityFlare,
   makeSlicedButton,
   makeText,
   uiBarPaths,
@@ -153,7 +155,7 @@ export class PicklePanel extends PIXI.Container {
     this._adBusy = false;
     this._paintQueued = false;
     this._liveJars = [];
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
   }
 
   private _startTick(): void {
@@ -208,7 +210,6 @@ export class PicklePanel extends PIXI.Container {
       tierArt.idle,
       tierArt.ready,
       P0_ART.adClapper,
-      'subpkg_kitchen/ui_pickup_flare.png',
     ];
     for (const f of PICKLE_FORMULAS) {
       paths.push(resolveItemAssetPath(f.outputDefId));
@@ -219,7 +220,7 @@ export class PicklePanel extends PIXI.Container {
   }
 
   relayout(): void {
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
     this._liveJars = [];
     this._jarCenters = [];
     if (!this._isOpen) return;
@@ -371,11 +372,6 @@ export class PicklePanel extends PIXI.Container {
     const isReady = view.status === 'ready';
     const isLocked = view.status === 'locked';
 
-    if (isReady) {
-      const flare = makeRarityFlare(itemRarity(view.formula!.outputDefId), 230);
-      flare.position.set(cx, L.shelfTop - L.jarH / 2);
-      scene.addChild(flare);
-    }
     const jar = this._sprite(isReady ? tierArt.ready : tierArt.idle, L.jarH, L.jarH);
     if (jar) {
       jar.anchor.set(0.5, 1);
@@ -385,6 +381,14 @@ export class PicklePanel extends PIXI.Container {
         jar.alpha = 0.42;
       }
       scene.addChild(jar);
+      if (view.formula && (isReady || view.status === 'fermenting')) {
+        attachSpriteContour(scene, jar, itemRarity(view.formula.outputDefId), {
+          onDark: true,
+          selected: isReady,
+          thicknessScale: isReady ? 1.05 : 0.85,
+          alpha: isReady ? undefined : 0.66,
+        });
+      }
       if (isReady) {
         TweenManager.to({
           target: jar.scale,
@@ -443,7 +447,15 @@ export class PicklePanel extends PIXI.Container {
       });
       buyBtn.position.set(btnX, L.btnY);
       buyBtn.on('pointertap', () => {
-        if (KitchenManager.buySecondJar() && this._isOpen) this.relayout();
+        if (KitchenManager.buySecondJar()) {
+          analytics.trackPickleAction({
+            action: 'buy_jar',
+            slotIndex: 1,
+            pickleTier: pickleTier(KitchenManager.save),
+            costGold: SECOND_JAR_COST,
+          });
+          if (this._isOpen) this.relayout();
+        }
       });
       scene.addChild(buyBtn);
       return;
@@ -501,7 +513,16 @@ export class PicklePanel extends PIXI.Container {
           'pickle_boost',
           () => {
             this._adBusy = false;
-            KitchenManager.boostPickleJar(view.index);
+            if (KitchenManager.boostPickleJar(view.index)) {
+              analytics.trackPickleAction({
+                action: 'ad_boost',
+                formulaId: formula.id,
+                outputDefId: formula.outputDefId,
+                slotIndex: view.index,
+                pickleTier: pickleTier(KitchenManager.save),
+                qty: view.yieldQty + 1,
+              });
+            }
             if (this._isOpen) this.relayout();
           },
           () => {
@@ -535,6 +556,16 @@ export class PicklePanel extends PIXI.Container {
       const from = this._jarCenters[idx] ?? { x: Game.designWidth / 2, y: Game.logicHeight * 0.35 };
       const res = KitchenManager.harvestPickleJar(idx);
       if (!res.ok) return;
+      analytics.trackPickleAction({
+        action: 'harvest',
+        formulaId: formula.id,
+        outputDefId: res.outputDefId,
+        slotIndex: idx,
+        pickleTier: pickleTier(KitchenManager.save),
+        qty: res.qty,
+        foldGold: res.foldGold,
+        unlockedRecipeId: res.unlockedRecipeId,
+      });
       playRewardCollect({
         gold: 0,
         foldGold: res.foldGold,
@@ -615,7 +646,24 @@ export class PicklePanel extends PIXI.Container {
           Platform.showToast(`下一阶：${st.nextDesc}`);
           return;
         }
-        if (KitchenManager.upgradePickleJar() && this._isOpen) this.relayout();
+        const cost = st.cost;
+        if (KitchenManager.upgradePickleJar()) {
+          const nextSave = KitchenManager.save;
+          const nextTier = pickleTier(nextSave);
+          analytics.trackPickleAction({
+            action: 'upgrade_tier',
+            pickleTier: nextTier,
+            costGold: cost,
+          });
+          analytics.trackKitchenUpgrade({
+            targetType: 'pickle_jar',
+            targetId: 'pickle_jar',
+            newLevel: nextTier + 1,
+            costGold: cost,
+            cookLevel: cookLevel(nextSave),
+          });
+          if (this._isOpen) this.relayout();
+        }
       });
       scene.addChild(btn);
       const tn = makeText('body', tierName, MUTED, { size: 24 });
@@ -650,12 +698,14 @@ export class PicklePanel extends PIXI.Container {
       if (locked) o.alpha = 0.45;
     };
 
-    // 瓷碟 + 成品
+    // 瓷碟 + 成品（轮廓光紧贴成品自身边缘，不弄脏青花瓷碟与米黄宣纸）
     const plateW = 122;
     const plateX = L.contentX - 6;
     const plate = this._sprite(ART.plate, plateW);
     const plateCy = 74;
     const dish = new PIXI.Container();
+    const outRarity = itemRarity(formula.outputDefId);
+    const canStartNow = !locked && hasEmptyJar && status.canAffordInputs;
     if (plate) {
       plate.anchor.set(0.5);
       plate.position.set(plateX + plateW / 2, plateCy);
@@ -666,6 +716,7 @@ export class PicklePanel extends PIXI.Container {
       out.anchor.set(0.5, 1);
       out.position.set(plateX + plateW / 2, plateCy + 14);
       dish.addChild(out);
+      attachSpriteContour(dish, out, outRarity, { selected: canStartNow });
     }
     const qty = makeText('number', `×${formula.baseQty}`, RED_INK, { size: 24, stroke: 0xFFF8EA, strokeWidth: 5 });
     qty.anchor.set(1, 1);
@@ -736,19 +787,14 @@ export class PicklePanel extends PIXI.Container {
       let totalGiftW = sealS;
       const dTex = dishTexture(sigRecipe.id);
       if (giftX + sealS + dishR * 2 + 10 <= btnX) {
-        const dishCx = sealS + 6 + dishR;
-        const saucer = new PIXI.Graphics();
-        saucer.lineStyle(1.8, 0x9E7D58, 0.9);
-        saucer.beginFill(0xFFFDF7, 1);
-        saucer.drawCircle(dishCx, 0, dishR);
-        saucer.endFill();
-        giftGroup.addChild(saucer);
+        const dishCx = sealS + 8 + dishR;
         if (isTextureReady(dTex)) {
           const ds = new PIXI.Sprite(dTex);
-          fitSpriteInBox(ds, 40, 40);
+          fitSpriteInBox(ds, 46, 46);
           ds.anchor.set(0.5);
           ds.position.set(dishCx, 0);
           giftGroup.addChild(ds);
+          attachSpriteContour(giftGroup, ds, sigRecipe.rarity, { thicknessScale: 0.78 });
         }
         totalGiftW = dishCx + dishR;
       }
@@ -824,7 +870,16 @@ export class PicklePanel extends PIXI.Container {
           Platform.showToast(!hasEmptyJar ? '两口坛都在腌，开坛后再下' : '食材还不够，点食材看看去哪儿捡');
           return;
         }
-        if (KitchenManager.startPickleJar(formula.id) && this._isOpen) this.relayout();
+        if (KitchenManager.startPickleJar(formula.id)) {
+          analytics.trackPickleAction({
+            action: 'start',
+            formulaId: formula.id,
+            outputDefId: formula.outputDefId,
+            pickleTier: pickleTier(KitchenManager.save),
+            qty: formula.baseQty,
+          });
+          if (this._isOpen) this.relayout();
+        }
       });
       row.addChild(startBtn);
     }

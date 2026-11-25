@@ -1,15 +1,10 @@
 import { FURN_IDS, catBedTier, furnLevel, houseLevel, houseRoomCandidates, hudBuffPaths, pickleTier, type KitchenSave } from '@/sim';
 import { HUD_ICON, P2_ART, UI_BTN, UI_KIT } from '@/utils/ui';
-import { OUTING_CURTAIN } from '@/utils/outingAssets';
-import { BOOT_BG, BOOT_TITLE, BOOT_FISH } from '@/scenes/LoadingScene';
 
 /** 厨房首屏立刻看见的图：房间、家具、顶栏、教程角色、通用手工 UI 底件。 */
 export function kitchenBootPaths(save: KitchenSave): string[] {
   const house = houseLevel(save);
   const paths = [
-    BOOT_BG,
-    BOOT_TITLE,
-    BOOT_FISH,
     ...houseRoomCandidates(house),
     HUD_ICON.coin,
     HUD_ICON.stamina,
@@ -32,13 +27,6 @@ export function kitchenBootPaths(save: KitchenSave): string[] {
     UI_BTN.olive,
     UI_BTN.gold,
     'subpkg_kitchen/ui_kitchen_slip.png',
-    'subpkg_kitchen/ui_recipe_paper.png',
-    'subpkg_kitchen/ui_cook_level_title.png',
-    'subpkg_kitchen/ui_daily_menu_title.png',
-    'subpkg_kitchen/ui_tutorial_gift_title.png',
-    'subpkg_kitchen/ui_daily_done_stamp.png',
-    'subpkg_kitchen/ui_daily_clear_banner.png',
-    'subpkg_images/ui_menu_ticket.png',
     'subpkg_kitchen/tutorial_hand.png',
     'subpkg_kitchen/tutorial_cabbage.png',
     P2_ART.pickleTiers[pickleTier(save)].idle,
@@ -47,12 +35,10 @@ export function kitchenBootPaths(save: KitchenSave): string[] {
     P2_ART.catTiers[catBedTier(save)].away,
     P2_ART.catTiers[catBedTier(save)].gift,
     P2_ART.catCan,
-    OUTING_CURTAIN,
   ];
   for (const id of FURN_IDS) {
     const lv = furnLevel(save, id);
     paths.push(`subpkg_kitchen/kitchen_${id}_${lv}.png`);
-    if (lv > 0) paths.push(`subpkg_kitchen/kitchen_${id}_0.png`);
   }
   return [...new Set(paths)];
 }

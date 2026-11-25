@@ -1,3 +1,4 @@
+import { analytics } from '@/analytics';
 import { AudioManager } from '@/core/AudioManager';
 import { EventBus } from '@/core/EventBus';
 import { Platform } from '@/core/PlatformService';
@@ -346,6 +347,7 @@ class KitchenManagerClass {
   }
 
   buyVehicle(id: VehicleId): boolean {
+    const moneyBefore = this.save.money;
     const { save, error } = purchaseVehicle(this.save, id);
     if (error) {
       AudioManager.play('ui_deny');
@@ -356,6 +358,13 @@ class KitchenManagerClass {
     this.emit();
     AudioManager.play('recipe_paper');
     Platform.showToast(`${vehicleById(id).name} 买下了`, 'success');
+    analytics.trackKitchenUpgrade({
+      targetType: 'vehicle',
+      targetId: id,
+      newLevel: 1,
+      costGold: Math.max(0, moneyBefore - save.money),
+      cookLevel: save.level,
+    });
     return true;
   }
 
@@ -974,6 +983,7 @@ class KitchenManagerClass {
   }
 
   upgrade(id: FurnId): void {
+    const moneyBefore = this.save.money;
     const fromTable = furnLevel(this.save, 'table');
     const { save, error } = buyFurnUpgrade(this.save, id);
     if (error) {
@@ -985,6 +995,13 @@ class KitchenManagerClass {
     this.emit();
     AudioManager.play('upgrade');
     const lv = furnLevel(save, id);
+    analytics.trackKitchenUpgrade({
+      targetType: 'furn',
+      targetId: id,
+      newLevel: lv + 1,
+      costGold: Math.max(0, moneyBefore - save.money),
+      cookLevel: save.level,
+    });
     if (id === 'fridge') Platform.showToast(`冰箱 ${lv + 1} 级 · 容量 ${fridgeOwnCap(lv)}`, 'success');
     else if (id === 'foam') {
       Platform.showToast(`${furnLabel(id, lv)} · 出门湿区 ${foamWetCols(lv)}×${foamWetRows(lv)}`, 'success');
@@ -1001,6 +1018,7 @@ class KitchenManagerClass {
   }
 
   upgradeHouse(): void {
+    const moneyBefore = this.save.money;
     const { save, error } = buyHouseUpgrade(this.save);
     if (error) {
       AudioManager.play('ui_deny');
@@ -1010,7 +1028,15 @@ class KitchenManagerClass {
     SaveManager.replace(save);
     this.emit();
     AudioManager.play('upgrade');
-    Platform.showToast(`装修成${houseLabel(houseLevel(save))}`, 'success');
+    const hLv = houseLevel(save);
+    analytics.trackKitchenUpgrade({
+      targetType: 'house',
+      targetId: 'house',
+      newLevel: hLv + 1,
+      costGold: Math.max(0, moneyBefore - save.money),
+      cookLevel: save.level,
+    });
+    Platform.showToast(`装修成${houseLabel(hLv)}`, 'success');
   }
 
   /** 明牌：这个菜场走过这种卡，下次直接写名字。 */

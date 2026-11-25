@@ -6,9 +6,11 @@ import { EventBus } from '@/core/EventBus';
 import { OverlayManager } from '@/core/OverlayManager';
 import { EV } from '@/config/events';
 import { KitchenManager, type CookLevelUp } from '@/managers/KitchenManager';
+import { destroyDisplayChildren } from '@/utils/destroy';
 import {
   CAT_UNLOCK_LEVEL,
   PICKLE_UNLOCK_LEVEL,
+  RARITY_STYLE,
   marketsUnlockedBetween,
   rarityLabel,
   recipeById,
@@ -19,9 +21,9 @@ import {
 import {
   P2_ART,
   UI_KIT,
+  attachSpriteContour,
   fillRect,
   fitTextWidth,
-  makeRarityFlare,
   makeSlicedButton,
   makeText,
 } from '@/utils/ui';
@@ -38,6 +40,7 @@ import {
   SCENE_INK,
   drawInkDivider,
   drawStretchSheet,
+  makeRaritySeal,
   makeSealStamp,
   sceneArtPaths,
   sceneSprite,
@@ -45,7 +48,6 @@ import {
 import { ensureRecipeUnlockPanel } from './RecipeUnlockPanel';
 import { TutorialOverlay } from './TutorialOverlay';
 
-const BURST = 'subpkg_kitchen/ui_result_burst.png';
 const TITLE_BANNER = 'subpkg_kitchen/ui_cook_level_title.png';
 const SPOT = 'subpkg_images/scene_dex_spot.png';
 
@@ -91,7 +93,7 @@ export class CookLevelUpPanel extends PIXI.Container {
     this._data = null;
     this._paintQueued = false;
     this._stopFx();
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
   }
 
   private _scheduleRelayout = (): void => {
@@ -109,7 +111,7 @@ export class CookLevelUpPanel extends PIXI.Container {
   relayout(): void {
     const data = this._data ?? KitchenManager.peekCookLevelUp();
     this._stopFx();
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
     this.hitArea = new PIXI.Rectangle(0, 0, Game.designWidth, Game.logicHeight);
     if (!data) {
       this.close();
@@ -121,12 +123,10 @@ export class CookLevelUpPanel extends PIXI.Container {
 
   private _warmAssets(recipes: RecipeDef[], markets: MarketDef[], features: Array<{ icon: string }>): void {
     const paths: string[] = [
-      BURST,
       TITLE_BANNER,
       SPOT,
       ...sceneArtPaths(),
       UI_KIT.btnGold,
-      'subpkg_kitchen/ui_pickup_flare.png',
     ];
     for (const r of recipes) paths.push(resolveDishAssetPath(r.id));
     for (const m of markets) paths.push(m.thumb);
@@ -205,12 +205,7 @@ export class CookLevelUpPanel extends PIXI.Container {
     stage.position.set(sx, sy);
     this._root.addChild(stage);
 
-    // 1. 旋转金霞背光
-    const burst = this._burst(720);
-    burst.position.set(0, bannerH * 0.62);
-    stage.addChild(burst);
-
-    // 2. 铜钉宣纸喜报卷轴（位于匾额下方）
+    // 1. 铜钉宣纸喜报卷轴（位于匾额下方）
     const sheetWrap = new PIXI.Container();
     sheetWrap.position.set(-sheetW / 2, sheetTop);
     stage.addChild(sheetWrap);
@@ -329,8 +324,6 @@ export class CookLevelUpPanel extends PIXI.Container {
     if (celebrate) {
       this._pop(banner, 0);
       this._pop(lvRow.root, 0.06);
-      this._spin(burst);
-      this._pulse(burst);
       this._sparks(sx, sy + bannerH * 0.56 * scale);
       if (recipes.length) {
         globalThis.setTimeout?.(() => {
@@ -351,6 +344,11 @@ export class CookLevelUpPanel extends PIXI.Container {
       sp.position.set(0, Math.max(0, (height - sp.height) / 2));
       sp.eventMode = 'none';
       root.addChild(sp);
+      attachSpriteContour(root, sp, 'god', {
+        onDark: true,
+        selected: true,
+        thicknessScale: 1.12,
+      });
     } else {
       const fallback = makeText('display', '恭喜厨艺升级', 0xF6D56A, {
         size: 42,
@@ -393,10 +391,6 @@ export class CookLevelUpPanel extends PIXI.Container {
     const root = new PIXI.Container();
     const plateCy = Math.round(plateW * 0.50);
 
-    const flare = makeRarityFlare(recipe.rarity, Math.round(plateW * 1.18));
-    flare.position.set(0, plateCy - 4);
-    root.addChild(flare);
-
     const shadow = new PIXI.Graphics();
     shadow.beginFill(0x2A1A0E, 0.22);
     shadow.drawEllipse(0, plateCy + Math.round(plateW * 0.24), Math.round(plateW * 0.38), Math.round(plateW * 0.12));
@@ -413,19 +407,26 @@ export class CookLevelUpPanel extends PIXI.Container {
       dish.position.set(0, plateCy - 2);
       dish.eventMode = 'none';
       root.addChild(dish);
+      attachSpriteContour(root, dish, recipe.rarity, {
+        selected: recipe.rarity !== 'common',
+      });
     }
 
-    const seal = makeSealStamp('新谱', 46, -0.1);
+    const seal = recipe.rarity === 'common'
+      ? makeSealStamp('新谱', 46, -0.1)
+      : makeRaritySeal(recipe.rarity, 46, -0.1);
     seal.position.set(plateW * 0.36, 22);
     root.addChild(seal);
 
-    const name = makeText('title', recipe.name, SCENE_INK.ink, { size: plateW >= 168 ? 28 : 25 });
+    const nameColor = recipe.rarity === 'common' ? SCENE_INK.ink : RARITY_STYLE[recipe.rarity].ink;
+    const name = makeText('title', recipe.name, nameColor, { size: plateW >= 168 ? 28 : 25 });
     name.anchor.set(0.5, 0);
     name.position.set(0, plateCy + Math.round(plateW * 0.36));
     fitTextWidth(name, plateW + 28);
     root.addChild(name);
 
-    const sub = makeText('caption', `${rarityLabel(recipe.rarity)} · ${recipe.group}`, SCENE_INK.muted, {
+    const subColor = recipe.rarity === 'common' ? SCENE_INK.muted : RARITY_STYLE[recipe.rarity].ink;
+    const sub = makeText('caption', `${rarityLabel(recipe.rarity)} · ${recipe.group}`, subColor, {
       size: 22,
       fontWeight: '600',
     });
@@ -520,10 +521,6 @@ export class CookLevelUpPanel extends PIXI.Container {
     const cy = 56;
     const iconCx = padX + 52;
 
-    const flare = makeRarityFlare('legendary', 132);
-    flare.position.set(iconCx, cy);
-    root.addChild(flare);
-
     const spot = sceneSprite(SPOT, 98, 98);
     if (spot) {
       spot.anchor.set(0.5);
@@ -539,6 +536,7 @@ export class CookLevelUpPanel extends PIXI.Container {
       spr.position.set(iconCx, cy);
       spr.eventMode = 'none';
       root.addChild(spr);
+      attachSpriteContour(root, spr, 'god', { selected: true, thicknessScale: 0.92 });
     }
 
     const textX = padX + 118;
@@ -563,51 +561,6 @@ export class CookLevelUpPanel extends PIXI.Container {
     }
     root.eventMode = 'none';
     return root;
-  }
-
-  private _burst(side: number): PIXI.Sprite {
-    const burst = new PIXI.Sprite(gameTexture(BURST));
-    if (isTextureReady(burst.texture)) {
-      burst.width = side;
-      burst.height = side;
-    }
-    burst.anchor.set(0.5);
-    burst.blendMode = PIXI.BLEND_MODES.ADD;
-    burst.alpha = 0.9;
-    burst.eventMode = 'none';
-    this._fx.push(burst);
-    return burst;
-  }
-
-  private _spin(burst: PIXI.Sprite): void {
-    const turn = (): void => {
-      if (!this._isOpen || burst.destroyed) return;
-      TweenManager.to({
-        target: burst,
-        props: { rotation: burst.rotation + Math.PI * 2 },
-        duration: 14,
-        ease: Ease.linear,
-        onComplete: turn,
-      });
-    };
-    turn();
-  }
-
-  private _pulse(burst: PIXI.Sprite): void {
-    burst.alpha = 0;
-    burst.scale.set(0.7);
-    TweenManager.to({
-      target: burst,
-      props: { alpha: 0.92 },
-      duration: 0.36,
-      ease: Ease.easeOutQuad,
-    });
-    TweenManager.to({
-      target: burst.scale,
-      props: { x: 1, y: 1 },
-      duration: 0.42,
-      ease: Ease.easeOutQuad,
-    });
   }
 
   private _sparks(x: number, y: number): void {

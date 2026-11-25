@@ -9,7 +9,9 @@ import { Platform } from '@/core/PlatformService';
 import { SceneManager } from '@/core/SceneManager';
 import { BackendService } from '@/core/BackendService';
 import { CloudSyncManager } from '@/managers/CloudSyncManager';
+import { RunManager } from '@/managers/RunManager';
 import { SaveManager } from '@/managers/SaveManager';
+import { TutorialManager } from '@/managers/TutorialManager';
 import { DestinationScene } from '@/scenes/DestinationScene';
 import { KitchenScene } from '@/scenes/KitchenScene';
 import { LoadingScene } from '@/scenes/LoadingScene';
@@ -17,8 +19,18 @@ import { MarketScene } from '@/scenes/MarketScene';
 import { SpecialMarketScene } from '@/scenes/SpecialMarketScene';
 import { AudioManager } from '@/core/AudioManager';
 import { CdnAssetService } from '@/core/CdnAssetService';
-import { gameTexture, isTextureReady, preloadTextures, retryTexture } from '@/utils/assets';
+import { TutorialOverlay } from '@/gameobjects/ui/TutorialOverlay';
+import { pruneMapSlotCache } from '@/gameobjects/market/MapView';
+import {
+  gameTexture,
+  getTextureCacheStats,
+  isTextureReady,
+  preloadTextures,
+  retryTexture,
+  trimSceneTextures,
+} from '@/utils/assets';
 import { kitchenBootPaths, kitchenCriticalPaths } from '@/utils/bootAssets';
+import { marketBootPaths } from '@/utils/outingAssets';
 import { ensureBootSubpackages } from '@/utils/bootSubpackages';
 import { DouyinWelfareManager } from '@/managers/DouyinWelfareManager';
 
@@ -31,6 +43,7 @@ function handleCloudSaveReload(info: CloudImportInfo): void {
   console.warn(
     `[jiancai] 云端核心存档已覆盖本地，准备刷新 reason=${info.reason}, updatedAt=${info.updatedAt}`,
   );
+  PersistService.clearOutingCheckpoint();
   Platform.showToast('已恢复云端存档，正在刷新', 'none');
   if (Platform.restartMiniProgram()) return;
   SaveManager.load();
@@ -102,6 +115,7 @@ async function main(): Promise<void> {
   }
 
   SaveManager.load();
+  const bootRecovery = RunManager.prepareBootRecovery();
   initialSaveLoaded = true;
 
   const started = Date.now();
@@ -112,13 +126,40 @@ async function main(): Promise<void> {
     SceneManager.register(new DestinationScene());
     SceneManager.register(new MarketScene());
     SceneManager.register(new SpecialMarketScene());
+
+    if (bootRecovery.type === 'resume_market' && RunManager.active) {
+      TutorialManager.start();
+      TutorialOverlay.mount();
+      SceneManager.switchTo('market');
+      RunManager.recheckAfterRestore();
+      const lootCount = bootRecovery.lootCount;
+      globalThis.setTimeout(() => {
+        Platform.showToast(
+          lootCount > 0
+            ? `已续上刚才的赶集，篮里 ${lootCount} 件鲜货都在！`
+            : '已为你续上刚才的赶集进度！',
+          'success',
+        );
+      }, 180);
+      return;
+    }
+
     SceneManager.switchTo('kitchen');
+    if (bootRecovery.type === 'kitchen_toast' && bootRecovery.message) {
+      const msg = bootRecovery.message;
+      globalThis.setTimeout(() => {
+        Platform.showToast(msg, 'success');
+      }, 220);
+    }
   };
 
   await CdnAssetService.fetchManifest();
   await bootPacks;
   const save = SaveManager.data;
-  const paths = kitchenBootPaths(save);
+  const resumePaths = bootRecovery.type === 'resume_market' && RunManager.run
+    ? marketBootPaths(RunManager.run.marketId, RunManager.run)
+    : [];
+  const paths = [...new Set([...kitchenBootPaths(save), ...resumePaths])];
   const critical = kitchenCriticalPaths(save);
   const loaded = preloadTextures(paths, (done, total) => {
     loading.setProgress(0.08 + done / Math.max(1, total) * 0.82);
@@ -148,6 +189,7 @@ async function main(): Promise<void> {
 
   let lastHideAt = 0;
   Platform.onHide(() => {
+    RunManager.flushCheckpoint();
     SaveManager.flush();
     void CloudSyncManager.flushNow('hide');
     analytics.trackSessionEnd('app-hide');
@@ -161,6 +203,30 @@ async function main(): Promise<void> {
       });
     }
   });
+  Platform.onMemoryWarning((res) => {
+    const level = Number(res?.level ?? 0);
+    RunManager.flushCheckpoint();
+    SaveManager.flush();
+    const before = getTextureCacheStats();
+    pruneMapSlotCache(false);
+    const evicted = trimSceneTextures({ aggressive: true });
+    if (level >= 10) {
+      CdnAssetService.clearCache();
+    }
+    Platform.triggerGC();
+    const after = getTextureCacheStats();
+    console.warn(
+      `[jiancai] 收到内存告警 level=${level}, 卸载闲置纹理=${evicted}张, 显存估算 ${before.approxMB}MB -> ${after.approxMB}MB`,
+    );
+  });
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    const flushBeforeUnload = () => {
+      RunManager.flushCheckpoint();
+      SaveManager.flush();
+    };
+    window.addEventListener('pagehide', flushBeforeUnload);
+    window.addEventListener('beforeunload', flushBeforeUnload);
+  }
 
   console.log(`[jiancai] 启动完成 v${typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'}`);
 }

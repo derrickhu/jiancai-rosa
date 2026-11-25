@@ -3,6 +3,7 @@ import { Game } from '@/core/Game';
 import type { Scene } from '@/core/SceneManager';
 import { UI_PALETTE, fillRect, fitTextWidth, makeHandProgressBar, makeText, uiBarPaths } from '@/utils/ui';
 import { applyFit, fitCover, gameTexture, isTextureReady, watchTextures } from '@/utils/assets';
+import { destroyDisplayChildren } from '@/utils/destroy';
 
 export const BOOT_BG = 'boot/loading_bg.jpg';
 export const BOOT_TITLE = 'boot/title_logo.png';
@@ -79,10 +80,15 @@ export class LoadingScene implements Scene {
   onExit(): void {
     this._paintQueued = false;
     Game.ticker.remove(this._boundUpdate);
+    this._setBarRatio = null;
+    this._pctText = null;
+    this._statusText = null;
+    this._fish = null;
+    destroyDisplayChildren(this._root);
   }
 
   relayout(): void {
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
     this._setBarRatio = null;
     this._pctText = null;
     this._statusText = null;

@@ -1,10 +1,12 @@
 import * as PIXI from 'pixi.js';
+import { analytics } from '@/analytics';
 import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { Platform } from '@/core/PlatformService';
 import { warmupAdScene } from '@/services/RewardedAdService';
 import { KitchenManager } from '@/managers/KitchenManager';
+import { destroyDisplayChildren } from '@/utils/destroy';
 import {
   canUseDailyAd,
   dailyAdLeft,
@@ -27,7 +29,6 @@ import {
   UI_KIT,
   fitTextWidth,
   makeAdButton,
-  makeRarityFlare,
   makeSlicedButton,
   makeText,
 } from '@/utils/ui';
@@ -66,7 +67,6 @@ const ART = {
   wall: 'subpkg_images/scene_order_wall.png',
   slip: 'subpkg_images/scene_order_slip.png',
   photo: 'subpkg_images/scene_order_photo.png',
-  flare: 'subpkg_kitchen/ui_pickup_flare.png',
 } as const;
 
 const W = 720;
@@ -131,7 +131,7 @@ export class OrderPanel extends PIXI.Container {
     this._paintQueued = false;
     this._liveTimers = [];
     this._clearTimer();
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
   }
 
   private _warm(): void {
@@ -162,7 +162,7 @@ export class OrderPanel extends PIXI.Container {
   };
 
   relayout(): void {
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
     this._liveTimers = [];
     if (!this._isOpen) return;
     this._warm();
@@ -334,18 +334,16 @@ export class OrderPanel extends PIXI.Container {
 
     drawInkDivider(slip, headLeft, 76, headRight - headLeft, 0.38, 10);
 
-    // 中部：立体成菜大图标直呈 + 食材余量/备好状态（去掉重复底盘）
+    // 中部：立体成菜大图标直呈 + 紧贴菜肴边缘品质轮廓光 + 食材余量/备好状态
     const plateCx = 224;
     const plateCy = 158;
-    if (have > 0) {
-      const flare = makeRarityFlare(recipe?.rarity ?? 'common', 156);
-      flare.position.set(plateCx, plateCy - 2);
-      slip.addChild(flare);
-    }
+    const dishRarity = recipe?.rarity ?? 'common';
     const plateNode = makeDishDisplay({
       dishPath: resolveDishAssetPath(order.recipeId),
       size: 108,
       shadowAlpha: 0.22,
+      rarity: dishRarity,
+      contourOpts: { selected: have > 0 },
     });
     plateNode.position.set(plateCx, plateCy + 4);
     plateNode.eventMode = 'static';
@@ -464,6 +462,12 @@ export class OrderPanel extends PIXI.Container {
       dropLink.on('pointertap', (e) => {
         e.stopPropagation();
         KitchenManager.abandonNeighborOrder(order.id);
+        analytics.trackNeighborOrderAction({
+          action: 'abandon',
+          orderId: order.id,
+          npcId: order.npcId,
+          recipeId: order.recipeId,
+        });
         this._inspect = null;
         if (this._isOpen) this.relayout();
       });
@@ -492,7 +496,14 @@ export class OrderPanel extends PIXI.Container {
           'order_refresh',
           () => {
             this._adBusy = false;
-            KitchenManager.refreshNeighborOrder(order.id);
+            if (KitchenManager.refreshNeighborOrder(order.id)) {
+              analytics.trackNeighborOrderAction({
+                action: 'ad_refresh',
+                orderId: order.id,
+                npcId: order.npcId,
+                recipeId: order.recipeId,
+              });
+            }
             this._inspect = null;
             if (this._isOpen) this.relayout();
           },
@@ -515,6 +526,12 @@ export class OrderPanel extends PIXI.Container {
       dropBtn.position.set(28, btnY);
       dropBtn.on('pointertap', () => {
         KitchenManager.abandonNeighborOrder(order.id);
+        analytics.trackNeighborOrderAction({
+          action: 'abandon',
+          orderId: order.id,
+          npcId: order.npcId,
+          recipeId: order.recipeId,
+        });
         this._inspect = null;
         if (this._isOpen) this.relayout();
       });
@@ -525,6 +542,15 @@ export class OrderPanel extends PIXI.Container {
       const from = this._toStage(x + fromX, y + btnY + btnH / 2);
       const gain = KitchenManager.submitNeighborOrder(order.id, { doubled });
       if (!gain) return;
+      analytics.trackNeighborOrderAction({
+        action: doubled ? 'submit_double' : 'submit',
+        orderId: order.id,
+        npcId: order.npcId,
+        recipeId: order.recipeId,
+        doubled,
+        goldGained: (gain.gold ?? 0) + (gain.foldGold ?? 0),
+        foodGiftId: gain.foodDefId,
+      });
       this._inspect = null;
       if (KitchenManager.liveNeighborOrders().length) this.relayout();
       else this.close(true);

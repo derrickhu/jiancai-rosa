@@ -1,6 +1,6 @@
 /**
  * 全局游戏单例。从 huahua Game.ts 精简：保留 750 宽适配、安全区、三级 renderer 降级，
- * 去掉 BuildingManager / 响应式 FeatureFlags。
+ * 限幅 2x 渲染 DPR 并关闭 preserveDrawingBuffer / MSAA，大幅降低移动端 TBDR GPU 带宽与显存压力。
  */
 import * as PIXI from 'pixi.js';
 import { ShaderSystem } from '@pixi/core';
@@ -31,6 +31,7 @@ class GameClass {
   contentOffsetX = 0;
   contentOffsetY = 0;
   dpr = 1;
+  renderDpr = 1;
   safeTop = 0;
   safeBottom = 0;
 
@@ -51,8 +52,8 @@ class GameClass {
     this._readViewport();
     this._canvas = canvas;
 
-    const realWidth = this.screenWidth * this.dpr;
-    const realHeight = this.screenHeight * this.dpr;
+    const realWidth = Math.round(this.screenWidth * this.renderDpr);
+    const realHeight = Math.round(this.screenHeight * this.renderDpr);
     canvas.width = realWidth;
     canvas.height = realHeight;
 
@@ -62,8 +63,9 @@ class GameClass {
       height: realHeight,
       backgroundColor: 0x2C261F,
       resolution: 1,
-      antialias: true,
-      preserveDrawingBuffer: true,
+      antialias: false,
+      preserveDrawingBuffer: false,
+      powerPreference: 'high-performance',
       preferWebGLVersion: 1,
     };
 
@@ -96,8 +98,9 @@ class GameClass {
             height: realHeight,
             backgroundColor: 0x2C261F,
             resolution: 1,
-            antialias: true,
-            preserveDrawingBuffer: true,
+            antialias: false,
+            preserveDrawingBuffer: false,
+            powerPreference: 'high-performance',
             preferWebGLVersion: 1,
           } as any);
         } catch (e2) {
@@ -134,7 +137,7 @@ class GameClass {
 
     this.stage.sortableChildren = true;
     this.stage.scale.set(this.scale, this.scale);
-    this.stage.position.set(this.contentOffsetX * this.dpr, this.contentOffsetY * this.dpr);
+    this.stage.position.set(this.contentOffsetX * this.renderDpr, this.contentOffsetY * this.renderDpr);
 
     this.ticker.add(() => {
       TweenManager.update(this.ticker.deltaMS / 1000);
@@ -161,7 +164,9 @@ class GameClass {
 
     this._initialized = true;
     this._bindResize();
-    console.log(`[Game] 初始化完成 viewport=${this.screenWidth}x${this.screenHeight} scale=${this.scale.toFixed(2)} safeTop=${this.safeTop}`);
+    console.log(
+      `[Game] 初始化完成 viewport=${this.screenWidth}x${this.screenHeight} dpr=${this.dpr} renderDpr=${this.renderDpr} scale=${this.scale.toFixed(2)} safeTop=${this.safeTop}`,
+    );
   }
 
   onViewportChange(listener: () => void): () => void {
@@ -187,12 +192,14 @@ class GameClass {
 
     this.screenWidth = finite(sysInfo?.screenWidth, this.screenWidth);
     this.screenHeight = finite(sysInfo?.screenHeight, this.screenHeight);
-    this.dpr = finite(sysInfo?.pixelRatio, this.dpr);
+    const fallbackDpr = typeof window !== 'undefined' ? finite(window.devicePixelRatio, this.dpr) : this.dpr;
+    this.dpr = finite(sysInfo?.pixelRatio, fallbackDpr);
+    this.renderDpr = Math.min(this.dpr, 2);
     this.contentScale = this.screenWidth / this.designWidth;
     if (!Number.isFinite(this.contentScale) || this.contentScale <= 0) {
       this.contentScale = 1;
     }
-    this.scale = this.contentScale * this.dpr;
+    this.scale = this.contentScale * this.renderDpr;
     this.contentOffsetX = 0;
     this.contentOffsetY = 0;
 
@@ -215,8 +222,8 @@ class GameClass {
     const api: any = (globalThis as any).wx ?? (globalThis as any).tt ?? null;
     const onResize = (): void => {
       this._readViewport();
-      const realWidth = Math.round(this.screenWidth * this.dpr);
-      const realHeight = Math.round(this.screenHeight * this.dpr);
+      const realWidth = Math.round(this.screenWidth * this.renderDpr);
+      const realHeight = Math.round(this.screenHeight * this.renderDpr);
       try {
         (this.app?.renderer as any)?.resize?.(realWidth, realHeight);
       } catch (_) {
@@ -226,6 +233,7 @@ class GameClass {
         }
       }
       this.stage.scale.set(this.scale, this.scale);
+      this.stage.position.set(this.contentOffsetX * this.renderDpr, this.contentOffsetY * this.renderDpr);
       for (const listener of [...this._viewportListeners]) {
         try { listener(); } catch (e) { console.warn('[Game] viewport listener', e); }
       }

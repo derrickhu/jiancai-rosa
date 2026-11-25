@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js';
+import { analytics } from '@/analytics';
 import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
@@ -6,10 +7,12 @@ import { Platform } from '@/core/PlatformService';
 import { warmupAdScene } from '@/services/RewardedAdService';
 import { Ease, TweenManager } from '@/core/TweenManager';
 import { KitchenManager } from '@/managers/KitchenManager';
+import { destroyDisplayChildren, destroyDisplayNode } from '@/utils/destroy';
 import { ensureRecipeUnlockPanel } from '@/gameobjects/ui/RecipeUnlockPanel';
 import { TutorialOverlay } from '@/gameobjects/ui/TutorialOverlay';
 import {
   DAILY_AD_LIMITS,
+  GOD_PICK,
   RECIPE_GACHA_COST,
   RECIPE_GACHA_PITY,
   RECIPE_GACHA_POOL,
@@ -20,9 +23,13 @@ import {
   gachaPityLeft,
   getItem,
   itemRarity,
+  rarityRank,
+  rarityStyleOf,
+  rarityTierLabel,
   recipeById,
   recipeUnlockView,
   type GachaDrawMode,
+  type RarityTier,
   type RecipeId,
 } from '@/sim';
 import { kitchenGachaHudPos, playRewardCollect, playTicketCollect } from '@/utils/coinCollect';
@@ -31,10 +38,10 @@ import {
   HUD_ICON,
   P0_ART,
   UI_KIT,
+  attachSpriteContour,
   fillRect,
   fitTextWidth,
   makeAdButton,
-  makeRarityFlare,
   makeSlicedButton,
   makeText,
 } from '@/utils/ui';
@@ -44,6 +51,7 @@ import {
   isTextureFailed,
   isTextureReady,
   itemTexture,
+  resolveDishAssetPath,
   resolveItemAssetPath,
   watchTextures,
   whenTextureReady,
@@ -55,6 +63,8 @@ import {
   drawSceneClose,
   drawSceneWall,
   drawStretchSheet,
+  makeDishDisplay,
+  makeRaritySeal,
   makeSealStamp,
   makeSceneRoot,
   sceneArtPaths,
@@ -69,7 +79,6 @@ const ART = {
   box: 'subpkg_images/hud_gacha_box.png',
   ticket: 'subpkg_images/ui_menu_ticket.png',
   paper: 'subpkg_kitchen/ui_recipe_paper.png',
-  flare: 'subpkg_kitchen/ui_pickup_flare.png',
 } as const;
 
 const LACK_HINT = '做今日菜单或盖图鉴章可得菜谱券';
@@ -77,7 +86,7 @@ const W = 720;
 const H = 1086;
 const SHAKE_SEC = 0.4;
 const SPIN_SEC = 0.9;
-const LAND_SEC = 0.16;
+const LAND_SEC = 0.24;
 
 type DrawResult = {
   recipeId?: RecipeId;
@@ -127,6 +136,7 @@ export class RecipeDrawPanel extends PIXI.Container {
     const isMaster = freshGachaRecipes(recipeUnlockView(KitchenManager.save)).length <= 0;
     this._tierTab = isMaster ? 'master' : 'regular';
     warmupAdScene('gacha_free');
+    if (KitchenManager.save.recipeTickets === 1) warmupAdScene('gacha_topup');
     this.relayout();
     OverlayManager.bringToFront();
   }
@@ -146,7 +156,7 @@ export class RecipeDrawPanel extends PIXI.Container {
     if (this._isOpen && !silent) AudioManager.play('ui_close');
     this._isOpen = false;
     this.visible = false;
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
     this._box = null;
     if (pending.length) this._deliverBatch(pending);
     TutorialOverlay.refresh();
@@ -167,7 +177,7 @@ export class RecipeDrawPanel extends PIXI.Container {
   relayout(): void {
     if (this._playing) return;
     this._clearFx();
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
     this._box = null;
     if (!this._isOpen) return;
 
@@ -237,22 +247,28 @@ export class RecipeDrawPanel extends PIXI.Container {
     // 2. 菜谱券存量 + 保底/概率大字说明
     this._drawPoolBanner(scene, tickets, remainRecipes, isMasterChest, pityLeft);
 
-    // 3. 供桌锦缎托垫 + 秘匣实物
+    // 3. 供桌锦缎托垫 + 秘匣实物（紧贴木箱与紫绒垫边缘勾勒精致发光轮廓线，告别泥团光斑）
     const tableCy = 668;
+    const nearPity = !isMasterChest && pityLeft <= 1;
+    const canAfford = tickets >= RECIPE_GACHA_COST
+      || (tickets === 1 && canUseDailyAd(save, 'gacha_topup'))
+      || canUseDailyAd(save, 'gacha_free');
+    const chestTier: RarityTier = this._tierTab === 'master'
+      ? 'god'
+      : (nearPity ? 'legendary' : 'epic');
+
     const cushion = sceneSprite(ART.cushion, 376, 208);
     if (cushion) {
       cushion.anchor.set(0.5);
       cushion.position.set(W / 2, tableCy);
       scene.addChild(cushion);
+      attachSpriteContour(scene, cushion, chestTier, {
+        onDark: true,
+        selected: nearPity,
+        thicknessScale: 0.9,
+        alpha: 0.72,
+      });
     }
-
-    const flare = makeRarityFlare(
-      !isMasterChest && pityLeft <= 1 ? 'legendary' : 'epic',
-      380,
-    );
-    flare.alpha = !isMasterChest && pityLeft <= 1 ? 0.76 : 0.52;
-    flare.position.set(W / 2, tableCy - 118);
-    scene.addChild(flare);
 
     // 概率·池览朱印挂牌（挂在锦垫右上侧）
     const oddsSeal = makeSealStamp('池览', 58, 0.1);
@@ -285,31 +301,36 @@ export class RecipeDrawPanel extends PIXI.Container {
     // 抽签木匣挂在舞台坐标层（方便摇晃与飞卷轴动画），但在池览弹窗下保持层级合理
     const boxCenter = toStage(W / 2, tableCy - 112);
     const boxSize = Math.round(288 * scale);
-    const box = new PIXI.Container();
+    const chestWrap = new PIXI.Container();
     const boxTex = gameTexture(ART.box);
     if (isTextureReady(boxTex)) {
-      const spr = new PIXI.Sprite(boxTex);
-      fitSpriteInBox(spr, boxSize, boxSize);
-      spr.anchor.set(0.5);
-      spr.eventMode = 'none';
-      box.addChild(spr);
+      const chestSp = new PIXI.Sprite(boxTex);
+      fitSpriteInBox(chestSp, boxSize, boxSize);
+      chestSp.anchor.set(0.5);
+      chestSp.eventMode = 'none';
+      chestWrap.addChild(chestSp);
+      attachSpriteContour(chestWrap, chestSp, chestTier, {
+        onDark: true,
+        selected: canAfford || nearPity,
+        thicknessScale: 1.15,
+      });
     }
     if (this._tierTab === 'master' && !isMasterChest) {
-      box.alpha = 0.85;
+      chestWrap.alpha = 0.85;
     }
-    box.position.set(boxCenter.x, boxCenter.y);
-    box.eventMode = 'static';
-    box.cursor = 'pointer';
-    box.hitArea = new PIXI.Rectangle(-boxSize / 2, -boxSize / 2, boxSize, boxSize);
-    box.on('pointertap', (e) => {
+    chestWrap.position.set(boxCenter.x, boxCenter.y);
+    chestWrap.eventMode = 'static';
+    chestWrap.cursor = 'pointer';
+    chestWrap.hitArea = new PIXI.Rectangle(-boxSize / 2, -boxSize / 2, boxSize, boxSize);
+    chestWrap.on('pointertap', (e) => {
       e.stopPropagation();
       if (this._playing || this._adBusy) return;
       AudioManager.play('ui_click');
       this._showPoolModal = true;
       this.relayout();
     });
-    this._root.addChild(box);
-    this._box = box;
+    this._root.addChild(chestWrap);
+    this._box = chestWrap;
 
     // 4. 底部大气抽签动作区（单抽 / 连抽 / 看广告免费抽）
     this._drawActionZone(scene, tickets, isMasterChest);
@@ -799,8 +820,16 @@ export class RecipeDrawPanel extends PIXI.Container {
     if (now - this._lastTap < 280) return;
     this._lastTap = now;
     if (this._playing) return;
+    const chestType: TierTab = freshGachaRecipes(recipeUnlockView(KitchenManager.save)).length <= 0
+      ? 'master'
+      : 'regular';
+    const ticketsBefore = KitchenManager.save.recipeTickets;
     const result = KitchenManager.drawRecipe({ reveal: false, mode });
     if (!result.ok) return;
+    const ticketsSpent = mode === 'ad_free'
+      ? 0
+      : Math.max(0, ticketsBefore - KitchenManager.save.recipeTickets);
+    this._reportGachaBatch(chestType, mode, ticketsSpent, [result]);
     this._playing = true;
     this._pendingList = [result];
     this._playBatchReveal([result]);
@@ -812,6 +841,9 @@ export class RecipeDrawPanel extends PIXI.Container {
     this._lastTap = now;
     if (this._playing) return;
 
+    const chestType: TierTab = freshGachaRecipes(recipeUnlockView(KitchenManager.save)).length <= 0
+      ? 'master'
+      : 'regular';
     const first = KitchenManager.drawRecipe({ reveal: false, mode: 'ticket' });
     if (!first.ok) return;
     this._playing = true;
@@ -820,15 +852,29 @@ export class RecipeDrawPanel extends PIXI.Container {
     let left = count - 1;
     let shakeDone = false;
     let rollsDone = left <= 0;
+    let batchReported = false;
+
+    const reportOnce = (): void => {
+      if (batchReported) return;
+      batchReported = true;
+      this._reportGachaBatch(
+        chestType,
+        'multi_ticket',
+        this._pendingList.length * RECIPE_GACHA_COST,
+        this._pendingList,
+      );
+    };
 
     const tryProceed = (): void => {
       if (!this._playing || !shakeDone || !rollsDone) return;
+      reportOnce();
       this._animateShowcase(this._pendingList);
     };
 
     const stepRoll = (): void => {
       if (!this._playing || left <= 0) {
         rollsDone = true;
+        reportOnce();
         tryProceed();
         return;
       }
@@ -840,6 +886,7 @@ export class RecipeDrawPanel extends PIXI.Container {
         left -= 1;
         if (left <= 0 || !r.ok) {
           rollsDone = true;
+          reportOnce();
           tryProceed();
         } else {
           stepRoll();
@@ -854,10 +901,113 @@ export class RecipeDrawPanel extends PIXI.Container {
     });
   }
 
+  private _reportGachaBatch(
+    chestType: TierTab,
+    drawMode: 'ticket' | 'multi_ticket' | 'ad_free' | 'ad_topup',
+    ticketsSpent: number,
+    batch: DrawResult[],
+  ): void {
+    if (!batch.length) return;
+    const rankMap: Record<string, number> = { common: 1, rare: 2, epic: 3, legendary: 4 };
+    let topRarity = 'common';
+    let topRank = 0;
+    const bumpRarity = (r?: string): void => {
+      const rank = r ? (rankMap[r] ?? 0) : 0;
+      if (rank > topRank && r) {
+        topRank = rank;
+        topRarity = r;
+      }
+    };
+
+    let newRecipesCount = 0;
+    let dupCount = 0;
+    let foodsCount = 0;
+    let specialCount = 0;
+    let firstSpecialKind: string | undefined;
+    let goldGained = 0;
+    let bonusTickets = 0;
+
+    for (const r of batch) {
+      goldGained += (r.gold ?? 0) + (r.foldGold ?? 0);
+      bonusTickets += r.bonusTickets ?? 0;
+      if (r.specialKind) {
+        specialCount += 1;
+        if (!firstSpecialKind) firstSpecialKind = r.specialKind;
+        bumpRarity('epic');
+      } else if (r.foodDefId) {
+        foodsCount += r.foodQty ?? 1;
+        bumpRarity(itemRarity(r.foodDefId));
+      } else if (r.duplicate) {
+        dupCount += 1;
+        if (r.recipeId) bumpRarity(recipeById(r.recipeId)?.rarity);
+      } else if (r.recipeId) {
+        newRecipesCount += 1;
+        bumpRarity(recipeById(r.recipeId)?.rarity ?? 'rare');
+      }
+    }
+
+    analytics.trackGachaDraw({
+      chestType,
+      drawMode,
+      drawCount: batch.length,
+      ticketsSpent,
+      ticketsRemain: KitchenManager.save.recipeTickets,
+      newRecipesCount,
+      dupCount,
+      foodsCount,
+      specialCount,
+      specialKind: firstSpecialKind,
+      topRarity,
+      goldGained,
+      bonusTickets,
+    });
+  }
+
+  private _pickShowcaseHero(batch: DrawResult[]): { kind: 'paper' | 'food'; hero: DrawResult } | null {
+    if (!batch.length) return null;
+    const newRecipes = batch.filter((r) => r.recipeId && !r.duplicate);
+    if (newRecipes.length) {
+      let best = newRecipes[0];
+      let bestRank = rarityRank(recipeById(best.recipeId!)?.rarity ?? 'common');
+      for (let i = 1; i < newRecipes.length; i++) {
+        const rank = rarityRank(recipeById(newRecipes[i].recipeId!)?.rarity ?? 'common');
+        if (rank > bestRank) {
+          best = newRecipes[i];
+          bestRank = rank;
+        }
+      }
+      return { kind: 'paper', hero: best };
+    }
+    const specials = batch.filter((r) => !r.foodDefId);
+    if (specials.length) {
+      const special = specials.find((r) => !!r.specialKind) ?? specials[0];
+      return { kind: 'paper', hero: special };
+    }
+    const foods = batch.filter((r) => !!r.foodDefId);
+    if (foods.length) {
+      let best = foods[0];
+      let bestRank = best.foodDefId === GOD_PICK.id ? 99 : rarityRank(itemRarity(best.foodDefId!));
+      for (let i = 1; i < foods.length; i++) {
+        const rank = foods[i].foodDefId === GOD_PICK.id ? 99 : rarityRank(itemRarity(foods[i].foodDefId!));
+        if (rank > bestRank) {
+          best = foods[i];
+          bestRank = rank;
+        }
+      }
+      return { kind: 'food', hero: best };
+    }
+    return null;
+  }
+
   private _playBatchReveal(batch: DrawResult[]): void {
-    const hero = batch.find((r) => r.recipeId && !r.duplicate) ?? batch[0];
-    if (hero?.foodDefId) itemTexture(hero.foodDefId);
-    else gameTexture(ART.paper);
+    const picked = this._pickShowcaseHero(batch);
+    if (picked?.kind === 'food' && picked.hero.foodDefId) {
+      itemTexture(picked.hero.foodDefId);
+    } else if (picked?.kind === 'paper') {
+      gameTexture(ART.paper);
+      if (picked.hero.recipeId) gameTexture(resolveDishAssetPath(picked.hero.recipeId));
+      else if (picked.hero.masteryRecipeId) gameTexture(resolveDishAssetPath(picked.hero.masteryRecipeId));
+    }
     this._shakeBox(() => {
       if (!this._playing) return;
       this._animateShowcase(batch);
@@ -865,26 +1015,28 @@ export class RecipeDrawPanel extends PIXI.Container {
   }
 
   private _animateShowcase(batch: DrawResult[]): void {
-    const recipeHero = batch.find((r) => r.recipeId && !r.duplicate);
-    const paperHero = recipeHero ?? batch.find((r) => !r.foodDefId);
-    if (paperHero) {
-      this._waitPath(ART.paper, () => {
+    const picked = this._pickShowcaseHero(batch);
+    if (picked?.kind === 'paper') {
+      const hero = picked.hero;
+      const dishId = hero.recipeId ?? hero.masteryRecipeId;
+      const waitPaths = dishId ? [ART.paper, resolveDishAssetPath(dishId)] : [ART.paper];
+      this._waitPaths(waitPaths, () => {
         if (!this._playing) return;
-        this._spinPaper(!recipeHero && paperHero.duplicate && !paperHero.specialKind, () => {
+        this._spinPaper(hero, () => {
           if (!this._playing) return;
           this._finishDraw();
         });
       });
       return;
     }
-    const foodHero = batch[0];
-    if (foodHero?.foodDefId) {
+    if (picked?.kind === 'food' && picked.hero.foodDefId) {
+      const foodId = picked.hero.foodDefId;
       const totalSameQty = batch
-        .filter((b) => b.foodDefId === foodHero.foodDefId)
+        .filter((b) => b.foodDefId === foodId)
         .reduce((s, b) => s + (b.foodQty ?? 1), 0);
-      this._waitPath(resolveItemAssetPath(foodHero.foodDefId), () => {
+      this._waitPaths([resolveItemAssetPath(foodId)], () => {
         if (!this._playing) return;
-        this._spinItem(foodHero.foodDefId!, totalSameQty, () => {
+        this._spinItem(foodId, totalSameQty, () => {
           if (!this._playing) return;
           this._finishDraw();
         });
@@ -927,30 +1079,48 @@ export class RecipeDrawPanel extends PIXI.Container {
     });
   }
 
-  private _waitPath(path: string, done: () => void): void {
-    const tex = gameTexture(path);
-    if (isTextureReady(tex) || isTextureFailed(path)) {
+  private _waitPaths(paths: string[], done: () => void): void {
+    const pending = paths.filter((p) => {
+      const tex = gameTexture(p);
+      return !isTextureReady(tex) && !isTextureFailed(p);
+    });
+    if (!pending.length) {
       done();
       return;
     }
     let settled = false;
+    let remain = pending.length;
     const finish = (): void => {
       if (settled) return;
       settled = true;
       done();
     };
-    whenTextureReady(path, finish);
+    for (const p of pending) {
+      whenTextureReady(p, () => {
+        remain -= 1;
+        if (remain <= 0) finish();
+      });
+    }
     globalThis.setTimeout(finish, 800);
   }
 
-  private _spinPaper(duplicate: boolean, done: () => void): void {
+  private _spinPaper(hero: DrawResult, done: () => void): void {
     const box = this._box;
     const tex = gameTexture(ART.paper);
     if (!box || !isTextureReady(tex)) {
       done();
       return;
     }
-    if (this._paper && !this._paper.destroyed) this._paper.destroy({ children: true });
+    if (this._paper && !this._paper.destroyed) destroyDisplayNode(this._paper);
+
+    const duplicate = !hero.specialKind && hero.duplicate;
+    const targetRecipeId = hero.recipeId ?? hero.masteryRecipeId;
+    const targetRecipe = targetRecipeId ? recipeById(targetRecipeId) : undefined;
+    const tier: RarityTier = hero.specialKind === 'outing_charm'
+      ? 'god'
+      : hero.specialKind === 'mastery_note'
+        ? (targetRecipe?.rarity === 'legendary' ? 'legendary' : 'epic')
+        : (targetRecipe?.rarity ?? 'rare');
 
     const w = Game.designWidth;
     const h = Game.logicHeight;
@@ -960,22 +1130,100 @@ export class RecipeDrawPanel extends PIXI.Container {
     fitSpriteInBox(spr, maxW, maxH);
     spr.anchor.set(0.5);
     spr.eventMode = 'none';
-    const destY = Game.safeTop + Math.max(24, (h - Game.safeTop - spr.height - 88) / 2) + spr.height / 2;
+    const pw = spr.width;
+    const ph = spr.height;
+    const destY = Game.safeTop + Math.max(24, (h - Game.safeTop - ph - 88) / 2) + ph / 2;
 
     const wrap = new PIXI.Container();
     wrap.eventMode = 'none';
     wrap.position.set(box.x, box.y + 36);
     wrap.scale.set(0.08);
-    wrap.rotation = Math.PI * 1.65;
     wrap.alpha = 0;
-    wrap.addChild(spr);
+
+    // 旋转飞出的宣纸卷轴主体 + 紧贴卷轴与菜品边缘的精致轮廓光
+    const scrollSpin = new PIXI.Container();
+    scrollSpin.eventMode = 'none';
+    scrollSpin.rotation = Math.PI * 1.65;
+    scrollSpin.addChild(spr);
+    attachSpriteContour(scrollSpin, spr, tier, {
+      onDark: true,
+      selected: true,
+      thicknessScale: 1.08,
+    });
+
+    if (targetRecipeId) {
+      const dishNode = makeDishDisplay({
+        dishPath: resolveDishAssetPath(targetRecipeId),
+        size: Math.round(pw * 0.36),
+        shadowAlpha: 0.26,
+        rarity: tier,
+        contourOpts: { selected: true, thicknessScale: 1.05 },
+      });
+      dishNode.position.set(0, -Math.round(ph * 0.03));
+      scrollSpin.addChild(dishNode);
+    }
+
+    const titleStr = hero.specialKind === 'outing_charm'
+      ? '出行鸿运吉签'
+      : hero.specialKind === 'mastery_note'
+        ? (targetRecipe ? `火候心得·${targetRecipe.name}` : '主厨火候心得')
+        : (targetRecipe?.name ?? '私房新菜谱');
+    const titleTxt = makeText('display', titleStr, SCENE_INK.ink, {
+      size: 32,
+      stroke: 0xFFF8EA,
+      strokeWidth: 4,
+    });
+    titleTxt.anchor.set(0.5);
+    titleTxt.position.set(0, Math.round(ph * (targetRecipeId ? 0.18 : 0.04)));
+    fitTextWidth(titleTxt, pw - 96);
+    scrollSpin.addChild(titleTxt);
+
+    const subLabel = hero.specialKind === 'outing_charm'
+      ? '天选吉签 · 下趟赶集享好运'
+      : hero.specialKind === 'mastery_note'
+        ? '名厨秘传 · 菜谱熟练度精进'
+        : `${rarityTierLabel(tier)}菜谱 · ${targetRecipe?.group ?? '私房菜'}`;
+    const subTxt = makeText('heading', subLabel, rarityStyleOf(tier).ink, {
+      size: 23,
+      stroke: 0xFFF8EA,
+      strokeWidth: 3,
+    });
+    subTxt.anchor.set(0.5);
+    subTxt.position.set(0, Math.round(ph * (targetRecipeId ? 0.25 : 0.12)));
+    fitTextWidth(subTxt, pw - 104);
+    scrollSpin.addChild(subTxt);
+
+    const rSeal = makeRaritySeal(
+      tier,
+      54,
+      -0.09,
+      hero.specialKind === 'outing_charm' ? '鸿运' : hero.specialKind === 'mastery_note' ? '秘传' : undefined,
+    );
+    rSeal.position.set(-Math.round(pw * 0.27), -Math.round(ph * 0.16));
+    scrollSpin.addChild(rSeal);
+
+    const statusSeal = makeSealStamp(
+      hero.specialKind ? '名厨奇珍' : (duplicate ? '折算赏金' : '新谱出匣'),
+      58,
+      0.11,
+    );
+    statusSeal.position.set(Math.round(pw * 0.27), -Math.round(ph * 0.16));
+    scrollSpin.addChild(statusSeal);
+
+    wrap.addChild(scrollSpin);
     this._root.addChild(wrap);
     this._paper = wrap;
     AudioManager.play(duplicate ? 'event_pop' : 'recipe_paper');
     TweenManager.to({ target: wrap, props: { alpha: 1 }, duration: 0.08 });
     TweenManager.to({
       target: wrap,
-      props: { x: w / 2, y: destY, rotation: 0 },
+      props: { x: w / 2, y: destY },
+      duration: SPIN_SEC,
+      ease: Ease.easeOutQuad,
+    });
+    TweenManager.to({
+      target: scrollSpin,
+      props: { rotation: 0 },
       duration: SPIN_SEC,
       ease: Ease.easeOutQuad,
     });
@@ -1002,7 +1250,8 @@ export class RecipeDrawPanel extends PIXI.Container {
       done();
       return;
     }
-    if (this._paper && !this._paper.destroyed) this._paper.destroy({ children: true });
+    if (this._paper && !this._paper.destroyed) destroyDisplayNode(this._paper);
+    const tier: RarityTier = defId === GOD_PICK.id ? 'god' : itemRarity(defId);
     const face = 240;
     const wrap = new PIXI.Container();
     wrap.eventMode = 'none';
@@ -1013,13 +1262,21 @@ export class RecipeDrawPanel extends PIXI.Container {
     const spin = new PIXI.Container();
     spin.eventMode = 'none';
     spin.rotation = Math.PI * 1.65;
-    const glow = makeRarityFlare(itemRarity(defId), 420);
     const spr = new PIXI.Sprite(tex);
     fitSpriteInBox(spr, face, face);
     spr.anchor.set(0.5);
     spr.eventMode = 'none';
-    spin.addChild(glow, spr);
+    spin.addChild(spr);
+    attachSpriteContour(spin, spr, tier, {
+      onDark: true,
+      selected: true,
+      thicknessScale: 1.15,
+    });
     wrap.addChild(spin);
+
+    const rSeal = makeRaritySeal(tier, 54, -0.10);
+    rSeal.position.set(-face / 2 + 12, -face / 2 + 12);
+    wrap.addChild(rSeal);
 
     if (qty > 1) {
       const tag = makeText('display', `×${qty}`, SCENE_INK.cream, {
@@ -1031,6 +1288,15 @@ export class RecipeDrawPanel extends PIXI.Container {
       tag.position.set(face / 2 - 2, face / 2 + 4);
       wrap.addChild(tag);
     }
+
+    const itemName = makeText('title', getItem(defId).name, rarityStyleOf(tier).float, {
+      size: 30,
+      stroke: 0x2A160A,
+      strokeWidth: 5,
+    });
+    itemName.anchor.set(0.5, 0);
+    itemName.position.set(0, face / 2 + 14);
+    wrap.addChild(itemName);
 
     this._root.addChild(wrap);
     this._paper = wrap;
@@ -1171,10 +1437,7 @@ export class RecipeDrawPanel extends PIXI.Container {
       this._box.scale.set(1);
     }
     if (this._paper) {
-      TweenManager.cancelTarget(this._paper);
-      TweenManager.cancelTarget(this._paper.scale);
-      for (const child of this._paper.children) TweenManager.cancelTarget(child);
-      if (!this._paper.destroyed) this._paper.destroy({ children: true });
+      destroyDisplayNode(this._paper);
       this._paper = null;
     }
   }

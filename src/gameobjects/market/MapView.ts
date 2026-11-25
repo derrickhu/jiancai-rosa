@@ -55,11 +55,17 @@ function watchMapTex(path: string, onReady?: () => void): void {
 }
 
 function slotTexture(atlas: string, slot: number): PIXI.Texture | null {
-  const key = `${atlas}#${slot}`;
-  const hit = _slots.get(key);
-  if (hit) return hit;
   const tex = gameTexture(atlas);
   if (!isTextureReady(tex)) return null;
+  const key = `${atlas}#${slot}`;
+  const hit = _slots.get(key);
+  if (hit) {
+    if (hit.valid && hit.baseTexture && !hit.baseTexture.destroyed && hit.baseTexture === tex.baseTexture) {
+      return hit;
+    }
+    _slots.delete(key);
+    try { hit.destroy(false); } catch { /* ignore */ }
+  }
   const cw = tex.width / ATLAS_COLS;
   const ch = tex.height / ATLAS_ROWS;
   const col = slot % ATLAS_COLS;
@@ -68,6 +74,16 @@ function slotTexture(atlas: string, slot: number): PIXI.Texture | null {
   const sub = new PIXI.Texture(tex.baseTexture, frame);
   _slots.set(key, sub);
   return sub;
+}
+
+/** 清理已卸载图集对应的子纹理切片句柄，避免残留失效 Texture 包装对象。 */
+export function pruneMapSlotCache(clearAll = false): void {
+  for (const [key, sub] of [..._slots.entries()]) {
+    if (clearAll || !sub.baseTexture || sub.baseTexture.destroyed || !sub.valid) {
+      _slots.delete(key);
+      try { sub.destroy(false); } catch { /* ignore */ }
+    }
+  }
 }
 
 /** 收费摊也画自己摊型的图：贵不贵看卡面图上方那组数字+金币。 */

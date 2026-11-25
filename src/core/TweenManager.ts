@@ -53,7 +53,36 @@ class TweenManagerClass {
   }
 
   cancelTarget(target: any): void {
-    this._tweens = this._tweens.filter((t) => t.config.target !== target);
+    if (!target || this._tweens.length === 0) return;
+    const subScale = typeof target === 'object' ? (target as any).scale : undefined;
+    const subPos = typeof target === 'object' ? (target as any).position : undefined;
+    const subPivot = typeof target === 'object' ? (target as any).pivot : undefined;
+    const subSkew = typeof target === 'object' ? (target as any).skew : undefined;
+    this._tweens = this._tweens.filter((t) => {
+      const tgt = t.config.target;
+      return tgt !== target
+        && (subScale === undefined || tgt !== subScale)
+        && (subPos === undefined || tgt !== subPos)
+        && (subPivot === undefined || tgt !== subPivot)
+        && (subSkew === undefined || tgt !== subSkew);
+    });
+  }
+
+  /** 单次遍历批量清理整棵显示树及其 ObservablePoint 子属性上的活跃补间。 */
+  cancelTargets(targets: ReadonlySet<any>): void {
+    if (targets.size === 0 || this._tweens.length === 0) return;
+    let write = 0;
+    for (let i = 0; i < this._tweens.length; i++) {
+      const t = this._tweens[i];
+      if (!targets.has(t.config.target)) {
+        this._tweens[write++] = t;
+      }
+    }
+    this._tweens.length = write;
+  }
+
+  get activeCount(): number {
+    return this._tweens.length;
   }
 
   update(dt: number): void {

@@ -8,6 +8,9 @@ class SaveManagerClass {
 
   load(): KitchenSave {
     const raw = PersistService.readJSON<KitchenSave>(SAVE_KEY);
+    if (!raw) {
+      PersistService.clearOutingCheckpoint();
+    }
     const now = Date.now();
     let data = normalizeSave(raw && raw.version === 1 ? raw : null, now);
     data = regenStamina(data, now);
@@ -27,6 +30,11 @@ class SaveManagerClass {
 
   flush(): void {
     PersistService.writeJSON(SAVE_KEY, this.data);
+  }
+
+  flushSync(): void {
+    this.flush();
+    PersistService.flushAllSync();
   }
 }
 

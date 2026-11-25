@@ -3,6 +3,7 @@ import { Game } from '@/core/Game';
 import { Ease, TweenManager } from '@/core/TweenManager';
 import { applyFit, fitCover, gameTexture, isTextureReady, isTextureSettled, preloadTextures, watchTextures, whenTextureReady } from '@/utils/assets';
 import { OUTING_CURTAIN } from '@/utils/outingAssets';
+import { destroyDisplayChildren, destroyDisplayNode } from '@/utils/destroy';
 import { fillRect, makeText } from '@/utils/ui';
 import {
   SCENE_ART,
@@ -86,7 +87,7 @@ class OutingCurtainClass {
   private _paint(): void {
     this._stopCardAnim();
     this.container.removeChildren();
-    this._sheet.removeChildren();
+    destroyDisplayChildren(this._sheet);
     this.container.alpha = 1;
     this.container.visible = true;
     this.container.eventMode = 'static';
@@ -111,7 +112,7 @@ class OutingCurtainClass {
       const tex = gameTexture(OUTING_CURTAIN);
       if (!isTextureReady(tex)) return;
       const old = bgLayer.children.find((c) => c instanceof PIXI.Sprite);
-      if (old) bgLayer.removeChild(old);
+      if (old) destroyDisplayNode(old);
       const sp = new PIXI.Sprite(tex);
       applyFit(sp, fitCover(tex.width, tex.height, w, h));
       bgLayer.addChild(sp);
@@ -127,7 +128,7 @@ class OutingCurtainClass {
 
     const rebuildSign = (): void => {
       if (!this.container.visible || cardHost.destroyed) return;
-      cardHost.removeChildren();
+      destroyDisplayChildren(cardHost);
 
       const noteW = 508;
       const noteH = 224;
@@ -244,7 +245,7 @@ class OutingCurtainClass {
     this._sheet.mask = null;
     this.container.removeAllListeners();
     this.container.removeChildren();
-    this._sheet.removeChildren();
+    destroyDisplayChildren(this._sheet);
     this._maskG.clear();
     this.container.visible = false;
     this.container.eventMode = 'none';

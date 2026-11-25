@@ -4,6 +4,7 @@ import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { Ease, TweenManager } from '@/core/TweenManager';
 import { KitchenManager } from '@/managers/KitchenManager';
+import { destroyDisplayChildren } from '@/utils/destroy';
 import {
   RARITY_STYLE,
   listedRecipes,
@@ -32,11 +33,11 @@ import {
   HUD_ICON,
   P0_ART,
   UI_KIT,
+  attachSpriteContour,
   fillRect,
   fitTextWidth,
   makeHandProgressBar,
   makeMasterySpoonRow,
-  makeRarityFlare,
   makeSlicedButton,
   makeText,
   uiBarPaths,
@@ -49,6 +50,7 @@ import {
   drawSceneClose,
   drawStretchSheet,
   makeNeedIcons,
+  makeRaritySeal,
   makeSealStamp,
   makeSceneRoot,
   sceneArtPaths,
@@ -61,7 +63,6 @@ const ART = {
   photo: 'subpkg_images/scene_dex_photo.png',
   washi: 'subpkg_images/scene_dex_washi.png',
   note: 'subpkg_images/scene_club_note.png',
-  flare: 'subpkg_kitchen/ui_pickup_flare.png',
 } as const;
 
 const W = 720;
@@ -112,7 +113,7 @@ export class RecipeBookPanel extends PIXI.Container {
     this._paintQueued = false;
     this._scroller.disable();
     this._scroller.clear();
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
   }
 
   private _scheduleRelayout = (): void => {
@@ -128,7 +129,7 @@ export class RecipeBookPanel extends PIXI.Container {
   };
 
   relayout(): void {
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
     if (!this._isOpen) return;
 
     const save = KitchenManager.save;
@@ -397,13 +398,6 @@ export class RecipeBookPanel extends PIXI.Container {
           photo.addChild(g);
         }
 
-        if (r.rarity !== 'common') {
-          const flare = makeRarityFlare(r.rarity, 100);
-          flare.alpha = 0.45;
-          flare.position.set(photoW / 2, 76);
-          photo.addChild(flare);
-        }
-
         const dTex = dishTexture(r.id);
         if (isTextureReady(dTex)) {
           const sp = new PIXI.Sprite(dTex);
@@ -411,6 +405,16 @@ export class RecipeBookPanel extends PIXI.Container {
           sp.anchor.set(0.5);
           sp.position.set(photoW / 2, 78);
           photo.addChild(sp);
+          attachSpriteContour(photo, sp, r.rarity, {
+            selected: r.rarity === 'legendary',
+            thicknessScale: 0.88,
+          });
+        }
+
+        if (r.rarity !== 'common') {
+          const rSeal = makeRaritySeal(r.rarity, 38, -0.08);
+          rSeal.position.set(25, 32);
+          photo.addChild(rSeal);
         }
 
         const mastery = recipeMasteryView(save, r.id);
@@ -578,12 +582,6 @@ export class RecipeBookPanel extends PIXI.Container {
       pf.height = photoH;
       photoWrap.addChild(pf);
     }
-    if (recipe.rarity !== 'common') {
-      const flare = makeRarityFlare(recipe.rarity, 150);
-      flare.alpha = 0.52;
-      flare.position.set(photoW / 2, 116);
-      photoWrap.addChild(flare);
-    }
     const dTex = dishTexture(recipe.id);
     if (isTextureReady(dTex)) {
       const sp = new PIXI.Sprite(dTex);
@@ -591,6 +589,7 @@ export class RecipeBookPanel extends PIXI.Container {
       sp.anchor.set(0.5);
       sp.position.set(photoW / 2, 116);
       photoWrap.addChild(sp);
+      attachSpriteContour(photoWrap, sp, recipe.rarity, { selected: true });
     }
     const spoons = makeMasterySpoonRow({
       stars: mastery.stars,
@@ -616,7 +615,7 @@ export class RecipeBookPanel extends PIXI.Container {
     const infoW = noteW - infoX - 42;
     const title = makeText('display', recipe.name, SCENE_INK.ink, { size: 34 });
     title.position.set(infoX, 120);
-    fitTextWidth(title, infoW);
+    fitTextWidth(title, infoW - 64);
     card.addChild(title);
 
     const sub = makeText(
@@ -626,8 +625,12 @@ export class RecipeBookPanel extends PIXI.Container {
       { size: 24 },
     );
     sub.position.set(infoX, 176);
-    fitTextWidth(sub, infoW);
+    fitTextWidth(sub, infoW - 64);
     card.addChild(sub);
+
+    const rSeal = makeRaritySeal(recipe.rarity, 54, 0.09);
+    rSeal.position.set(noteW - 66, 156);
+    card.addChild(rSeal);
 
     const potTxt = makeText(
       'caption',

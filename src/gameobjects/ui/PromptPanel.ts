@@ -4,6 +4,7 @@ import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { Ease, TweenManager } from '@/core/TweenManager';
 import { watchTextures } from '@/utils/assets';
+import { destroyDisplayChildren } from '@/utils/destroy';
 import {
   UI_KIT,
   fillRect,
@@ -96,7 +97,7 @@ class PromptPanelClass extends PIXI.Container {
   };
 
   relayout(): void {
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
     this._card = null;
     const opts = this._opts;
     if (!this._isOpen || !opts) return;
@@ -286,7 +287,7 @@ class PromptPanelClass extends PIXI.Container {
     this._opts = null;
     this._card = null;
     this._paintQueued = false;
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
     resolve?.(ok);
   }
 }

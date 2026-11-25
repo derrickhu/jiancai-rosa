@@ -1,8 +1,10 @@
 import * as PIXI from 'pixi.js';
+import { analytics } from '@/analytics';
 import { AudioManager } from '@/core/AudioManager';
 import { OverlayManager } from '@/core/OverlayManager';
 import { Platform } from '@/core/PlatformService';
 import { KitchenManager } from '@/managers/KitchenManager';
+import { destroyDisplayChildren } from '@/utils/destroy';
 import {
   CAT_BED_TIER_DEFS,
   FURN_IDS,
@@ -44,9 +46,9 @@ import {
   P2_ART,
   UI_BTN,
   UI_KIT,
+  attachSpriteContour,
   fitTextWidth,
   makeCoinButton,
-  makeRarityFlare,
   makeSlicedButton,
   makeText,
 } from '@/utils/ui';
@@ -159,7 +161,7 @@ export class UpgradePanel extends PIXI.Container {
     this.visible = false;
     this._paintQueued = false;
     this._scroller.disable();
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
   }
 
   private _scheduleRelayout = (): void => {
@@ -186,7 +188,6 @@ export class UpgradePanel extends PIXI.Container {
       UI_KIT.btnGold,
       UI_BTN.cream,
       UI_BTN.terracotta,
-      'subpkg_kitchen/ui_pickup_flare.png',
       houseSpritePath(hLv),
       houseSpritePath(Math.min(HOUSE_MAX_LEVEL, hLv + 1)),
     ];
@@ -209,7 +210,7 @@ export class UpgradePanel extends PIXI.Container {
   }
 
   relayout(): void {
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
     if (!this._isOpen) return;
     this._warmAssets();
 
@@ -266,7 +267,23 @@ export class UpgradePanel extends PIXI.Container {
         levelTag: `品阶 ${pt + 1}/3`,
         gainText: st.status === 'max' ? curDef.desc : st.nextDesc,
         state: st,
-        onBuy: () => KitchenManager.upgradePickleJar(),
+        onBuy: () => {
+          const beforeMoney = KitchenManager.save.money;
+          const ok = KitchenManager.upgradePickleJar();
+          if (ok) {
+            const costGold = Math.max(0, beforeMoney - KitchenManager.save.money);
+            const tier = pickleTier(KitchenManager.save);
+            analytics.trackPickleAction({ action: 'upgrade_tier', pickleTier: tier, costGold });
+            analytics.trackKitchenUpgrade({
+              targetType: 'pickle_jar',
+              targetId: 'pickle_jar',
+              newLevel: tier + 1,
+              costGold,
+              cookLevel: KitchenManager.save.level,
+            });
+          }
+          return ok;
+        },
         y: ry,
         divider: idx < totalRows - 1,
       }));
@@ -287,7 +304,23 @@ export class UpgradePanel extends PIXI.Container {
         levelTag: `品阶 ${ct + 1}/3`,
         gainText: st.status === 'max' ? curDef.desc : st.nextDesc,
         state: st,
-        onBuy: () => KitchenManager.upgradeCatBed(),
+        onBuy: () => {
+          const beforeMoney = KitchenManager.save.money;
+          const ok = KitchenManager.upgradeCatBed();
+          if (ok) {
+            const costGold = Math.max(0, beforeMoney - KitchenManager.save.money);
+            const tier = catBedTier(KitchenManager.save);
+            analytics.trackCatAction({ action: 'upgrade_bed', bedTier: tier, costGold });
+            analytics.trackKitchenUpgrade({
+              targetType: 'cat_bed',
+              targetId: 'cat_bed',
+              newLevel: tier + 1,
+              costGold,
+              cookLevel: KitchenManager.save.level,
+            });
+          }
+          return ok;
+        },
         y: ry,
         divider: idx < totalRows - 1,
       }));
@@ -591,9 +624,6 @@ export class UpgradePanel extends PIXI.Container {
     const cy = L.rowH / 2 - 2;
     if (opts.maxed || !opts.nextIcon) {
       const cx = L.contentX + 76;
-      const flare = makeRarityFlare('legendary', 132);
-      flare.position.set(cx, cy);
-      row.addChild(flare);
       const spot = sceneSprite(ART.spot, 102, 102);
       if (spot) {
         spot.anchor.set(0.5);
@@ -604,6 +634,7 @@ export class UpgradePanel extends PIXI.Container {
       if (sp) {
         sp.position.set(cx, cy);
         row.addChild(sp);
+        attachSpriteContour(row, sp, 'god', { selected: true, thicknessScale: 0.92 });
       }
     } else {
       const cx1 = L.contentX + 38;

@@ -1,10 +1,12 @@
 import * as PIXI from 'pixi.js';
+import { analytics } from '@/analytics';
 import { AudioManager } from '@/core/AudioManager';
 import { OverlayManager } from '@/core/OverlayManager';
 import { Platform } from '@/core/PlatformService';
 import { warmupAdScene } from '@/services/RewardedAdService';
 import { KitchenManager } from '@/managers/KitchenManager';
 import { RunManager } from '@/managers/RunManager';
+import { destroyDisplayChildren } from '@/utils/destroy';
 import {
   HUD_ICON,
   MARKET_PROP_ART,
@@ -107,7 +109,7 @@ export class SteelyardPanel extends PIXI.Container {
     this._poiseNode = null;
     this._adBusy = false;
     this._paintQueued = false;
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
   }
 
   private _bindTicker(on: boolean): void {
@@ -137,7 +139,7 @@ export class SteelyardPanel extends PIXI.Container {
   };
 
   relayout(): void {
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
     this._poiseNode = null;
     if (!this._isOpen) return;
 
@@ -420,6 +422,13 @@ export class SteelyardPanel extends PIXI.Container {
         });
         directBtn.position.set(contentL + stopW + gap, btnY);
         directBtn.on('pointertap', () => {
+          analytics.trackSteelyardSettle({
+            marketId: RunManager.run?.marketId,
+            phase: this._phase,
+            action: 'pay',
+            feePaid: this._fee,
+            bonusItems: 0,
+          });
           const cb = this._onEnter;
           this.close(true);
           cb?.({ feeOverride: this._fee, bonusItems: 0 });
@@ -456,6 +465,13 @@ export class SteelyardPanel extends PIXI.Container {
       });
       goBtn.position.set(contentL, btnY);
       goBtn.on('pointertap', () => {
+        analytics.trackSteelyardSettle({
+          marketId: RunManager.run?.marketId,
+          phase: 'green',
+          action: 'pay',
+          feePaid: 0,
+          bonusItems: 2,
+        });
         const cb = this._onEnter;
         this.close(true);
         cb?.({ feeOverride: 0, bonusItems: 2 });
@@ -477,6 +493,13 @@ export class SteelyardPanel extends PIXI.Container {
       });
       goBtn.position.set(contentL, btnY);
       goBtn.on('pointertap', () => {
+        analytics.trackSteelyardSettle({
+          marketId: RunManager.run?.marketId,
+          phase: 'steady',
+          action: 'pay',
+          feePaid: halfFee,
+          bonusItems: 1,
+        });
         const cb = this._onEnter;
         this.close(true);
         cb?.({ feeOverride: halfFee, bonusItems: 1 });
@@ -508,6 +531,13 @@ export class SteelyardPanel extends PIXI.Container {
           'stall_favor',
           () => {
             this._adBusy = false;
+            analytics.trackSteelyardSettle({
+              marketId: RunManager.run?.marketId,
+              phase: this._phase,
+              action: 'ad_favor',
+              feePaid: 0,
+              bonusItems: 2,
+            });
             const cb = this._onEnter;
             this.close(true);
             cb?.({ feeOverride: 0, bonusItems: 2, usedStallFavor: true });
@@ -545,10 +575,24 @@ export class SteelyardPanel extends PIXI.Container {
     rightBtn.on('pointertap', () => {
       if (canPay) {
         const bonus = this._phase === 'steady' ? 1 : 0;
+        analytics.trackSteelyardSettle({
+          marketId: RunManager.run?.marketId,
+          phase: this._phase,
+          action: 'pay',
+          feePaid: payFee,
+          bonusItems: bonus,
+        });
         const cb = this._onEnter;
         this.close(true);
         cb?.({ feeOverride: payFee, bonusItems: bonus });
       } else {
+        analytics.trackSteelyardSettle({
+          marketId: RunManager.run?.marketId,
+          phase: this._phase,
+          action: 'leave',
+          feePaid: 0,
+          bonusItems: 0,
+        });
         const cb = this._onCancel;
         this.close();
         cb?.(true);

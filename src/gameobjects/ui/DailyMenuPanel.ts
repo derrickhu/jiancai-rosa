@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js';
+import { analytics } from '@/analytics';
 import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
@@ -6,6 +7,7 @@ import { TutorialOverlay } from '@/gameobjects/ui/TutorialOverlay';
 import { Platform } from '@/core/PlatformService';
 import { warmupAdScene } from '@/services/RewardedAdService';
 import { KitchenManager } from '@/managers/KitchenManager';
+import { destroyDisplayChildren } from '@/utils/destroy';
 import {
   RECIPE_GACHA_COST,
   canUseDailyAd,
@@ -23,10 +25,10 @@ import { playDailyMenuClearBanner } from '@/utils/dailyMenuClearFx';
 import {
   P0_ART,
   UI_KIT,
+  attachSpriteContour,
   fitTextWidth,
   makeAdButton,
   makeHandProgressBar,
-  makeRarityFlare,
   makeSlicedButton,
   makeText,
   uiBarPaths,
@@ -63,7 +65,6 @@ import {
 const ART = {
   wall: 'subpkg_images/scene_menu_wall.png',
   ticket: 'subpkg_images/ui_menu_ticket.png',
-  flare: 'subpkg_kitchen/ui_pickup_flare.png',
 } as const;
 
 const W = 720;
@@ -122,7 +123,7 @@ export class DailyMenuPanel extends PIXI.Container {
     this._inspect = null;
     this._adBusy = false;
     this._paintQueued = false;
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
     TutorialOverlay.refresh();
   }
 
@@ -155,7 +156,7 @@ export class DailyMenuPanel extends PIXI.Container {
   };
 
   relayout(): void {
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
     if (!this._isOpen) return;
     this._warm();
     KitchenManager.ensureDailyMenu();
@@ -282,11 +283,6 @@ export class DailyMenuPanel extends PIXI.Container {
     // 右侧：实物菜谱券（点按可查看详情）
     const ticketCx = 516;
     const ticketCy = L.boardTop + 50;
-    if (!claimed && ratio >= 1) {
-      const flare = makeRarityFlare('rare', 132);
-      flare.position.set(ticketCx, ticketCy);
-      scene.addChild(flare);
-    }
     const ticketHit = new PIXI.Container();
     ticketHit.position.set(ticketCx, ticketCy);
     const sp = sceneSprite(ART.ticket, 86, 62);
@@ -295,6 +291,13 @@ export class DailyMenuPanel extends PIXI.Container {
       sp.rotation = -0.08;
       sp.alpha = claimed ? 0.85 : 1;
       ticketHit.addChild(sp);
+      if (!claimed && ratio >= 1) {
+        attachSpriteContour(ticketHit, sp, 'god', {
+          onDark: true,
+          selected: true,
+          thicknessScale: 0.95,
+        });
+      }
     }
     const countTxt = makeText(
       'number',
@@ -354,20 +357,21 @@ export class DailyMenuPanel extends PIXI.Container {
     const needs = recipeNeeds(view, line.recipeId);
     const missing = needs.filter((n) => n.have < n.need);
 
-    // 左：立体成菜大图标直呈（去掉重复底盘，点击预览菜谱详情）
+    // 左：立体成菜大图标直呈（贴边品质轮廓光，点击预览菜谱详情）
     const plateCx = L.contentX + 58;
     const plateCy = 88;
-    if (have > 0 && !done) {
-      const flare = makeRarityFlare(recipe?.rarity ?? 'common', 156);
-      flare.position.set(plateCx, plateCy - 2);
-      row.addChild(flare);
-    }
+    const dishRarity = recipe?.rarity ?? 'common';
     const dishNode = makeDishDisplay({
       dishPath: resolveDishAssetPath(line.recipeId),
       size: 106,
       qty: line.need > 1 ? line.need : undefined,
       dim: false,
       shadowAlpha: 0.22,
+      rarity: dishRarity,
+      contourOpts: {
+        selected: have > 0 && !done,
+        alpha: done ? 0.65 : undefined,
+      },
     });
     dishNode.position.set(plateCx, plateCy + 4);
     dishNode.eventMode = 'static';
@@ -491,10 +495,7 @@ export class DailyMenuPanel extends PIXI.Container {
       submitBtn.position.set(btnX, 38);
       submitBtn.on('pointertap', () => {
         const from = this._toStage(btnCx, y + 67);
-        const gain = KitchenManager.submitDailyMenu(line.recipeId);
-        this._inspect = null;
-        if (this._isOpen) this.relayout();
-        if (gain) this._playSubmitFx(gain, from);
+        this._submitDishLine(line.recipeId, from);
       });
       row.addChild(submitBtn);
 
@@ -534,10 +535,7 @@ export class DailyMenuPanel extends PIXI.Container {
       lackBtn.position.set(btnX, 38);
       lackBtn.on('pointertap', () => {
         const from = this._toStage(btnCx, y + 65);
-        const gain = KitchenManager.submitDailyMenu(line.recipeId);
-        this._inspect = null;
-        if (this._isOpen) this.relayout();
-        if (gain) this._playSubmitFx(gain, from);
+        this._submitDishLine(line.recipeId, from);
       });
       row.addChild(lackBtn);
 
@@ -647,7 +645,12 @@ export class DailyMenuPanel extends PIXI.Container {
         'daily_extra',
         () => {
           this._adBusy = false;
-          KitchenManager.unlockExtraDailyMenu();
+          if (KitchenManager.unlockExtraDailyMenu()) {
+            analytics.trackDailyMenuAction({
+              action: 'ad_extra_round',
+              isExtraRound: true,
+            });
+          }
           if (this._isOpen) this.relayout();
         },
         () => {
@@ -656,6 +659,39 @@ export class DailyMenuPanel extends PIXI.Container {
       );
     });
     foot.addChild(extraBtn);
+  }
+
+  private _submitDishLine(recipeId: DailyMenuLine['recipeId'], from: { x: number; y: number }): void {
+    const gain = KitchenManager.submitDailyMenu(recipeId);
+    this._inspect = null;
+    if (this._isOpen) this.relayout();
+    if (!gain) return;
+    const menu = KitchenManager.save.dailyMenu;
+    const prog = menu ? dailyMenuProgress(menu) : { done: 0, need: 3 };
+    const tickets = Math.max(0, Math.floor(gain.tickets ?? 0));
+    const goldGained = Math.max(0, Math.floor((gain.gold ?? 0) + (gain.foldGold ?? 0)));
+    analytics.trackDailyMenuAction({
+      action: 'submit_dish',
+      recipeId,
+      isExtraRound: Boolean(menu?.extraRound),
+      doneCount: prog.done,
+      needCount: prog.need,
+      goldGained,
+      ticketsGained: tickets,
+      foodGiftId: gain.foodDefId,
+    });
+    if (tickets > 0) {
+      analytics.trackDailyMenuAction({
+        action: 'board_clear',
+        recipeId,
+        isExtraRound: Boolean(menu?.extraRound),
+        doneCount: prog.done,
+        needCount: prog.need,
+        goldGained,
+        ticketsGained: tickets,
+      });
+    }
+    this._playSubmitFx(gain, from);
   }
 
   private _playSubmitFx(

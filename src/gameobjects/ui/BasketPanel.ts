@@ -4,20 +4,30 @@ import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { EventBus } from '@/core/EventBus';
 import { Platform } from '@/core/PlatformService';
+import { destroyDisplayChildren } from '@/utils/destroy';
 import { EV } from '@/config/events';
 import { RunManager, type OutingLoot } from '@/managers/RunManager';
 import {
+  basketZoneStats,
+  diagnoseCannotPlace,
+  diagnoseCellBlock,
   displayName,
   footprint,
   getItem,
   occupiedCells,
   packStagingLayout,
   previewDrop,
+  rarityStyleOf,
+  rarityTierLabel,
+  repackBasketWithStaging,
+  resolveRarityTier,
+  tryAutoPackBasket,
   basketCellKind,
   type BasketItem,
   type DropPreview,
   type Quality,
   type Rarity,
+  type RarityTier,
 } from '@/sim';
 import { inspectFromFood, makeItemInspectCard } from './ItemInspectCard';
 import { TutorialOverlay, worldRectToStage, type SpotlightRect } from './TutorialOverlay';
@@ -26,7 +36,9 @@ import { TutorialGuard } from '@/systems/TutorialGuard';
 import {
   P0_ART,
   UI_KIT,
+  attachSpriteContour,
   drawItemSlotBox,
+  drawRarityFrame,
   fillRect,
   fitTextWidth,
   makeCloseButton,
@@ -86,6 +98,7 @@ export class BasketPanel extends PIXI.Container {
     liftAt: number;
     gx: number;
     gy: number;
+    lastCellKey: string;
     preview: DropPreview;
     source: PIXI.Container | null;
   } | null = null;
@@ -154,10 +167,13 @@ export class BasketPanel extends PIXI.Container {
     this._inspectUid = null;
     this._drag = null;
     this._unlocking = false;
-    this._float.removeChildren();
+    destroyDisplayChildren(this._float);
+    destroyDisplayChildren(this._root);
     this._ghost.clear();
     this._scroller.disable();
+    this._scroller.clear();
     this._stageScroller.disable();
+    this._stageScroller.clear();
     this._unsub?.();
     this._unsub = null;
     OverlayManager.container.off('pointerup', this._boundUp);
@@ -243,8 +259,8 @@ export class BasketPanel extends PIXI.Container {
   relayout(): void {
     this._warm();
     this._closeBtn = null;
-    this._root.removeChildren();
-    if (!this._drag) this._float.removeChildren();
+    destroyDisplayChildren(this._root);
+    if (!this._drag) destroyDisplayChildren(this._float);
     const w = Game.designWidth;
     const h = Game.logicHeight;
     const dim = new PIXI.Graphics();
@@ -301,58 +317,75 @@ export class BasketPanel extends PIXI.Container {
     this._drawInfoStrip(shell, box);
     this._drawGrid(shell, box, cav, cell);
 
-    // 底部操作按钮：旋转 / 丢掉 / 关好（字号放大到 26pt，触感饱满）
+    // 底部操作按钮：一键码齐 / 旋转 / 丢掉 / 关好
     const fy = box.h * FOOTER.y;
     const fh = box.h * FOOTER.h;
     const btnH = 54;
     const btnY = fy + Math.max(4, (fh - btnH) * 0.24);
-    const gap = 12;
-    const totalBtnW = box.w * 0.81;
-    const btnW = Math.floor((totalBtnW - gap * 2) / 3);
-    const bx = Math.round((box.w - (btnW * 3 + gap * 2)) / 2);
+    const gap = 9;
+    const totalBtnW = box.w * 0.815;
+    const tidyW = Math.floor(totalBtnW * 0.28);
+    const restW = Math.floor((totalBtnW - tidyW - gap * 3) / 3);
+    const bx = Math.round((box.w - (tidyW + restW * 3 + gap * 3)) / 2);
 
     const hasSel = !!this.selectedUid && !!this._foodByUid(this.selectedUid);
+    const canTidyNow = staging.length > 0 || basket.items.length > 1;
 
+    const tidy = makeSlicedButton({
+      label: '一键码齐',
+      width: tidyW,
+      height: btnH,
+      skin: staging.length > 0 ? 'gold' : 'cream',
+      fontSize: 24,
+      onReady: this._scheduleRelayout,
+    });
+    tidy.alpha = canTidyNow ? 1 : 0.82;
+    tidy.position.set(bx, btnY);
+    tidy.on('pointertap', () => this._tidyBasket());
+    shell.addChild(tidy);
+
+    const rotX = bx + tidyW + gap;
     const rot = makeSlicedButton({
       label: '旋转',
-      width: btnW,
+      width: restW,
       height: btnH,
       skin: 'wood',
-      fontSize: 26,
+      fontSize: 25,
       onReady: this._scheduleRelayout,
     });
     rot.alpha = hasSel ? 1 : 0.85;
-    rot.position.set(bx, btnY);
+    rot.position.set(rotX, btnY);
     rot.on('pointertap', () => this._rotate());
     shell.addChild(rot);
 
+    const dropX = rotX + restW + gap;
     const drop = makeSlicedButton({
       label: '丢掉',
-      width: btnW,
+      width: restW,
       height: btnH,
       skin: 'cream',
       textColor: SCENE_INK.red,
-      fontSize: 26,
+      fontSize: 25,
       onReady: this._scheduleRelayout,
     });
     drop.alpha = hasSel ? 1 : 0.82;
-    drop.position.set(bx + btnW + gap, btnY);
+    drop.position.set(dropX, btnY);
     drop.on('pointertap', () => this._discard());
     shell.addChild(drop);
 
     const close = makeSlicedButton({
       label: '关好',
-      width: btnW,
+      width: restW,
       height: btnH,
       skin: 'olive',
-      fontSize: 26,
+      fontSize: 25,
       onReady: this._scheduleRelayout,
     });
-    const closeX = bx + (btnW + gap) * 2;
+    const closeX = dropX + restW + gap;
     close.position.set(closeX, btnY);
     close.on('pointertap', () => this.close());
     this._closeBtn = close;
-    this._closeRect = { x: box.x + closeX, y: box.y + btnY, w: btnW, h: btnH };
+    this._closeRect = { x: box.x + closeX, y: box.y + btnY, w: restW, h: btnH };
     shell.addChild(close);
 
     const inspecting = this._inspectUid ? this._foodByUid(this._inspectUid) : null;
@@ -379,16 +412,12 @@ export class BasketPanel extends PIXI.Container {
     TutorialOverlay.refresh();
   }
 
-  /** 竹篮中梁上的干湿分区指示 + 大字负重/已选纸签提示 */
+  /** 竹篮中梁上的干湿分区余量指示 + 大字已选尺寸提示 */
   private _drawInfoStrip(shell: PIXI.Container, box: { x: number; y: number; w: number; h: number }): void {
     const basket = RunManager.basket;
-    let totalCells = 0;
-    for (let y = 0; y < basket.rows; y++) {
-      for (let x = 0; x < basket.cols; x++) {
-        if (basketCellKind(basket, x, y) !== 'none') totalCells += 1;
-      }
-    }
-    const usedCells = basket.items.reduce((acc, it) => acc + occupiedCells(it).length, 0);
+    const stats = basketZoneStats(basket);
+    const totalCells = stats.wetTotal + stats.dryTotal + stats.flexTotal;
+    const usedCells = stats.wetUsed + stats.dryUsed + stats.flexUsed;
 
     const ix = box.w * INFO_BAR.x;
     const iy = box.h * INFO_BAR.y;
@@ -411,43 +440,89 @@ export class BasketPanel extends PIXI.Container {
       const { w: fw, h: fh } = footprint(def, selInBasket?.rot ?? this._rot);
       const name = displayName(selFood.defId, selFood.inspected, selFood.quality);
       const zoneTxt = def.zone === 'wet' ? '湿货' : '干货';
-      const selLabel = makeText('body', `已选：${name}（${zoneTxt} ${fw}×${fh}）`, INK, { size: 23 });
-      selLabel.anchor.set(0, 0.5);
-      selLabel.position.set(ix + 14, cy);
-      fitTextWidth(selLabel, iw - 170);
-      shell.addChild(selLabel);
-    } else {
-      const sw = new PIXI.Graphics();
-      // 湿格色点
-      sw.lineStyle(1.5, 0x3A6A72, 1);
-      sw.beginFill(0xA6C6C4, 1);
-      sw.drawRoundedRect(ix + 14, cy - 9, 18, 18, 4);
-      sw.endFill();
-      // 干格色点
-      sw.lineStyle(1.5, 0x7A5E3A, 1);
-      sw.beginFill(0xDFCFAF, 1);
-      sw.drawRoundedRect(ix + 132, cy - 9, 18, 18, 4);
-      sw.endFill();
-      shell.addChild(sw);
+      const rotten = selFood.quality === 'rotten';
+      const tier: RarityTier = rotten ? 'common' : resolveRarityTier(def.rarity, selFood.quality);
+      const style = rarityStyleOf(tier);
+      const tierTagTxt = rotten ? '[蔫货]' : `[${rarityTierLabel(tier)}]`;
 
-      const wetT = makeText('caption', '湿区保鲜', 0x2F5C63, { size: 22, fontWeight: '700' });
-      wetT.anchor.set(0, 0.5);
-      wetT.position.set(ix + 38, cy);
-      const dryT = makeText('caption', '干区耐放', SCENE_INK.soft, { size: 22, fontWeight: '700' });
-      dryT.anchor.set(0, 0.5);
-      dryT.position.set(ix + 156, cy);
-      shell.addChild(wetT, dryT);
+      const tagColor = rotten ? SCENE_INK.muted : style.ink;
+      const tierTag = makeText('caption', tierTagTxt, tagColor, { size: 21, fontWeight: '700' });
+      const tagW = Math.ceil(tierTag.width) + 14;
+      const tagH = 30;
+      const tagBg = new PIXI.Graphics();
+      tagBg.lineStyle(1.6, rotten ? 0xA48C72 : style.frame, 0.92);
+      tagBg.beginFill(rotten ? 0xEBE1D3 : (tier === 'common' ? 0xF3E6CF : style.glow), tier === 'common' || rotten ? 0.9 : 0.2);
+      tagBg.drawRoundedRect(ix + 10, cy - tagH / 2, tagW, tagH, 7);
+      tagBg.endFill();
+      shell.addChild(tagBg);
+
+      tierTag.anchor.set(0.5);
+      tierTag.position.set(ix + 10 + tagW / 2, cy - 0.5);
+      shell.addChild(tierTag);
+
+      const selColor = rotten ? SCENE_INK.muted : (tier === 'common' ? INK : style.ink);
+      const selLabel = makeText('body', `${name}（${zoneTxt} · ${fw}×${fh}）`, selColor, { size: 22 });
+      selLabel.anchor.set(0, 0.5);
+      const labelLeft = ix + 10 + tagW + 7;
+      selLabel.position.set(labelLeft, cy);
+      fitTextWidth(selLabel, Math.max(96, ix + iw - 208 - labelLeft));
+      shell.addChild(selLabel);
+
+      const wetFull = stats.wetUsed >= stats.wetTotal && stats.flexUsed >= stats.flexTotal;
+      const zoneSummary = makeText(
+        'number',
+        `湿${stats.wetUsed}/${stats.wetTotal} · 干${stats.dryUsed}/${stats.dryTotal}${stats.flexTotal > 0 ? ` · 通${stats.flexUsed}/${stats.flexTotal}` : ''}`,
+        def.zone === 'wet' && wetFull ? SCENE_INK.red : SCENE_INK.gold,
+        { size: 21 },
+      );
+      zoneSummary.anchor.set(1, 0.5);
+      zoneSummary.position.set(ix + iw - 12, cy);
+      fitTextWidth(zoneSummary, 196);
+      shell.addChild(zoneSummary);
+      return;
     }
+
+    const sw = new PIXI.Graphics();
+    // 湿格色点
+    sw.lineStyle(1.5, 0x3A6A72, 1);
+    sw.beginFill(0xA6C6C4, 1);
+    sw.drawRoundedRect(ix + 12, cy - 9, 17, 17, 4);
+    sw.endFill();
+    // 干格色点
+    sw.lineStyle(1.5, 0x7A5E3A, 1);
+    sw.beginFill(0xDFCFAF, 1);
+    sw.drawRoundedRect(ix + 158, cy - 9, 17, 17, 4);
+    sw.endFill();
+    shell.addChild(sw);
+
+    const wetFull = stats.wetUsed >= stats.wetTotal && stats.flexUsed >= stats.flexTotal;
+    const wetT = makeText(
+      'caption',
+      `湿区 ${stats.wetUsed}/${stats.wetTotal}`,
+      wetFull ? SCENE_INK.red : 0x2F5C63,
+      { size: 21, fontWeight: '700' },
+    );
+    wetT.anchor.set(0, 0.5);
+    wetT.position.set(ix + 34, cy);
+    const dryT = makeText(
+      'caption',
+      `干区 ${stats.dryUsed}/${stats.dryTotal}${stats.flexTotal > 0 ? ` +通${stats.flexTotal - stats.flexUsed}` : ''}`,
+      SCENE_INK.soft,
+      { size: 21, fontWeight: '700' },
+    );
+    dryT.anchor.set(0, 0.5);
+    dryT.position.set(ix + 180, cy);
+    shell.addChild(wetT, dryT);
 
     const full = usedCells >= totalCells && totalCells > 0;
     const capT = makeText(
       'number',
-      `容量 ${usedCells}/${totalCells}`,
+      `总 ${usedCells}/${totalCells}`,
       full ? SCENE_INK.red : SCENE_INK.gold,
-      { size: 24 },
+      { size: 23 },
     );
     capT.anchor.set(1, 0.5);
-    capT.position.set(ix + iw - 14, cy);
+    capT.position.set(ix + iw - 12, cy);
     shell.addChild(capT);
   }
 
@@ -505,11 +580,21 @@ export class BasketPanel extends PIXI.Container {
     cols: number,
   ): void {
     const pad = 4;
-    const hintText = items.length > 0
-      ? `暂存木案（剩 ${items.length} 件 · 拖进竹篮换位带走）`
-      : '暂存木案（篮满装不下的菜暂放这儿）';
-    const cap = makeText('caption', hintText, items.length > 0 ? SCENE_INK.red : SCENE_INK.soft, {
-      size: 23,
+    let hintText = '暂存木案（篮满装不下的菜暂放这儿）';
+    let hintColor: number = SCENE_INK.soft;
+    if (items.length > 0) {
+      const focusItem = items.find((it) => it.uid === (this.selectedUid ?? this.placingUid)) ?? items[0];
+      const canAutoFit = !!tryAutoPackBasket(RunManager.basket, focusItem);
+      if (canAutoFit) {
+        hintText = `待装 ${items.length} 件 · 点下方「一键码齐」可自动腾挪入篮！`;
+        hintColor = SCENE_INK.green;
+      } else {
+        hintText = diagnoseCannotPlace(RunManager.basket, focusItem.defId);
+        hintColor = SCENE_INK.red;
+      }
+    }
+    const cap = makeText('caption', hintText, hintColor, {
+      size: 22,
       fontWeight: '700',
       stroke: 0xFFF8EA,
       strokeWidth: 4,
@@ -770,10 +855,13 @@ export class BasketPanel extends PIXI.Container {
   }): PIXI.Container {
     const root = new PIXI.Container();
     const on = opts.uid === this.selectedUid;
+    const rotten = opts.quality === 'rotten';
+    const tier: RarityTier = rotten ? 'common' : resolveRarityTier(opts.rarity, opts.quality);
     const bg = new PIXI.Graphics();
-    this._paintItemCell(bg, opts.w, opts.h, opts.rarity, on);
+    this._paintItemCell(bg, opts.w, opts.h, tier, on, rotten);
     root.addChild(bg);
-    const look = opts.quality === 'rotten' ? 'rotten' : 'clean';
+
+    const look = rotten ? 'rotten' : 'clean';
     const tex = itemLookTexture(opts.defId, look);
     if (isTextureReady(tex)) {
       const icon = new PIXI.Sprite(tex);
@@ -782,19 +870,49 @@ export class BasketPanel extends PIXI.Container {
       icon.position.set(opts.w / 2, opts.h / 2);
       icon.eventMode = 'none';
       root.addChild(icon);
+      if (!rotten) {
+        attachSpriteContour(root, icon, tier, { selected: on, thicknessScale: 0.88 });
+      }
     }
     root.position.set(opts.x, opts.y);
     this._bindDrag(root, opts.uid, opts.defId, opts.quality, opts.from, opts.w, opts.h, opts.rot);
     return root;
   }
 
-  private _paintItemCell(g: PIXI.Graphics, w: number, h: number, rarity: Rarity, selected: boolean): void {
+  private _paintItemCell(
+    g: PIXI.Graphics,
+    w: number,
+    h: number,
+    tier: RarityTier,
+    selected: boolean,
+    rotten = false,
+  ): void {
+    const baseRarity: Rarity = tier === 'god' ? 'legendary' : tier;
+    const style = rarityStyleOf(tier);
     drawItemSlotBox(g, 0, 0, w, h, {
       radius: 10,
-      rarity,
-      selected,
-      medallion: Math.min(w, h) >= 48 && Math.abs(w - h) < 16,
+      rarity: rotten ? 'common' : baseRarity,
+      selected: false,
+      dimmed: rotten,
+      medallion: tier === 'common' && Math.min(w, h) >= 48 && Math.abs(w - h) < 16,
     });
+    if (!rotten && tier !== 'common') {
+      g.lineStyle(0);
+      g.beginFill(style.cell, selected ? 0.22 : 0.15);
+      g.drawRoundedRect(2, 2, w - 4, Math.max(8, h - 5), 8);
+      g.endFill();
+      drawRarityFrame(g, 1, 1, w - 2, h - 2, tier, {
+        radius: 9,
+        thick: true,
+      });
+    }
+    if (selected) {
+      const selRim = rotten ? 0xB07A48 : (tier === 'common' ? 0xD89829 : style.frame);
+      g.lineStyle(2.8, selRim, 1);
+      g.drawRoundedRect(0.5, 0.5, w - 1, h - 1, 10);
+      g.lineStyle(1.4, 0xFFFDF8, 0.9);
+      g.drawRoundedRect(3, 3, Math.max(4, w - 6), Math.max(4, h - 6), 8);
+    }
   }
 
   private _basketTile(item: BasketItem, gridX: number, gridY: number, cell: number): PIXI.Container {
@@ -854,6 +972,7 @@ export class BasketPanel extends PIXI.Container {
         liftAt: 0,
         gx: 0,
         gy: 0,
+        lastCellKey: '',
         preview: 'blocked',
         source: root,
       };
@@ -874,7 +993,12 @@ export class BasketPanel extends PIXI.Container {
     }
     if (!drag.moved) return;
     this._float.position.set(gx - drag.ox, gy - drag.oy);
-    this._syncGhost(gx, gy);
+    const cell = this._cellAt(gx, gy);
+    const inStage = this._hitStage(gx, gy);
+    const cellKey = `${cell?.x ?? -1},${cell?.y ?? -1},${inStage ? 1 : 0},${drag.rot}`;
+    if (cellKey === drag.lastCellKey) return;
+    drag.lastCellKey = cellKey;
+    this._syncGhost(gx, gy, cell);
     this._drawGhost();
   }
 
@@ -882,16 +1006,19 @@ export class BasketPanel extends PIXI.Container {
     const drag = this._drag;
     if (!drag) return;
     if (drag.liftAt && Date.now() - drag.liftAt < 100) return;
+    const px = Number.isFinite(gx) ? gx : drag.lastX;
+    const py = Number.isFinite(gy) ? gy : drag.lastY;
+    if (drag.moved) {
+      this._syncGhost(px, py);
+    }
     this._drag = null;
-    this._float.removeChildren();
+    destroyDisplayChildren(this._float);
     this._ghost.clear();
     if (!drag.moved) {
       this._inspectUid = drag.uid;
       this.relayout();
       return;
     }
-    const px = Number.isFinite(gx) ? gx : drag.lastX;
-    const py = Number.isFinite(gy) ? gy : drag.lastY;
     if (this._hitStage(px, py) && drag.from === 'basket') {
       const err = RunManager.returnToStaging(drag.uid);
       if (err) Platform.showToast(err);
@@ -899,6 +1026,17 @@ export class BasketPanel extends PIXI.Container {
       return;
     }
     if (drag.preview === 'blocked') {
+      if (this._cellAt(px, py)) {
+        const blockReason = diagnoseCellBlock(RunManager.basket, {
+          uid: drag.uid,
+          defId: drag.defId,
+          x: drag.gx,
+          y: drag.gy,
+          rot: drag.rot,
+        }) ?? diagnoseCannotPlace(RunManager.basket, drag.defId);
+        AudioManager.play('ui_deny');
+        Platform.showToast(blockReason);
+      }
       this.relayout();
       return;
     }
@@ -916,18 +1054,20 @@ export class BasketPanel extends PIXI.Container {
   }
 
   private _lift(drag: NonNullable<BasketPanel['_drag']>): void {
-    this._float.removeChildren();
+    destroyDisplayChildren(this._float);
     const def = getItem(drag.defId);
     const { w: fw, h: fh } = footprint(def, drag.rot);
     const cell = this._grid.cell;
     const bw = Math.max(cell, fw * cell - 3);
     const bh = Math.max(cell, fh * cell - 3);
+    const rotten = drag.quality === 'rotten';
+    const tier: RarityTier = rotten ? 'common' : resolveRarityTier(def.rarity, drag.quality);
     const wrap = new PIXI.Container();
     wrap.alpha = 0.94;
     const bg = new PIXI.Graphics();
-    this._paintItemCell(bg, bw, bh, def.rarity, false);
+    this._paintItemCell(bg, bw, bh, tier, true, rotten);
     wrap.addChild(bg);
-    const look = drag.quality === 'rotten' ? 'rotten' : 'clean';
+    const look = rotten ? 'rotten' : 'clean';
     const tex = itemLookTexture(drag.defId, look);
     if (isTextureReady(tex)) {
       const icon = new PIXI.Sprite(tex);
@@ -935,14 +1075,17 @@ export class BasketPanel extends PIXI.Container {
       icon.anchor.set(0.5);
       icon.position.set(bw / 2, bh / 2);
       wrap.addChild(icon);
+      if (!rotten) {
+        attachSpriteContour(wrap, icon, tier, { selected: true, thicknessScale: 0.92 });
+      }
     }
     this._float.addChild(wrap);
   }
 
-  private _syncGhost(gx: number, gy: number): void {
+  private _syncGhost(gx: number, gy: number, precomputedCell?: { x: number; y: number } | null): void {
     const drag = this._drag;
     if (!drag) return;
-    const cell = this._cellAt(gx, gy);
+    const cell = precomputedCell !== undefined ? precomputedCell : this._cellAt(gx, gy);
     if (!cell) {
       drag.preview = 'blocked';
       return;
@@ -1008,7 +1151,10 @@ export class BasketPanel extends PIXI.Container {
     if (this._drag) {
       this._drag.rot = this._rot;
       this._lift(this._drag);
-      this._syncGhost(this._drag.lastX, this._drag.lastY);
+      const cell = this._cellAt(this._drag.lastX, this._drag.lastY);
+      const inStage = this._hitStage(this._drag.lastX, this._drag.lastY);
+      this._drag.lastCellKey = `${cell?.x ?? -1},${cell?.y ?? -1},${inStage ? 1 : 0},${this._drag.rot}`;
+      this._syncGhost(this._drag.lastX, this._drag.lastY, cell);
       this._drawGhost();
       return;
     }
@@ -1017,6 +1163,64 @@ export class BasketPanel extends PIXI.Container {
       RunManager.rotateBasketItem(selected.uid);
       this.relayout();
       return;
+    }
+    this.relayout();
+  }
+
+  private _tidyBasket(): void {
+    if (this._drag) return;
+    if (TutorialManager.isActive && TutorialGuard.block('closeBasket')) return;
+
+    const staging = RunManager.stagingItems();
+    const basket = RunManager.basket;
+    if (staging.length === 0 && basket.items.length <= 1) {
+      AudioManager.play('ui_click');
+      Platform.showToast('竹篮里东西不多，已经整齐啦');
+      return;
+    }
+
+    const res = repackBasketWithStaging(basket, staging, this.selectedUid ?? this.placingUid);
+    if (res.movedCount === 0 && res.placedStaging.length === 0) {
+      if (staging.length > 0) {
+        const focus = staging.find((it) => it.uid === (this.selectedUid ?? this.placingUid)) ?? staging[0];
+        AudioManager.play('ui_deny');
+        Platform.showToast(diagnoseCannotPlace(basket, focus.defId));
+      } else {
+        AudioManager.play('ui_click');
+        Platform.showToast('竹篮已经按最优紧凑度码好啦');
+      }
+      return;
+    }
+
+    const fromStageSet = new Set(res.placedStaging.map((it) => it.uid));
+    const reorderedExisting = res.state.items.filter((it) => !fromStageSet.has(it.uid));
+
+    if (res.placedStaging.length === 0 && reorderedExisting.length > 0) {
+      const head = reorderedExisting.slice(0, -1);
+      const tail = reorderedExisting[reorderedExisting.length - 1];
+      RunManager.basket = { ...basket, items: head };
+      RunManager.tryManualPlace(tail);
+    } else {
+      RunManager.basket = { ...basket, items: reorderedExisting };
+      for (const item of res.placedStaging) {
+        RunManager.dropStagingToCell(item.uid, item.x, item.y, item.rot);
+      }
+    }
+
+    if (this.placingUid && fromStageSet.has(this.placingUid)) {
+      this.placingUid = null;
+    }
+    AudioManager.play('basket_place');
+    if (res.placedStaging.length > 0) {
+      const left = res.remainingStaging.length;
+      Platform.showToast(
+        left === 0
+          ? `一键码齐！暂存 ${res.placedStaging.length} 件鲜货已全数装入竹篮`
+          : `已腾挪装入 ${res.placedStaging.length} 件鲜货（剩 ${left} 件空间不足）`,
+        'success',
+      );
+    } else {
+      Platform.showToast('竹篮已自动紧凑码齐！', 'success');
     }
     this.relayout();
   }

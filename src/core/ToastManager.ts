@@ -2,14 +2,15 @@ import * as PIXI from 'pixi.js';
 import { Game } from './Game';
 import { Ease, TweenManager } from './TweenManager';
 import { fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from '@/utils/assets';
+import { destroyDisplayChildren, destroyDisplayNode } from '@/utils/destroy';
 
 const Z = 30000;
 const FONT = 'PingFang SC, Hiragino Sans GB, sans-serif';
-const HOLD = 1.75;
-const IN = 0.2;
-const OUT = 0.28;
-const GAP = 72;
-const MAX = 3;
+const HOLD = 1.25;
+const IN = 0.18;
+const OUT = 0.24;
+const GAP = 68;
+const MAX = 2;
 
 const SEAL_TEX = 'subpkg_images/scene_pk_seal.png';
 
@@ -75,8 +76,28 @@ class ToastManagerClass {
       return;
     }
     this._ensure();
+
+    // 同文案连续触发时不叠压遮挡画面，直接刷新最下方已有签条并轻弹提示
+    const last = this._items[this._items.length - 1];
+    if (last && !last.destroyed && (last as any).__toastText === text) {
+      TweenManager.cancelTarget(last);
+      TweenManager.cancelTarget(last.scale);
+      last.alpha = 1;
+      last.y = this._baseY();
+      last.scale.set(0.95);
+      TweenManager.to({
+        target: last.scale,
+        props: { x: 1, y: 1 },
+        duration: 0.16,
+        ease: Ease.easeOutBack,
+        onComplete: () => this._hold(last, HOLD),
+      });
+      return;
+    }
+
     this._bump();
     const item = this._make(text, kind);
+    (item as any).__toastText = text;
     this._items.push(item);
     this._layer!.addChild(item);
     this._place(item);
@@ -117,10 +138,9 @@ class ToastManagerClass {
     const idx = this._items.indexOf(item);
     if (idx !== -1) this._items.splice(idx, 1);
     TweenManager.cancelTarget(item);
-    TweenManager.cancelTarget(item.scale);
     if (item.destroyed) return;
     if (instant) {
-      item.destroy({ children: true });
+      destroyDisplayNode(item);
       return;
     }
     TweenManager.to({
@@ -129,7 +149,7 @@ class ToastManagerClass {
       duration: OUT,
       ease: Ease.easeInQuad,
       onComplete: () => {
-        if (!item.destroyed) item.destroy({ children: true });
+        if (!item.destroyed) destroyDisplayNode(item);
       },
     });
   }
@@ -220,7 +240,7 @@ class ToastManagerClass {
     sealHost.rotation = -0.08;
     const paintSeal = (): void => {
       if (sealHost.destroyed) return;
-      sealHost.removeChildren();
+      destroyDisplayChildren(sealHost);
       const tex = gameTexture(SEAL_TEX);
       if (isTextureReady(tex)) {
         const sp = new PIXI.Sprite(tex);
@@ -259,8 +279,13 @@ class ToastManagerClass {
   }
 
   private _baseY(): number {
-    const top = Number.isFinite(Game.safeTop) ? Game.safeTop : 96;
-    return Math.max(top + 156, Game.logicHeight * 0.28);
+    const safeBottom = Number.isFinite((Game as any).safeBottom) ? (Game as any).safeBottom : 24;
+    return Math.round(
+      Math.min(
+        Game.logicHeight - Math.max(safeBottom, 24) - 132,
+        Game.logicHeight * 0.82,
+      ),
+    );
   }
 
   private _ensure(): void {

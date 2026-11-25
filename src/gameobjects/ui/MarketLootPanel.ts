@@ -2,13 +2,14 @@ import * as PIXI from 'pixi.js';
 import { AudioManager } from '@/core/AudioManager';
 import { OverlayManager } from '@/core/OverlayManager';
 import { KitchenManager } from '@/managers/KitchenManager';
+import { destroyDisplayChildren } from '@/utils/destroy';
 import {
-  RARITY_STYLE,
   getItem,
   getMarket,
   getSpecialMarket,
   marketLootRows,
   rarityLabel,
+  rarityStyleOf,
   specialLootIds,
   type MarketId,
   type SpecialMarketId,
@@ -21,7 +22,6 @@ import {
 import {
   UI_KIT,
   fitTextWidth,
-  makeRarityFlare,
   makeText,
 } from '@/utils/ui';
 import { inspectFromItem, makeItemInspectCard, type ItemInspectView } from './ItemInspectCard';
@@ -34,13 +34,12 @@ import {
   drawSceneWall,
   drawStretchSheet,
   makePlateItem,
+  makeRaritySeal,
   makeSceneRoot,
-  makeSealStamp,
   sceneArtPaths,
 } from './scenePanel';
 
 const WALL = 'subpkg_images/scene_order_wall.png';
-const FLARE = 'subpkg_kitchen/ui_pickup_flare.png';
 const W = 688;
 const COLS = 3;
 const CELL_H = 178;
@@ -96,7 +95,7 @@ export class MarketLootPanel extends PIXI.Container {
     this._inspect = null;
     this._paintQueued = false;
     this._scroller.disable();
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
   }
 
   private _scheduleRelayout = (): void => {
@@ -112,7 +111,7 @@ export class MarketLootPanel extends PIXI.Container {
   };
 
   relayout(): void {
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
     const marketId = this._marketId;
     const specialId = this._specialId;
     if (!this._isOpen || (!marketId && !specialId)) return;
@@ -124,7 +123,6 @@ export class MarketLootPanel extends PIXI.Container {
     watchTextures(
       [
         WALL,
-        FLARE,
         ...sceneArtPaths(),
         UI_KIT.closeRound,
         ...rows.map((r) => resolveItemAssetPath(r.id)),
@@ -253,42 +251,43 @@ export class MarketLootPanel extends PIXI.Container {
     const root = new PIXI.Container();
     root.position.set(cx, cy);
     const def = getItem(id);
-
-    if (def.rarity !== 'common') {
-      const flare = makeRarityFlare(def.rarity, 144);
-      flare.alpha = 0.45;
-      flare.position.set(0, -10);
-      root.addChild(flare);
-    }
+    const style = rarityStyleOf(def.rarity);
 
     const plate = makePlateItem({
       iconPath: resolveItemAssetPath(id),
       plateW: 132,
       iconSize: 80,
+      rarity: def.rarity,
+      contourOpts: { selected: def.rarity === 'legendary', thicknessScale: 0.92 },
     });
     root.addChild(plate);
 
     if (def.rarity !== 'common') {
-      const seal = makeSealStamp(rarityLabel(def.rarity), 42, -0.1);
+      const seal = makeRaritySeal(def.rarity, 42, -0.09);
       seal.position.set(48, -36);
       root.addChild(seal);
     }
 
-    const nameColor = RARITY_STYLE[def.rarity]?.ink ?? SCENE_INK.ink;
+    const nameColor = def.rarity === 'common' ? SCENE_INK.ink : style.ink;
     const nameLbl = makeText('body', def.name, nameColor, { size: 25, fontWeight: '700' });
     nameLbl.anchor.set(0.5, 0);
     nameLbl.position.set(0, 42);
     fitTextWidth(nameLbl, colW - 14);
     root.addChild(nameLbl);
 
+    const zoneCopy = def.rarity === 'common'
+      ? `普通 · ${def.zone === 'wet' ? '湿货' : '干货'} · ${def.w}×${def.h}`
+      : `${rarityLabel(def.rarity)} · ${def.zone === 'wet' ? '湿货' : '干货'} · ${def.w}×${def.h}`;
     const zoneLbl = makeText(
       'caption',
-      `${def.zone === 'wet' ? '湿货' : '干货'} · ${def.w}×${def.h}`,
-      SCENE_INK.muted,
-      { size: 22 },
+      zoneCopy,
+      def.rarity === 'common' ? SCENE_INK.muted : style.ink,
+      { size: 21 },
     );
     zoneLbl.anchor.set(0.5, 0);
     zoneLbl.position.set(0, 74);
+    fitTextWidth(zoneLbl, colW - 10);
+    if (def.rarity !== 'common') zoneLbl.alpha = 0.85;
     root.addChild(zoneLbl);
 
     root.eventMode = 'static';

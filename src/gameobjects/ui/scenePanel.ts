@@ -4,7 +4,14 @@
  */
 import * as PIXI from 'pixi.js';
 import { Game } from '@/core/Game';
-import { fillRect, makeCloseButton, makeText } from '@/utils/ui';
+import { rarityTierLabel, type RarityTier } from '@/sim/rarity';
+import {
+  attachSpriteContour,
+  fillRect,
+  makeCloseButton,
+  makeText,
+  type SpriteContourOptions,
+} from '@/utils/ui';
 import { fitSpriteInBox, gameTexture, isTextureReady } from '@/utils/assets';
 
 /** 所有场景页共用的小道具贴图。 */
@@ -196,6 +203,8 @@ export function makePlateItem(opts: {
   qty?: number;
   dim?: boolean;
   plate?: string;
+  rarity?: RarityTier;
+  contourOpts?: SpriteContourOptions;
 }): PIXI.Container {
   const plateW = opts.plateW ?? 112;
   const iconSize = opts.iconSize ?? Math.round(plateW * 0.6);
@@ -210,6 +219,9 @@ export function makePlateItem(opts: {
     icon.anchor.set(0.5, 1);
     icon.position.set(0, plateW * 0.12);
     root.addChild(icon);
+    if (opts.rarity) {
+      attachSpriteContour(root, icon, opts.rarity, opts.contourOpts);
+    }
   }
   if (opts.qty && opts.qty > 1) {
     const q = makeText('number', `×${opts.qty}`, SCENE_INK.red, { size: 24, stroke: 0xFFF8EA, strokeWidth: 5 });
@@ -232,6 +244,8 @@ export function makeDishDisplay(opts: {
   dim?: boolean;
   shadowAlpha?: number;
   shadowColor?: number;
+  rarity?: RarityTier;
+  contourOpts?: SpriteContourOptions;
 }): PIXI.Container {
   const size = opts.size ?? 104;
   const shadowAlpha = opts.shadowAlpha ?? 0.22;
@@ -252,6 +266,9 @@ export function makeDishDisplay(opts: {
     dish.anchor.set(0.5);
     dish.position.set(0, -Math.round(size * 0.04));
     root.addChild(dish);
+    if (opts.rarity) {
+      attachSpriteContour(root, dish, opts.rarity, opts.contourOpts);
+    }
   }
 
   if (opts.qty && opts.qty > 1) {
@@ -265,7 +282,7 @@ export function makeDishDisplay(opts: {
   return root;
 }
 
-/** 朱红印章 + 白字（2 字最佳）。 */
+/** 朱红印章 + 白字（用于急单/完成/丰收/晋升等动作或状态章，2 字最佳）。 */
 export function makeSealStamp(text: string, size = 50, rotation = -0.1): PIXI.Container {
   const root = new PIXI.Container();
   const sp = sceneSprite(SCENE_ART.seal, size, size);
@@ -282,6 +299,110 @@ export function makeSealStamp(text: string, size = 50, rotation = -0.1): PIXI.Co
   const t = makeText('caption', text, 0xFFF4E6, { size: Math.max(18, Math.round(size * 0.38)), fontWeight: '700' });
   t.anchor.set(0.5);
   if (t.width > size - 8) t.scale.set((size - 8) / t.width);
+  root.addChild(t);
+  root.rotation = rotation;
+  root.eventMode = 'none';
+  return root;
+}
+
+const RARITY_SEAL_STYLE: Record<RarityTier, {
+  fill: number;
+  stroke: number;
+  innerLine: number;
+  text: number;
+}> = {
+  common: {
+    fill: 0x8C6D50,
+    stroke: 0x59402A,
+    innerLine: 0xFFF3DF,
+    text: 0xFFF9EF,
+  },
+  rare: {
+    fill: 0x2E983C,
+    stroke: 0x1A5E24,
+    innerLine: 0xDCFFE0,
+    text: 0xF7FFF7,
+  },
+  epic: {
+    fill: 0x256EC8,
+    stroke: 0x15437E,
+    innerLine: 0xDCEFFF,
+    text: 0xF7FBFF,
+  },
+  legendary: {
+    fill: 0x7E32C4,
+    stroke: 0x4A187A,
+    innerLine: 0xF2DFFF,
+    text: 0xFCF7FF,
+  },
+  god: {
+    fill: 0xDE7D14,
+    stroke: 0x874505,
+    innerLine: 0xFFF3C4,
+    text: 0xFFFDF2,
+  },
+};
+
+/**
+ * 品阶专属篆刻方章（普通温褐 / 良品翠绿 / 上品宝蓝 / 珍品紫罗兰 / 天选鎏金），
+ * 与朱红动作章（急单/完成/新谱）形成一眼可辨的色彩区分。
+ */
+export function makeRaritySeal(
+  rarity: RarityTier,
+  size = 48,
+  rotation = -0.08,
+  customLabel?: string,
+): PIXI.Container {
+  const style = RARITY_SEAL_STYLE[rarity] ?? RARITY_SEAL_STYLE.common;
+  const label = customLabel ?? rarityTierLabel(rarity);
+  const root = new PIXI.Container();
+  root.eventMode = 'none';
+
+  const rOuter = Math.max(7, Math.round(size * 0.18));
+  const inset = Math.max(3.5, Math.round(size * 0.09));
+  const rInner = Math.max(4, rOuter - 3);
+
+  const g = new PIXI.Graphics();
+  // 宣纸上的柔和印泥微影
+  g.beginFill(0x1E120A, 0.18);
+  g.drawRoundedRect(-size / 2 + 1.5, -size / 2 + 2.5, size, size, rOuter);
+  g.endFill();
+
+  // 印章主体与深色篆边
+  g.lineStyle(2, style.stroke, 0.96);
+  g.beginFill(style.fill, 0.96);
+  g.drawRoundedRect(-size / 2, -size / 2, size, size, rOuter);
+  g.endFill();
+
+  // 内圈阳刻双细线边框
+  g.lineStyle(1.3, style.innerLine, 0.82);
+  g.drawRoundedRect(
+    -size / 2 + inset,
+    -size / 2 + inset,
+    size - inset * 2,
+    size - inset * 2,
+    rInner,
+  );
+
+  // 左上轻微手作高光点缀，增温润玉石印质感
+  g.lineStyle(0);
+  g.beginFill(0xFFFFFF, 0.18);
+  g.drawRoundedRect(-size / 2 + inset + 2, -size / 2 + inset + 1.5, Math.max(8, size - inset * 2 - 8), 3.5, 1.8);
+  g.endFill();
+  root.addChild(g);
+
+  const fontSize = Math.max(17, Math.round(size * 0.38));
+  const t = makeText('caption', label, style.text, {
+    size: fontSize,
+    fontWeight: '700',
+    stroke: style.stroke,
+    strokeWidth: 2,
+  });
+  t.anchor.set(0.5);
+  t.position.set(0, -0.5);
+  if (t.width > size - inset * 2 - 4) {
+    t.scale.set((size - inset * 2 - 4) / t.width);
+  }
   root.addChild(t);
   root.rotation = rotation;
   return root;

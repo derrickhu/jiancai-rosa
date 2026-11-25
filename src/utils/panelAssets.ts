@@ -40,7 +40,6 @@ export const PANEL_SHELL = {
     'subpkg_images/scene_dex_spot.png',
     'subpkg_images/scene_dex_washi.png',
     'subpkg_images/scene_club_note.png',
-    'subpkg_kitchen/ui_dex_panel.png',
     P0_ART.dexStamp,
     ...P0_ART.spoons,
     ...SCENE_SHARED,
@@ -56,7 +55,6 @@ export const PANEL_SHELL = {
   ],
   cook: [
     'subpkg_images/scene_pk_cellar_wall.png',
-    'subpkg_kitchen/ui_cook_panel.png',
     'subpkg_kitchen/ui_cook_btn.png',
     'subpkg_kitchen/ui_fridge_btn_terracotta.png',
     'subpkg_kitchen/ui_fridge_btn_cream.png',
@@ -74,7 +72,6 @@ export const PANEL_SHELL = {
     'subpkg_images/scene_club_board.png',
     'subpkg_images/scene_club_note.png',
     'subpkg_images/scene_club_basket.png',
-    'subpkg_kitchen/ui_gameclub_panel.png',
     HUD_ICON.coin,
     HUD_ICON.ticket,
     ...SCENE_SHARED,

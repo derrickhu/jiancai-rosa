@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js';
+import { analytics } from '@/analytics';
 import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
@@ -6,6 +7,7 @@ import { Platform } from '@/core/PlatformService';
 import { warmupAdScene } from '@/services/RewardedAdService';
 import { Ease, TweenManager } from '@/core/TweenManager';
 import { KitchenManager } from '@/managers/KitchenManager';
+import { destroyDisplayChildren, isStageMounted } from '@/utils/destroy';
 import {
   CAT_BED_TIER_DEFS,
   CAT_NAME,
@@ -20,6 +22,7 @@ import {
   cookLevel,
   dailyAdLeft,
   formatTimerShort,
+  itemRarity,
   type CatFeedOption,
   type CatStateView,
 } from '@/sim';
@@ -29,11 +32,11 @@ import {
   P0_ART,
   P2_ART,
   UI_KIT,
+  attachSpriteContour,
   fitTextWidth,
   makeAdButton,
   makeCoinButton,
   makeHandProgressBar,
-  makeRarityFlare,
   makeSlicedButton,
   makeText,
   uiBarPaths,
@@ -63,7 +66,6 @@ const ART = {
   bubble: 'subpkg_images/scene_cat_bubble.png',
   heart: 'subpkg_images/scene_cat_heart_tag.png',
   mat: 'subpkg_images/scene_cat_mat.png',
-  flare: 'subpkg_kitchen/ui_pickup_flare.png',
 } as const;
 
 const W = 720;
@@ -146,7 +148,7 @@ export class StrayCatPanel extends PIXI.Container {
     this._adBusy = false;
     this._paintQueued = false;
     this._awayTimer = null;
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
   }
 
   private _startTick(): void {
@@ -207,7 +209,7 @@ export class StrayCatPanel extends PIXI.Container {
   }
 
   relayout(): void {
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
     this._awayTimer = null;
     if (!this._isOpen) return;
 
@@ -295,6 +297,16 @@ export class StrayCatPanel extends PIXI.Container {
     const from = this._catStagePos;
     const res = KitchenManager.claimCatGiftBundle();
     if (!res.ok) return;
+    const nextSave = KitchenManager.save;
+    analytics.trackCatAction({
+      action: 'claim_gift',
+      bondLevel: catStateView(nextSave, Date.now()).bond.level,
+      bedTier: catBedTier(nextSave),
+      deluxe: res.deluxe,
+      goldGained: res.totalGold,
+      ticketsGained: res.tickets,
+      foodsCount: res.foods.reduce((s, f) => s + f.qty, 0),
+    });
     const firstFood = res.foods[0];
     playRewardCollect({
       gold: res.gold,
@@ -312,11 +324,6 @@ export class StrayCatPanel extends PIXI.Container {
     const tierArt = P2_ART.catTiers[catBedTier(KitchenManager.save)];
     const status = view.effectiveStatus;
     const path = status === 'away' ? tierArt.away : status === 'gift' ? tierArt.gift : tierArt.idle;
-    if (status === 'gift') {
-      const flare = makeRarityFlare(view.pendingGift?.deluxe ? 'legendary' : 'epic', 300);
-      flare.position.set(L.catCx, L.sillY - 96);
-      scene.addChild(flare);
-    }
     const size = status === 'away' ? 204 : L.catSize;
     const cat = sceneSprite(path, size, size);
     if (cat) {
@@ -328,18 +335,24 @@ export class StrayCatPanel extends PIXI.Container {
       const wrap = new PIXI.Container();
       wrap.position.set(L.catCx, L.sillY + 6);
       wrap.addChild(cat);
+      if (status === 'gift') {
+        attachSpriteContour(wrap, cat, view.pendingGift?.deluxe ? 'legendary' : 'epic', {
+          selected: true,
+          thicknessScale: 1.08,
+        });
+      }
       scene.addChild(wrap);
 
       if (status === 'idle' || status === 'gift') {
         const breathe = (): void => {
-          if (wrap.destroyed || !wrap.parent) return;
+          if (!isStageMounted(wrap)) return;
           TweenManager.to({
             target: wrap.scale,
             props: { x: 1.022, y: 0.985 },
             duration: 1.1,
             ease: Ease.easeInOutQuad,
             onComplete: () => {
-              if (wrap.destroyed || !wrap.parent) return;
+              if (!isStageMounted(wrap)) return;
               TweenManager.to({
                 target: wrap.scale,
                 props: { x: 1, y: 1 },
@@ -536,7 +549,24 @@ export class StrayCatPanel extends PIXI.Container {
       });
     btn.position.set(bx, y + 14);
     btn.on('pointertap', () => {
-      if (KitchenManager.upgradeCatBed() && this._isOpen) this.relayout();
+      const cost = st.cost;
+      if (KitchenManager.upgradeCatBed()) {
+        const nextSave = KitchenManager.save;
+        const nextTier = catBedTier(nextSave);
+        analytics.trackCatAction({
+          action: 'upgrade_bed',
+          bedTier: nextTier,
+          costGold: cost,
+        });
+        analytics.trackKitchenUpgrade({
+          targetType: 'cat_bed',
+          targetId: 'cat_bed',
+          newLevel: nextTier + 1,
+          costGold: cost,
+          cookLevel: cookLevel(nextSave),
+        });
+        if (this._isOpen) this.relayout();
+      }
     });
     scene.addChild(btn);
   }
@@ -667,7 +697,15 @@ export class StrayCatPanel extends PIXI.Container {
       btn.position.set(bx, by);
       btn.on('pointertap', () => {
         if (!isGift) {
-          if (KitchenManager.adoptCat() && this._isOpen) this.relayout();
+          if (KitchenManager.adoptCat()) {
+            const nextSave = KitchenManager.save;
+            analytics.trackCatAction({
+              action: 'adopt',
+              bondLevel: catStateView(nextSave, Date.now()).bond.level,
+              bedTier: catBedTier(nextSave),
+            });
+            if (this._isOpen) this.relayout();
+          }
           return;
         }
         this._claimGift();
@@ -733,7 +771,17 @@ export class StrayCatPanel extends PIXI.Container {
         'cat_treat',
         () => {
           this._adBusy = false;
-          KitchenManager.useCatCan();
+          const mode = KitchenManager.useCatCan();
+          if (mode) {
+            const nextSave = KitchenManager.save;
+            analytics.trackCatAction({
+              action: 'ad_can',
+              catMode: mode,
+              bondLevel: catStateView(nextSave, Date.now()).bond.level,
+              bedTier: catBedTier(nextSave),
+              deluxe: mode === 'deluxe_instant',
+            });
+          }
           if (this._isOpen) this.relayout();
         },
         () => {
@@ -849,6 +897,9 @@ export class StrayCatPanel extends PIXI.Container {
       icon.anchor.set(0.5, 1);
       icon.position.set(0, bowlCy + 10);
       face.addChild(icon);
+      if (opt.canFeed) {
+        attachSpriteContour(face, icon, itemRarity(opt.defId), { thicknessScale: 0.8 });
+      }
     }
 
     // 碗沿右上角爱心值
@@ -899,7 +950,17 @@ export class StrayCatPanel extends PIXI.Container {
     cell.on('pointerupoutside', resetFace);
     cell.on('pointercancel', resetFace);
     cell.on('pointertap', () => {
-      if (KitchenManager.feedCat(opt.defId) && this._isOpen) this.relayout();
+      if (KitchenManager.feedCat(opt.defId)) {
+        const nextSave = KitchenManager.save;
+        analytics.trackCatAction({
+          action: 'feed',
+          foodId: opt.defId,
+          fav: opt.fav,
+          bondLevel: catStateView(nextSave, Date.now()).bond.level,
+          bedTier: catBedTier(nextSave),
+        });
+        if (this._isOpen) this.relayout();
+      }
     });
     scene.addChild(cell);
   }

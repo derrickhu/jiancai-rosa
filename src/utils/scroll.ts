@@ -9,6 +9,7 @@ type AttachOpts = {
   maxScroll: number;
   baseY?: number;
   hit: ScrollRect;
+  onScroll?: (y: number) => void;
 };
 
 /**
@@ -31,6 +32,7 @@ export class VerticalScroller {
   private _startY = 0;
   private _wxBound = false;
   private _hostBound = false;
+  private _onScroll: ((y: number) => void) | null = null;
 
   constructor(host: PIXI.Container, opts?: { slop?: number; visible?: () => boolean }) {
     this._host = host;
@@ -45,7 +47,8 @@ export class VerticalScroller {
     this._max = Math.max(0, opts.maxScroll);
     this._baseY = opts.baseY ?? 0;
     this._hit = opts.hit;
-    this.apply(this.y);
+    this._onScroll = opts.onScroll ?? null;
+    this._apply(this.y, true);
   }
 
   clear(): void {
@@ -53,6 +56,7 @@ export class VerticalScroller {
     this._max = 0;
     this._hit = { x: 0, y: 0, w: 0, h: 0 };
     this._dragging = false;
+    this._onScroll = null;
   }
 
   enable(): void {
@@ -61,6 +65,8 @@ export class VerticalScroller {
 
   disable(): void {
     this._dragging = false;
+    this._content = null;
+    this._onScroll = null;
     this._bindWx(false);
   }
 
@@ -68,6 +74,9 @@ export class VerticalScroller {
     this.y = 0;
     this.moved = false;
     this._dragging = false;
+    if (this._content && (this._content.destroyed || !this._content.transform)) {
+      this._content = null;
+    }
     this.apply(0);
   }
 
@@ -78,14 +87,34 @@ export class VerticalScroller {
   }
 
   apply(y: number): void {
-    this.y = this._max <= 0 ? 0 : Math.max(-this._max, Math.min(0, y));
-    if (this._content) this._content.y = this._baseY + this.y;
+    this._apply(y, false);
+  }
+
+  private _apply(y: number, forceNotify: boolean): void {
+    const prevY = this.y;
+    const nextY = this._max <= 0 ? 0 : Math.max(-this._max, Math.min(0, y));
+    this.y = nextY;
+    if (this._content) {
+      if (this._content.destroyed || !this._content.transform) {
+        this._content = null;
+      } else {
+        this._content.y = this._baseY + nextY;
+      }
+    }
+    if (forceNotify || nextY !== prevY) {
+      try {
+        this._onScroll?.(nextY);
+      } catch (err) {
+        console.warn('[VerticalScroller] onScroll error', err);
+      }
+    }
   }
 
   destroy(): void {
     this._bindHost(false);
     this._bindWx(false);
     this._content = null;
+    this._onScroll = null;
   }
 
   private _bindHost(on: boolean): void {

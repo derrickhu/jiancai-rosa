@@ -12,6 +12,7 @@ import { EV } from '@/config/events';
 import { TUTORIAL_ASSETS, TUTORIAL_COPY, TUTORIAL_INTRO } from '@/config/TutorialCopy';
 import { TutorialManager, TutorialStep } from '@/managers/TutorialManager';
 import { gameTexture, isTextureReady, watchTextures, whenTextureReady } from '@/utils/assets';
+import { destroyDisplayChildren } from '@/utils/destroy';
 import { fillRect, fitTextWidth, makeText } from '@/utils/ui';
 import {
   SCENE_ART,
@@ -253,7 +254,7 @@ class TutorialOverlayClass {
   private _clear(): void {
     this._stopFinger();
     TweenManager.cancelTarget(this._layer);
-    this._layer.removeChildren();
+    destroyDisplayChildren(this._layer);
     this._shownStep = null;
   }
 

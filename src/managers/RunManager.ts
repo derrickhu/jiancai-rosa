@@ -1,5 +1,6 @@
 import { analytics } from '@/analytics';
 import { EventBus } from '@/core/EventBus';
+import { PersistService } from '@/core/PersistService';
 import { EV } from '@/config/events';
 import {
   DUSK_EXTEND_STEPS,
@@ -7,11 +8,13 @@ import {
   cardBlock,
   createBasket,
   createRun,
+  diagnoseCannotPlace,
   seedTutorialOuting,
   displayName,
   decideExtract,
   freebieToBasketDraft,
   hasGodPick,
+  ingestExtract,
   isMysteryCard,
   isRummageNode,
   mulberry32,
@@ -19,6 +22,7 @@ import {
   nextUid,
   nodeEncounter,
   nodeFee,
+  repackBasketWithStaging,
   rngInt,
   rngPick,
   rollGatherSpot,
@@ -26,6 +30,8 @@ import {
   place,
   removeItem,
   resumeScenes,
+  sellPrice,
+  tryAutoPackBasket,
   tryDrop,
   tryRotateItem,
   rollFreebie,
@@ -57,6 +63,7 @@ import {
   furnLevel,
   type BasketItem,
   type BasketState,
+  type ExtractedItem,
   type ExtractResult,
   type GatherSpot,
   type MapNode,
@@ -67,13 +74,15 @@ import {
   type RunEventLog,
   type DropResult,
   type RunState,
+  type SpecialMarketId,
   liveNeighborOrders,
   orderIngredientIds,
   outingRunMods,
 } from '@/sim';
+import { CloudSyncManager } from './CloudSyncManager';
 import { SaveManager } from './SaveManager';
 import { KitchenManager } from './KitchenManager';
-import { TutorialManager } from './TutorialManager';
+import { TutorialManager, TutorialStep } from './TutorialManager';
 import { getMarket, type MarketId } from '@/sim';
 import { Platform } from '@/core/PlatformService';
 
@@ -96,13 +105,96 @@ export interface RouteOption {
 
 export type OutingLoot = Omit<BasketItem, 'x' | 'y' | 'rot' | 'pinned' | 'dampened' | 'broken'>;
 
+export interface MarketOutingCheckpoint {
+  v: 1;
+  kind: 'market';
+  savedAt: number;
+  outingStartedAt: number;
+  rngSeed: number;
+  rngCalls: number;
+  tutorialAllowedCardId?: string;
+  run: RunState;
+  basket: BasketState;
+  pendingLoot: OutingLoot[];
+}
+
+export interface PendingUnpackCheckpoint {
+  v: 1;
+  kind: 'pending_unpack';
+  savedAt: number;
+  extract: ExtractResult;
+}
+
+export interface SpecialOutingCheckpoint {
+  v: 1;
+  kind: 'special';
+  savedAt: number;
+  marketId: SpecialMarketId;
+  round: number;
+  haul: ExtractedItem[];
+}
+
+export type OutingCheckpointData =
+  | MarketOutingCheckpoint
+  | PendingUnpackCheckpoint
+  | SpecialOutingCheckpoint;
+
+export type BootRecoveryAction =
+  | { type: 'none' }
+  | { type: 'resume_market'; marketId: MarketId; lootCount: number }
+  | { type: 'kitchen_toast'; count: number; message: string };
+
+const CHECKPOINT_MAX_AGE_MS = 72 * 3600 * 1000;
+const CHECKPOINT_DEBOUNCE_MS = 400;
+
+function parseUidCounter(uid: string | undefined): number {
+  if (!uid || uid.length < 2) return 0;
+  const n = Number.parseInt(uid.slice(1), 36);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
 class RunManagerClass {
   run: RunState | null = null;
   basket: BasketState = createBasket(0);
   pendingLoot: OutingLoot[] = [];
   interacting = false;
   private _rng: Rng = mulberry32(1);
+  private _rngSeed = 1;
+  private _rngCalls = 0;
   private _outingStartedAt = 0;
+  private _emitting = false;
+  private _checkpointTimer: ReturnType<typeof setTimeout> | null = null;
+  private _checkpointDirty = false;
+
+  constructor() {
+    // 外部面板若直接更新了 basket 并广播 basketChanged，通过防抖计划刷新赶集断点（避免每次点击/拖拽同步序列化阻塞）
+    EventBus.on(EV.basketChanged, () => {
+      if (!this._emitting && this.run && !this.run.ended) {
+        this.scheduleCheckpoint();
+      }
+    });
+    // 任何紧急刷盘时机（onHide / visibilitychange / pagehide / restartMiniProgram / flushAllSync）先补齐待定赶集断点
+    PersistService.onBeforeFlush(() => {
+      if (this._checkpointDirty) {
+        this._writeMarketCheckpoint();
+      }
+    });
+  }
+
+  private _initRng(seed: number, skipCalls = 0): void {
+    this._rngSeed = seed >>> 0;
+    this._rngCalls = 0;
+    const base = mulberry32(this._rngSeed);
+    const skip = Math.max(0, Math.min(20000, Math.floor(skipCalls)));
+    for (let i = 0; i < skip; i++) {
+      base();
+      this._rngCalls += 1;
+    }
+    this._rng = () => {
+      this._rngCalls += 1;
+      return base();
+    };
+  }
 
   /** 摊上抽货时给「手里菜谱用得上的食材」加权，货才跟得上进度。 */
   private _wanted(): Set<string> {
@@ -117,7 +209,7 @@ class RunManagerClass {
   start(marketId: MarketId = 'xiangko'): boolean {
     if (!KitchenManager.startRun(getMarket(marketId).staminaCost)) return false;
     const seed = newSeed();
-    this._rng = mulberry32((seed ^ 0x5BF03635) >>> 0);
+    this._initRng((seed ^ 0x5BF03635) >>> 0, 0);
     const inTut = TutorialManager.isActive || TutorialManager.needsOutingSeed();
     const outing = outingRunMods(KitchenManager.save, this._rng());
     const weather = inTut ? null : dailyMarketWeather(marketId);
@@ -158,9 +250,16 @@ class RunManagerClass {
     );
     this.pendingLoot = [];
     this._outingStartedAt = Date.now();
+    const marketCost = getMarket(marketId).staminaCost;
     analytics.trackQuestStart(`outing_${marketId}`, 'event', {
       market_id: marketId,
       seed,
+      ...analytics.formatOutingMetrics({
+        weatherId: weather?.id,
+        vehicleId: KitchenManager.save.vehicle,
+        cookLevel: cookLevel(KitchenManager.save),
+        staminaCost: marketCost,
+      }),
     });
     this.emit();
     return true;
@@ -176,6 +275,8 @@ class RunManagerClass {
     }
     this._outingStartedAt = 0;
     this.run = null;
+    this._cancelScheduledCheckpoint();
+    PersistService.clearOutingCheckpoint();
     KitchenManager.refundStamina(marketId ? getMarket(marketId).staminaCost : 1);
     this.emit();
   }
@@ -477,9 +578,9 @@ class RunManagerClass {
     }
     KitchenManager.discoverFood(prize.defId, prize.quality, marketId);
     const draft = freebieToBasketDraft(prize.defId, prize.quality);
-    const placed = tryAutoPlace(this.basket, draft);
-    if (placed) {
-      this.basket = { ...this.basket, items: [...this.basket.items, placed] };
+    const packed = tryAutoPackBasket(this.basket, draft);
+    if (packed) {
+      this.basket = packed.state;
       return { placed: true, label: getItem(prize.defId).name };
     }
     this.pendingLoot = [...this.pendingLoot, draft];
@@ -597,10 +698,12 @@ class RunManagerClass {
     if (play.picksLeft <= 0) return 'done';
 
     const quality = 'common' as const;
-    const placed = tryAutoPlace(this.basket, freebieToBasketDraft(spot.defId, quality));
-    const taken = !!placed;
-    if (placed) this.basket = { ...this.basket, items: [...this.basket.items, placed] };
-    else this.pendingLoot = [...this.pendingLoot, freebieToBasketDraft(spot.defId, quality)];
+    const draft = freebieToBasketDraft(spot.defId, quality);
+    const packed = tryAutoPackBasket(this.basket, draft);
+    const taken = !!packed;
+    if (packed) this.basket = packed.state;
+    else this.pendingLoot = [...this.pendingLoot, draft];
+    const blockReason = taken ? '' : diagnoseCannotPlace(this.basket, spot.defId);
 
     const spots = play.spots.map((s) => (s.uid === uid ? { ...s, taken: true } : s));
     const picksLeft = play.picksLeft - 1;
@@ -611,7 +714,7 @@ class RunManagerClass {
         nodeId: play.nodeId,
         kind: 'gather',
         marketId: run.marketId,
-        text: taken ? `拿到${displayName(spot.defId, false, quality)}。` : '篮子满了，先腾个位子。',
+        text: taken ? `拿到${displayName(spot.defId, false, quality)}。` : blockReason,
         gain: { defId: spot.defId, quality, taken, firstSeen: spot.firstSeen },
       },
       note: picksLeft > 0 ? `还能再拿 ${picksLeft} 份。` : '手上拿够了，可以回去。',
@@ -719,22 +822,24 @@ class RunManagerClass {
     text: string,
   ): RunState {
     const name = displayName(defId, false, quality);
-    const placed = tryAutoPlace(this.basket, freebieToBasketDraft(defId, quality));
-    if (!placed) {
-      this.pendingLoot = [...this.pendingLoot, freebieToBasketDraft(defId, quality)];
+    const draft = freebieToBasketDraft(defId, quality);
+    const packed = tryAutoPackBasket(this.basket, draft);
+    if (!packed) {
+      const reason = diagnoseCannotPlace(this.basket, defId);
+      this.pendingLoot = [...this.pendingLoot, draft];
       return {
         ...state,
-        note: '地上有货，可篮子塞不下。',
+        note: reason,
         lastEvent: {
           nodeId,
           kind,
           marketId: state.marketId,
-          text: '篮子满了，先腾个位子再捡。',
+          text: reason,
           gain: { defId, quality, taken: false, firstSeen: KitchenManager.discoverFood(defId, quality, state.marketId) },
         },
       };
     }
-    this.basket = { ...this.basket, items: [...this.basket.items, placed] };
+    this.basket = packed.state;
     return {
       ...state,
       note: `拿到一份${name}。`,
@@ -891,11 +996,15 @@ class RunManagerClass {
     if (item.quality === 'rotten') return 'rotten';
     this._revealGodPick(uid, opts?.quiet);
     const draft = pileToBasketDraft(this.findPile(uid) ?? { ...item, inspected: true });
-    const placed = tryAutoPlace(this.basket, draft);
-    if (!placed) return 'need_space';
-    this.basket = { ...this.basket, items: [...this.basket.items, placed] };
+    const directFit = !!tryAutoPlace(this.basket, draft);
+    const packed = tryAutoPackBasket(this.basket, draft);
+    if (!packed) return 'need_space';
+    this.basket = packed.state;
     this.removeFromPile(uid);
     this.emit();
+    if (!directFit && !opts?.quiet) {
+      Platform.showToast(`已自动腾挪装下${getItem(draft.defId).name}！`, 'success');
+    }
     return 'placed';
   }
 
@@ -1044,6 +1153,26 @@ class RunManagerClass {
     this.emit();
   }
 
+  /** 菜篮面板一键码齐：紧凑重排篮内物品并尽量将暂存区鲜货自动装篮。 */
+  autoTidyBasket(priorityUid?: string | null): { movedCount: number; placedCount: number; leftCount: number } {
+    const staging = this.stagingItems();
+    const res = repackBasketWithStaging(this.basket, staging, priorityUid);
+    this.basket = res.state;
+    if (res.placedStaging.length > 0) {
+      const placedUids = new Set(res.placedStaging.map((it) => it.uid));
+      this.pendingLoot = this.pendingLoot.filter((it) => !placedUids.has(it.uid));
+      for (const uid of placedUids) {
+        if (this.findPile(uid)) this.removeFromPile(uid);
+      }
+    }
+    this.emit();
+    return {
+      movedCount: res.movedCount,
+      placedCount: res.placedStaging.length,
+      leftCount: res.remainingStaging.length,
+    };
+  }
+
   extract(voluntary: boolean): ExtractResult | null {
     if (!this.run || this.run.extract) return this.run?.extract ?? null;
     const kind = decideExtract(this.run, voluntary);
@@ -1052,6 +1181,24 @@ class RunManagerClass {
     KitchenManager.spendOutingBuffs();
     const extract = { ...result, needsPick: unpack.needsPick };
     this.run = { ...this.run, ended: true, extract };
+    this._cancelScheduledCheckpoint();
+    if (unpack.needsPick) {
+      PersistService.writeOutingCheckpoint({
+        v: 1,
+        kind: 'pending_unpack',
+        savedAt: Date.now(),
+        extract,
+      } satisfies PendingUnpackCheckpoint);
+    } else {
+      PersistService.clearOutingCheckpoint();
+    }
+    const usedCells = this.basket.items.reduce((sum, it) => {
+      const def = getItem(it.defId);
+      return sum + def.w * def.h;
+    }, 0);
+    const basketCap = this.basket.cols * (this.basket.flexUnlocked ? this.basket.rows : Math.max(1, this.basket.rows - 1));
+    const haulValue = result.items.reduce((s, it) => s + Math.max(0, it.sell), 0);
+    const rarePlusCount = result.items.filter((it) => rarityRank(getItem(it.defId).rarity ?? 'common') > 0).length;
     analytics.trackQuestComplete(`outing_${this.run.marketId}`, 'event', {
       durationMs: Math.max(0, Date.now() - this._outingStartedAt),
       market_id: this.run.marketId,
@@ -1059,6 +1206,18 @@ class RunManagerClass {
       item_count: result.items.length,
       lost: result.lost,
       voluntary,
+      ...analytics.formatOutingMetrics({
+        weatherId: this.run.weatherId,
+        vehicleId: KitchenManager.save.vehicle,
+        cookLevel: cookLevel(KitchenManager.save),
+        basketCapacity: basketCap,
+        basketUsedCells: usedCells,
+        flexUnlocked: this.basket.flexUnlocked,
+        duskExtended: this.run.duskExtended,
+        haulValue,
+        rarePlusCount,
+        needsPick: unpack.needsPick,
+      }),
     });
     this._outingStartedAt = 0;
     EventBus.emit(EV.runExtracted, extract);
@@ -1067,13 +1226,228 @@ class RunManagerClass {
   }
 
   clear(): void {
+    this._cancelScheduledCheckpoint();
     this.run = null;
     this.basket = createBasket(
       furnLevel(KitchenManager.save, 'basket'),
       furnLevel(KitchenManager.save, 'foam'),
     );
     this.pendingLoot = [];
+    PersistService.clearOutingCheckpoint();
     this.emit();
+  }
+
+  /** 轻量防抖调度赶集断点（400ms）：严禁在高频点击/拖拽 emit() 主线程同步序列化整张地图。 */
+  scheduleCheckpoint(): void {
+    if (!this.run || this.run.ended) return;
+    this._checkpointDirty = true;
+    if (this._checkpointTimer !== null) {
+      clearTimeout(this._checkpointTimer);
+    }
+    this._checkpointTimer = globalThis.setTimeout(() => {
+      this._checkpointTimer = null;
+      this._writeMarketCheckpoint();
+    }, CHECKPOINT_DEBOUNCE_MS);
+  }
+
+  private _cancelScheduledCheckpoint(): void {
+    this._checkpointDirty = false;
+    if (this._checkpointTimer !== null) {
+      clearTimeout(this._checkpointTimer);
+      this._checkpointTimer = null;
+    }
+  }
+
+  private _writeMarketCheckpoint(): void {
+    this._cancelScheduledCheckpoint();
+    if (!this.run || this.run.ended) return;
+    try {
+      PersistService.writeOutingCheckpoint({
+        v: 1,
+        kind: 'market',
+        savedAt: Date.now(),
+        outingStartedAt: this._outingStartedAt || Date.now(),
+        rngSeed: this._rngSeed,
+        rngCalls: this._rngCalls,
+        tutorialAllowedCardId: TutorialManager.allowedCardId || undefined,
+        run: this.run,
+        basket: this.basket,
+        pendingLoot: this.pendingLoot,
+      } satisfies MarketOutingCheckpoint);
+    } catch (e) {
+      console.warn('[RunManager] 赶集断点写入失败:', e);
+    }
+  }
+
+  /** 立即将当前赶集状态写入本地断点并同步刷盘（供 onHide、onMemoryWarning、pagehide 紧急落盘调用）。 */
+  flushCheckpoint(): void {
+    this._writeMarketCheckpoint();
+    PersistService.flushAllSync();
+  }
+
+  /** 特色货车集市每次抓中鲜货或推进轮次时实时暂存断点。 */
+  saveSpecialCheckpoint(marketId: SpecialMarketId, round: number, haul: ExtractedItem[]): void {
+    try {
+      PersistService.writeOutingCheckpoint({
+        v: 1,
+        kind: 'special',
+        savedAt: Date.now(),
+        marketId,
+        round,
+        haul: haul.slice(),
+      } satisfies SpecialOutingCheckpoint);
+    } catch (e) {
+      console.warn('[RunManager] 特色集市断点写入失败:', e);
+    }
+  }
+
+  settleSpecialCheckpoint(extract: ExtractResult): void {
+    if (extract.needsPick) {
+      PersistService.writeOutingCheckpoint({
+        v: 1,
+        kind: 'pending_unpack',
+        savedAt: Date.now(),
+        extract,
+      } satisfies PendingUnpackCheckpoint);
+    } else {
+      PersistService.clearOutingCheckpoint();
+    }
+  }
+
+  /** 冷启动时检查未结算赶集断点：支持常规菜场无损续接现场、特色集市/溢出暂存自动补发入冰箱。 */
+  prepareBootRecovery(): BootRecoveryAction {
+    const cp = PersistService.readOutingCheckpoint<OutingCheckpointData>();
+    if (!cp || cp.v !== 1) return { type: 'none' };
+
+    const expired = typeof cp.savedAt === 'number' && Date.now() - cp.savedAt > CHECKPOINT_MAX_AGE_MS;
+
+    const deliverToFridge = (items: ExtractedItem[]): BootRecoveryAction => {
+      const clean = items.filter((it) => it && it.quality !== 'rotten' && !!it.defId);
+      PersistService.clearOutingCheckpoint();
+      if (clean.length === 0) return { type: 'none' };
+      const next = ingestExtract(SaveManager.data, clean);
+      SaveManager.replace(next);
+      return {
+        type: 'kitchen_toast',
+        count: clean.length,
+        message: `上次赶集手边的 ${clean.length} 件鲜货已帮你护送回家！`,
+      };
+    };
+
+    try {
+      if (cp.kind === 'special') {
+        return deliverToFridge(Array.isArray(cp.haul) ? cp.haul : []);
+      }
+
+      if (cp.kind === 'pending_unpack') {
+        KitchenManager.spendOutingBuffs();
+        return deliverToFridge(Array.isArray(cp.extract?.items) ? cp.extract.items : []);
+      }
+
+      if (cp.kind === 'market') {
+        if (!cp.run || !cp.run.map || !cp.basket || !Array.isArray(cp.basket.items)) {
+          PersistService.clearOutingCheckpoint();
+          return { type: 'none' };
+        }
+        this._advanceUidSeqPastCheckpoint(cp);
+
+        const collectCheckpointLoot = (): ExtractedItem[] => {
+          const all: Array<Pick<BasketItem, 'uid' | 'defId' | 'quality' | 'inspected' | 'freshness'>> = [
+            ...cp.basket.items,
+            ...(Array.isArray(cp.pendingLoot) ? cp.pendingLoot : []),
+          ];
+          const seen = new Set<string>();
+          const out: ExtractedItem[] = [];
+          for (const it of all) {
+            if (!it || !it.defId || it.quality === 'rotten' || seen.has(it.uid)) continue;
+            seen.add(it.uid);
+            out.push({
+              uid: it.uid,
+              defId: it.defId,
+              quality: it.quality,
+              inspected: !!it.inspected,
+              freshness: Number.isFinite(it.freshness) ? it.freshness : 1,
+              name: displayName(it.defId, !!it.inspected, it.quality),
+              sell: sellPrice(it.defId, it.quality, !!it.inspected, Number.isFinite(it.freshness) ? it.freshness : 1),
+            });
+          }
+          return out;
+        };
+
+        if (expired || cp.run.ended) {
+          return deliverToFridge(collectCheckpointLoot());
+        }
+
+        // 兼容新手引导前几步的 _reconcile 机制：若仍在主线出门引导阶段，不强行跳离厨房引导流，改为补发已捡食材并按需退还体力
+        const tutStep = SaveManager.data.tutorialStep;
+        const inEarlyTutorial = !CloudSyncManager.accountTutorialCompleted
+          && typeof tutStep === 'number'
+          && tutStep > 0
+          && tutStep < TutorialStep.HINT_DOOR;
+        if (inEarlyTutorial) {
+          const loot = collectCheckpointLoot();
+          PersistService.clearOutingCheckpoint();
+          if (tutStep <= TutorialStep.TAKE_LOOT) {
+            KitchenManager.refundStamina(getMarket(cp.run.marketId).staminaCost);
+          }
+          if (loot.length > 0) {
+            SaveManager.replace(ingestExtract(SaveManager.data, loot));
+            return {
+              type: 'kitchen_toast',
+              count: loot.length,
+              message: `上次赶集手边的 ${loot.length} 件鲜货已帮你护送回家！`,
+            };
+          }
+          return { type: 'none' };
+        }
+
+        const fallbackSeed = ((cp.run.seed ?? 1) ^ 0x5BF03635) >>> 0;
+        this._initRng(cp.rngSeed || fallbackSeed, cp.rngCalls || 0);
+        this.run = cp.run;
+        this.basket = cp.basket;
+        this.pendingLoot = Array.isArray(cp.pendingLoot) ? cp.pendingLoot : [];
+        this._outingStartedAt = cp.outingStartedAt || Date.now();
+        if (cp.tutorialAllowedCardId) {
+          TutorialManager.setAllowedCardId(cp.tutorialAllowedCardId);
+        }
+        const lootCount = this.basket.items.filter((it) => it.quality !== 'rotten').length + this.pendingLoot.length;
+        return {
+          type: 'resume_market',
+          marketId: cp.run.marketId,
+          lootCount,
+        };
+      }
+    } catch (e) {
+      console.warn('[RunManager] 恢复赶集断点异常，已安全清理:', e);
+      PersistService.clearOutingCheckpoint();
+    }
+    return { type: 'none' };
+  }
+
+  /** 恢复赶集现场进入 MarketScene 后复查天色/街尾结算状态。 */
+  recheckAfterRestore(): void {
+    if (!this.run || this.run.ended) return;
+    this.checkDayEnd();
+  }
+
+  private _advanceUidSeqPastCheckpoint(cp: MarketOutingCheckpoint): void {
+    let maxSeq = 0;
+    for (const it of cp.basket.items) maxSeq = Math.max(maxSeq, parseUidCounter(it?.uid));
+    for (const it of cp.pendingLoot ?? []) maxSeq = Math.max(maxSeq, parseUidCounter(it?.uid));
+    for (const list of Object.values(cp.run.piles ?? {})) {
+      for (const it of list ?? []) maxSeq = Math.max(maxSeq, parseUidCounter(it?.uid));
+    }
+    for (const spot of cp.run.play?.spots ?? []) {
+      maxSeq = Math.max(maxSeq, parseUidCounter(spot?.uid));
+    }
+    for (const it of SaveManager.data.fridge ?? []) {
+      maxSeq = Math.max(maxSeq, parseUidCounter(it?.uid));
+    }
+    if (maxSeq <= 0) return;
+    const cap = Math.min(maxSeq, 50000);
+    while (parseUidCounter(nextUid('r')) < cap) {
+      // 推进自增序列，避免续玩新抽出的食材与篮内已有 uid 碰撞
+    }
   }
 
   labelFor(item: PileItem): string {
@@ -1143,8 +1517,16 @@ class RunManagerClass {
   }
 
   private emit(): void {
-    EventBus.emit(EV.runChanged, this.run, this.basket);
-    EventBus.emit(EV.basketChanged, this.basket);
+    this._emitting = true;
+    try {
+      if (this.run && !this.run.ended) {
+        this.scheduleCheckpoint();
+      }
+      EventBus.emit(EV.runChanged, this.run, this.basket);
+      EventBus.emit(EV.basketChanged, this.basket);
+    } finally {
+      this._emitting = false;
+    }
   }
 }
 

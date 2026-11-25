@@ -1,13 +1,16 @@
 import * as PIXI from 'pixi.js';
+import { analytics } from '@/analytics';
 import { AudioManager } from '@/core/AudioManager';
 import { Game } from '@/core/Game';
 import { OverlayManager } from '@/core/OverlayManager';
 import { Platform } from '@/core/PlatformService';
 import { warmupAdScene } from '@/services/RewardedAdService';
 import { KitchenManager } from '@/managers/KitchenManager';
+import { destroyDisplayChildren, destroyDisplayNode } from '@/utils/destroy';
 import {
   CHEF_FIRE_XP_MUL,
   DAILY_AD_LIMITS,
+  RARITY_STYLE,
   canUseDailyAd,
   chefFireRemainMs,
   computeKitchenSlip,
@@ -15,7 +18,7 @@ import {
   formatChefFireRemain,
   isChefFireActive,
   kitchenSlipPins,
-  rarityLabel,
+  recipeById,
   recipeCanCook,
   recipeCookCount,
   recipeCookMax,
@@ -27,6 +30,7 @@ import {
   recipeUnlockView,
   recipeXp,
   unlockedRecipes,
+  type KitchenSave,
   type RecipeDef,
   type RecipeId,
 } from '@/sim';
@@ -36,11 +40,11 @@ import {
   UI_BTN,
   UI_KIT,
   UI_PALETTE,
+  attachSpriteContour,
   bindUiClick,
   fitTextWidth,
   makeAdButton,
   makeMasterySpoonRow,
-  makeRarityFlare,
   makeSlicedButton,
   makeText,
 } from '@/utils/ui';
@@ -54,6 +58,7 @@ import {
   resolveDishAssetPath,
   resolveItemAssetPath,
   watchTextures,
+  whenTextureReady,
 } from '@/utils/assets';
 import { cookPanelPaths } from '@/utils/panelAssets';
 import {
@@ -65,7 +70,7 @@ import {
   drawSceneWall,
   drawStretchSheet,
   makeDishDisplay,
-  makeNeedIcons,
+  makeRaritySeal,
   makeSceneRoot,
   makeSealStamp,
   sceneArtPaths,
@@ -96,14 +101,37 @@ const L = {
   shelfTop: 314,
   sheetTop: 492,
   sheetX: 26,
-  headerH: 96,
-  headX: 88,
-  headR: 632,
+  headerH: 124,
+  headX: 90,
+  headR: 630,
   rowH: 106,
   secH: 46,
   contentX: 62,
   contentR: 658,
 } as const;
+
+type RecipeFilterTab = 'all' | 'ready' | 'home' | 'meat' | 'seafood' | 'soup_cold';
+
+const FILTER_TABS: ReadonlyArray<{
+  id: RecipeFilterTab;
+  label: string;
+  match?: (r: RecipeDef) => boolean;
+}> = [
+  { id: 'all', label: '全部' },
+  { id: 'ready', label: '可做' },
+  { id: 'home', label: '家常', match: (r) => r.group === '家常' },
+  { id: 'meat', label: '荤菜', match: (r) => r.group === '荤' },
+  { id: 'seafood', label: '水产', match: (r) => r.group === '水产' },
+  { id: 'soup_cold', label: '汤·凉', match: (r) => r.group === '汤' || r.group === '凉菜' },
+];
+
+const GROUP_DISPLAY_LABEL: Record<string, string> = {
+  家常: '家常小炒',
+  荤: '荤菜硬菜',
+  水产: '河海鲜货',
+  汤: '暖胃汤羹',
+  凉菜: '爽口凉菜',
+};
 
 const CREAM = 0xFFF6E2;
 const WOOD_STROKE = 0x382010;
@@ -118,10 +146,13 @@ export class CookPanel extends PIXI.Container {
   _isOpen = false;
   private _root = new PIXI.Container();
   private _pick: RecipeId = 'stirfry';
+  private _filterTab: RecipeFilterTab = 'all';
   private _cookQty = 1;
   private _inspect: ItemInspectView | null = null;
   private _scroller: VerticalScroller;
   private _cookBtn: PIXI.Container | null = null;
+  private _chefFireText: PIXI.Text | null = null;
+  private _wasChefFireActive = false;
   private _paintQueued = false;
   private _fireTimer = 0;
   private _adBusy = false;
@@ -151,6 +182,7 @@ export class CookPanel extends PIXI.Container {
     this._cookQty = 1;
     if (!this._inCookTut) warmupAdScene('chef_buff');
     const known = unlockedRecipes(recipeUnlockView(KitchenManager.save));
+    this._filterTab = 'all';
     if (this._inCookTut) {
       this._pick = 'stirfry';
     } else if (recipeId && known.some((r) => r.id === recipeId)) {
@@ -167,7 +199,6 @@ export class CookPanel extends PIXI.Container {
     OverlayManager.bringToFront();
     if (this._isOpen) TutorialOverlay.register('cook', () => this.tutorialCookRect());
     TutorialManager.advanceIf(TutorialStep.COOK_TABLE);
-    this._warm();
   }
 
   close(silent = false): void {
@@ -178,17 +209,36 @@ export class CookPanel extends PIXI.Container {
     this._inspect = null;
     this._adBusy = false;
     this._paintQueued = false;
+    this._chefFireText = null;
     this._clearFireTimer();
     this._scroller.disable();
+    this._scroller.clear();
     TutorialOverlay.unregister('cook');
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
   }
 
   private _armFireTimer(): void {
     this._clearFireTimer();
+    this._wasChefFireActive = isChefFireActive(KitchenManager.save);
     this._fireTimer = globalThis.setInterval(() => {
-      if (!this._isOpen || this._inspect || this._adBusy) return;
-      if (isChefFireActive(KitchenManager.save)) this.relayout();
+      if (!this._isOpen || this._adBusy) return;
+      const save = KitchenManager.save;
+      const now = Date.now();
+      const active = isChefFireActive(save, now);
+      if (active) {
+        this._wasChefFireActive = true;
+        if (this._chefFireText && !this._chefFireText.destroyed) {
+          const nextText = `旺火 ${formatChefFireRemain(chefFireRemainMs(save, now))}`;
+          if (this._chefFireText.text !== nextText) {
+            this._chefFireText.text = nextText;
+          }
+        }
+        return;
+      }
+      if (this._wasChefFireActive) {
+        this._wasChefFireActive = false;
+        if (!this._inspect) this._scheduleRelayout();
+      }
     }, 1000) as unknown as number;
   }
 
@@ -209,10 +259,9 @@ export class CookPanel extends PIXI.Container {
     return null;
   }
 
-  private _warm(): void {
+  private _warm(visibleRecipes: readonly RecipeDef[]): void {
     const save = KitchenManager.save;
     const view = recipeUnlockView(save);
-    const known = unlockedRecipes(view);
     const paths: string[] = [
       ...Object.values(ART),
       ...sceneArtPaths(),
@@ -226,9 +275,8 @@ export class CookPanel extends PIXI.Container {
       P0_ART.chefFire,
       P0_ART.adClapper,
       ...P0_ART.spoons,
-      'subpkg_kitchen/ui_pickup_flare.png',
     ];
-    for (const r of known) {
+    for (const r of visibleRecipes.slice(0, 8)) {
       paths.push(resolveDishAssetPath(r.id));
       for (const n of recipeNeeds(view, r.id)) {
         paths.push(resolveItemAssetPath(n.iconId));
@@ -251,11 +299,13 @@ export class CookPanel extends PIXI.Container {
 
   relayout(): void {
     this._cookBtn = null;
-    this._root.removeChildren();
+    this._chefFireText = null;
+    this._scroller.clear();
+    destroyDisplayChildren(this._root);
     if (!this._isOpen) return;
-    this._warm();
+    this._wasChefFireActive = isChefFireActive(KitchenManager.save);
 
-    const sheetH = 544;
+    const sheetH = 580;
     const panelH = L.sheetTop + sheetH + 22;
 
     const { scene, scale, toStage } = makeSceneRoot({
@@ -325,16 +375,12 @@ export class CookPanel extends PIXI.Container {
     this._cookQty = Math.max(1, Math.min(this._cookQty, Math.max(1, max)));
     const qty = max > 0 ? this._cookQty : 1;
     const ready = recipeCanCook(view, recipe.id);
-    const waiting = KitchenManager.wantedNeighborRecipeIds().has(recipe.id);
+    const waiting = this._urgentRecipeIds(save).has(recipe.id);
 
     // 1. 案板左区：大尺寸 45° 立体成菜稳落案板柔和投影（避开左上蒜辫 x<=116，不叠青花底盘）
     const plateCx = 214;
     const dishCy = 248;
     const dishSize = 188;
-
-    const flare = makeRarityFlare(recipe.rarity, 224);
-    flare.position.set(plateCx, dishCy - 4);
-    scene.addChild(flare);
 
     const dishGroup = new PIXI.Container();
     const boardShadow = new PIXI.Graphics();
@@ -352,6 +398,11 @@ export class CookPanel extends PIXI.Container {
       dishSp.position.set(plateCx, dishCy);
       dishSp.eventMode = 'none';
       dishGroup.addChild(dishSp);
+      attachSpriteContour(dishGroup, dishSp, recipe.rarity, {
+        onDark: true,
+        selected: recipe.rarity !== 'common',
+        thicknessScale: 1.08,
+      });
     }
     if (waiting) {
       const waitSeal = makeSealStamp('急单', 50, -0.1);
@@ -383,7 +434,7 @@ export class CookPanel extends PIXI.Container {
     fitTextWidth(name, upperRight - infoX - 54);
     scene.addChild(name);
 
-    const rSeal = makeSealStamp(rarityLabel(recipe.rarity), 46, 0.08);
+    const rSeal = makeRaritySeal(recipe.rarity, 46, 0.08);
     rSeal.position.set(upperRight - 22, 150);
     scene.addChild(rSeal);
 
@@ -604,6 +655,7 @@ export class CookPanel extends PIXI.Container {
         labelOffsetX: 18,
         onReady: this._scheduleRelayout,
       });
+      this._chefFireText = ((btn as any)._label as PIXI.Text | undefined) ?? null;
       const face = ((btn as any)._face as PIXI.Container | undefined) ?? btn;
       const wok = sceneSprite(P0_ART.chefFire, 40, 40);
       if (wok) {
@@ -612,6 +664,7 @@ export class CookPanel extends PIXI.Container {
         face.addChild(wok);
       }
     } else {
+      this._chefFireText = null;
       btn = makeAdButton({
         label: '旺火·双份',
         width,
@@ -639,7 +692,12 @@ export class CookPanel extends PIXI.Container {
         'chef_buff',
         () => {
           this._adBusy = false;
-          KitchenManager.activateChefFire();
+          if (KitchenManager.activateChefFire()) {
+            analytics.trackCookAction({
+              action: 'ad_chef_fire',
+              cookLevel: KitchenManager.save.level,
+            });
+          }
           if (this._isOpen) this.relayout();
         },
         () => {
@@ -678,7 +736,120 @@ export class CookPanel extends PIXI.Container {
     return btn;
   }
 
-  // ── 下段铜钉宣纸挂单：分组大字食谱卷轴 ─────────────────────────────
+  /** 今日菜单未交齐菜肴 + 街坊点单挂单菜肴，统一作为急单置顶并盖朱印。 */
+  private _urgentRecipeIds(save: KitchenSave): Set<RecipeId> {
+    const out = new Set<RecipeId>(KitchenManager.wantedNeighborRecipeIds());
+    if (save.dailyMenu && !save.dailyMenu.boardClaimed) {
+      for (const line of save.dailyMenu.lines) {
+        if (line.done < line.need) out.add(line.recipeId);
+      }
+    }
+    return out;
+  }
+
+  private _recipesForTab(
+    tab: RecipeFilterTab,
+    known: RecipeDef[],
+    view: ReturnType<typeof recipeUnlockView>,
+  ): RecipeDef[] {
+    if (tab === 'all') return known;
+    if (tab === 'ready') return known.filter((r) => recipeCookCount(view, r.id) > 0);
+    const def = FILTER_TABS.find((t) => t.id === tab);
+    return def?.match ? known.filter(def.match) : known;
+  }
+
+  private _drawFilterTabs(
+    scene: PIXI.Container,
+    known: RecipeDef[],
+    view: ReturnType<typeof recipeUnlockView>,
+    cookableTotal: number,
+  ): void {
+    const tabY = L.sheetTop + 62;
+    const tabH = 42;
+    const gap = 8;
+    const totalAvailW = W - 104;
+    const tabW = Math.floor((totalAvailW - gap * (FILTER_TABS.length - 1)) / FILTER_TABS.length);
+    const startX = Math.round((W - (tabW * FILTER_TABS.length + gap * (FILTER_TABS.length - 1))) / 2);
+
+    FILTER_TABS.forEach((tab, idx) => {
+      const active = this._filterTab === tab.id;
+      const node = new PIXI.Container();
+      node.position.set(startX + idx * (tabW + gap), tabY);
+
+      const bg = new PIXI.Graphics();
+      if (active) {
+        bg.beginFill(0x1E1108, 0.22);
+        bg.drawRoundedRect(1, 3, tabW, tabH, 9);
+        bg.endFill();
+        bg.lineStyle(2.2, SCENE_INK.ink, 1);
+        bg.beginFill(0x63381B, 1);
+        bg.drawRoundedRect(0, 0, tabW, tabH, 9);
+        bg.endFill();
+        bg.lineStyle(1, 0xE7BF78, 0.85);
+        bg.drawRoundedRect(3, 3, tabW - 6, tabH - 6, 6.5);
+      } else {
+        bg.lineStyle(1.8, 0x9A7C58, 0.88);
+        bg.beginFill(0xEFE1C4, 0.92);
+        bg.drawRoundedRect(0, 1, tabW, tabH - 2, 8);
+        bg.endFill();
+      }
+      bg.eventMode = 'none';
+      node.addChild(bg);
+
+      const lbl = makeText(
+        'heading',
+        tab.label,
+        active ? 0xFFF7E6 : SCENE_INK.soft,
+        {
+          size: 22,
+          stroke: active ? 0x2B1608 : undefined,
+          strokeWidth: active ? 2.5 : 0,
+        },
+      );
+      lbl.anchor.set(0.5);
+      fitTextWidth(lbl, tabW - 12);
+      lbl.position.set(tabW / 2, tabH / 2 - 0.5);
+      node.addChild(lbl);
+
+      if (tab.id === 'ready' && cookableTotal > 0 && !active) {
+        const dot = new PIXI.Graphics();
+        dot.lineStyle(1.5, 0xFFF8EA, 1);
+        dot.beginFill(SCENE_INK.green, 1);
+        dot.drawCircle(tabW - 9, 9, 5);
+        dot.endFill();
+        dot.eventMode = 'none';
+        node.addChild(dot);
+      }
+
+      node.eventMode = 'static';
+      node.cursor = 'pointer';
+      node.hitArea = new PIXI.Rectangle(-2, -3, tabW + 4, tabH + 6);
+      node.on('pointertap', (e) => {
+        e.stopPropagation();
+        if (this._inCookTut && tab.id !== 'all') {
+          TutorialGuard.block('pickRecipe');
+          return;
+        }
+        if (this._filterTab === tab.id) return;
+        AudioManager.play('ui_click');
+        this._filterTab = tab.id;
+        this._scroller.reset();
+        this._needScrollToPick = false;
+        const subset = this._recipesForTab(tab.id, known, view);
+        if (subset.length > 0 && !subset.some((r) => r.id === this._pick)) {
+          const urgent = this._urgentRecipeIds(KitchenManager.save);
+          const firstUrgent = subset.find((r) => urgent.has(r.id));
+          const firstReady = subset.find((r) => recipeCookCount(view, r.id) > 0);
+          this._pick = (firstUrgent ?? firstReady ?? subset[0]).id;
+          this._cookQty = 1;
+        }
+        this.relayout();
+      });
+      scene.addChild(node);
+    });
+  }
+
+  // ── 下段铜钉宣纸挂单：分类书签筛选 + 分组大字食谱卷轴 ───────────────────
   private _drawRecipeScroll(
     scene: PIXI.Container,
     known: RecipeDef[],
@@ -687,10 +858,11 @@ export class CookPanel extends PIXI.Container {
     scale: number,
     toStage: (x: number, y: number) => { x: number; y: number },
   ): void {
+    const save = KitchenManager.save;
     const cookableTotal = known.filter((r) => recipeCookCount(view, r.id) > 0).length;
-    const headCy = L.sheetTop + 56;
+    const headCy = L.sheetTop + 36;
 
-    const headTitle = makeText('display', '食谱挂单', SCENE_INK.ink, { size: 32 });
+    const headTitle = makeText('display', '食谱挂单', SCENE_INK.ink, { size: 30 });
     headTitle.anchor.set(0, 0.5);
     headTitle.position.set(L.headX, headCy);
     scene.addChild(headTitle);
@@ -699,168 +871,189 @@ export class CookPanel extends PIXI.Container {
       'body',
       `可下锅 ${cookableTotal} / ${known.length} 道`,
       cookableTotal > 0 ? SCENE_INK.green : SCENE_INK.muted,
-      { size: 23, fontWeight: '700' },
+      { size: 22, fontWeight: '700' },
     );
     headStat.anchor.set(1, 0.5);
     headStat.position.set(L.headR, headCy);
     scene.addChild(headStat);
 
-    drawInkDivider(scene, L.contentX, L.sheetTop + L.headerH - 12, L.contentR - L.contentX, 0.62, 12);
+    this._drawFilterTabs(scene, known, view, cookableTotal);
+    drawInkDivider(scene, L.contentX, L.sheetTop + L.headerH - 12, L.contentR - L.contentX, 0.62, 10);
 
-    const slip = computeKitchenSlip(KitchenManager.save);
-    const wantedSet = KitchenManager.wantedNeighborRecipeIds();
-    const pinnedIds = [
-      ...wantedSet,
-      ...kitchenSlipPins(slip),
-    ].filter((id, i, all) => known.some((r) => r.id === id) && all.indexOf(id) === i);
-    const pinned = pinnedIds.map((id) => known.find((r) => r.id === id)!);
-    const rest = known.filter((r) => !pinnedIds.includes(r.id));
-    const groups = [...new Set(rest.map((r) => r.group))];
+    const slip = computeKitchenSlip(save);
+    const wantedSet = this._urgentRecipeIds(save);
 
     const listTop = L.sheetTop + L.headerH;
-    const listViewH = sheetH - L.headerH - 34;
+    const listViewH = sheetH - L.headerH - 30;
     const content = new PIXI.Container();
     let cy = 0;
     let pickRowY = 0;
 
+    const entries: Array<{
+      y: number;
+      h: number;
+      recipe?: RecipeDef;
+      render: () => PIXI.Container;
+    }> = [];
+
     const addSectionHeader = (title: string, color: number) => {
-      const sec = new PIXI.Container();
-      sec.position.set(0, cy);
-      const txt = makeText('heading', `· ${title} ·`, color, { size: 23 });
-      txt.anchor.set(0.5);
-      txt.position.set(W / 2, L.secH / 2 + 2);
-      sec.addChild(txt);
-      content.addChild(sec);
+      const y = cy;
+      entries.push({
+        y,
+        h: L.secH,
+        render: () => {
+          const sec = new PIXI.Container();
+          sec.position.set(0, y);
+          const txt = makeText('heading', `· ${title} ·`, color, { size: 23 });
+          txt.anchor.set(0.5);
+          txt.position.set(W / 2, L.secH / 2 + 2);
+          sec.addChild(txt);
+          return sec;
+        },
+      });
       cy += L.secH;
     };
 
+    const sortReadyFirst = (list: RecipeDef[]): RecipeDef[] =>
+      [...list].sort((a, b) => {
+        const ca = recipeCookCount(view, a.id) > 0 ? 1 : 0;
+        const cb = recipeCookCount(view, b.id) > 0 ? 1 : 0;
+        return cb - ca;
+      });
+
     const addRecipeRow = (recipe: RecipeDef, showDivider: boolean) => {
-      const on = this._pick === recipe.id;
-      if (on) pickRowY = cy;
-      const can = recipeCookCount(view, recipe.id);
-      const waiting = wantedSet.has(recipe.id);
-      const needs = recipeNeeds(view, recipe.id);
-
-      const row = new PIXI.Container();
-      row.position.set(0, cy);
-
-      if (on) {
-        const highlight = new PIXI.Graphics();
-        highlight.beginFill(0xE8C788, 0.36);
-        highlight.drawRoundedRect(L.contentX - 10, 4, L.contentR - L.contentX + 20, L.rowH - 10, 10);
-        highlight.endFill();
-        highlight.beginFill(SCENE_INK.red, 0.92);
-        highlight.drawRoundedRect(L.contentX - 10, 14, 6, L.rowH - 30, 3);
-        highlight.endFill();
-        row.addChild(highlight);
-      }
-
-      // 左：立体成菜大图标直呈（去掉重复底盘，菜品细节一眼看清）
-      const dishNode = makeDishDisplay({
-        dishPath: resolveDishAssetPath(recipe.id),
-        size: 90,
-        dim: can === 0 && !on,
-        shadowAlpha: 0.20,
+      const y = cy;
+      if (this._pick === recipe.id) pickRowY = y;
+      entries.push({
+        y,
+        h: L.rowH,
+        recipe,
+        render: () => this._buildRecipeRow(recipe, y, showDivider, view, wantedSet),
       });
-      dishNode.position.set(L.contentX + 46, 54);
-      row.addChild(dishNode);
-
-      // 中上：菜名 + 街坊急单朱印
-      const midX = L.contentX + 108;
-      const rightColW = 148;
-      const maxMidW = L.contentR - rightColW - midX;
-
-      const rName = makeText(
-        'title',
-        recipe.name,
-        can > 0 || on ? SCENE_INK.ink : SCENE_INK.soft,
-        { size: 28 },
-      );
-      rName.position.set(midX, 14);
-      fitTextWidth(rName, waiting ? maxMidW - 54 : maxMidW);
-      if (can === 0 && !on) rName.alpha = 0.78;
-      row.addChild(rName);
-
-      if (waiting) {
-        const seal = makeSealStamp('急单', 42, -0.08);
-        seal.position.set(midX + rName.width + 26, 32);
-        row.addChild(seal);
-      }
-
-      // 中下：无框食材余量直排
-      const needIcons = makeNeedIcons(
-        needs.map((n) => ({
-          iconPath: resolveItemAssetPath(n.iconId),
-          have: n.have,
-          need: n.need,
-        })),
-        { iconSize: 36, size: 23, maxW: maxMidW + 10 },
-      );
-      needIcons.node.position.set(midX, 74);
-      if (can === 0 && !on) needIcons.node.alpha = 0.82;
-      row.addChild(needIcons.node);
-
-      // 右：可做锅数 / 缺料 + 售价
-      const statusTxt = makeText(
-        'heading',
-        can > 0 ? `可做 ${can} 锅` : '缺食材',
-        can > 0 ? SCENE_INK.green : SCENE_INK.red,
-        { size: 25 },
-      );
-      statusTxt.anchor.set(1, 0);
-      statusTxt.position.set(L.contentR, 18);
-      if (can === 0 && !on) statusTxt.alpha = 0.75;
-      row.addChild(statusTxt);
-
-      const priceVal = recipeSellPrice(recipe.id);
-      const priceTxt = makeText('number', `${priceVal}`, SCENE_INK.gold, { size: 23 });
-      priceTxt.anchor.set(1, 0.5);
-      priceTxt.position.set(L.contentR, 72);
-      row.addChild(priceTxt);
-      const cSp = sceneSprite(HUD_ICON.coin, 24, 24);
-      if (cSp) {
-        cSp.anchor.set(1, 0.5);
-        cSp.position.set(L.contentR - priceTxt.width - 5, 72);
-        row.addChild(cSp);
-      }
-
-      if (showDivider) {
-        drawInkDivider(row, L.contentX, L.rowH - 8, L.contentR - L.contentX, 0.3, 8);
-      }
-
-      row.eventMode = 'static';
-      row.cursor = 'pointer';
-      row.hitArea = new PIXI.Rectangle(L.sheetX + 10, 0, W - (L.sheetX + 10) * 2, L.rowH);
-      row.on('pointertap', () => {
-        if (this._scroller.moved) return;
-        if (this._inCookTut && recipe.id !== 'stirfry') {
-          TutorialGuard.block('pickRecipe');
-          return;
-        }
-        if (recipe.id !== 'stirfry' && TutorialGuard.block('pickRecipe')) return;
-        AudioManager.play('ui_click');
-        if (this._pick !== recipe.id) this._cookQty = 1;
-        this._pick = recipe.id;
-        this.relayout();
-      });
-
-      content.addChild(row);
       cy += L.rowH;
     };
 
-    if (pinned.length) {
-      addSectionHeader('急单与推荐', SCENE_INK.red);
-      pinned.forEach((r, idx) => addRecipeRow(r, idx < pinned.length - 1));
-    }
+    const addEmptyHint = (title: string, sub: string) => {
+      entries.push({
+        y: 0,
+        h: listViewH,
+        render: () => {
+          const empty = new PIXI.Container();
+          empty.position.set(0, Math.round(listViewH * 0.30));
+          const t1 = makeText('heading', title, SCENE_INK.soft, { size: 26 });
+          t1.anchor.set(0.5);
+          t1.position.set(W / 2, 0);
+          const t2 = makeText('body', sub, SCENE_INK.muted, { size: 21 });
+          t2.anchor.set(0.5);
+          fitTextWidth(t2, L.contentR - L.contentX - 20);
+          t2.position.set(W / 2, 42);
+          empty.addChild(t1, t2);
+          return empty;
+        },
+      });
+      cy = listViewH;
+    };
 
-    for (const group of groups) {
-      const listInGroup = rest.filter((r) => r.group === group);
-      if (!listInGroup.length) continue;
-      addSectionHeader(group, SCENE_INK.soft);
-      listInGroup.forEach((r, idx) => addRecipeRow(r, idx < listInGroup.length - 1));
+    if (this._filterTab === 'all') {
+      const pinnedIds = [
+        ...wantedSet,
+        ...kitchenSlipPins(slip),
+      ].filter((id, i, all) => known.some((r) => r.id === id) && all.indexOf(id) === i);
+      const pinned = pinnedIds.map((id) => known.find((r) => r.id === id)!);
+      const rest = known.filter((r) => !pinnedIds.includes(r.id));
+      const orderedGroups = ['家常', '荤', '水产', '汤', '凉菜'];
+      const groups = [
+        ...orderedGroups.filter((g) => rest.some((r) => r.group === g)),
+        ...[...new Set(rest.map((r) => r.group))].filter((g) => !orderedGroups.includes(g)),
+      ];
+
+      if (pinned.length) {
+        addSectionHeader('急单与推荐', SCENE_INK.red);
+        pinned.forEach((r, idx) => addRecipeRow(r, idx < pinned.length - 1));
+      }
+      for (const group of groups) {
+        const listInGroup = sortReadyFirst(rest.filter((r) => r.group === group));
+        if (!listInGroup.length) continue;
+        addSectionHeader(GROUP_DISPLAY_LABEL[group] ?? group, SCENE_INK.soft);
+        listInGroup.forEach((r, idx) => addRecipeRow(r, idx < listInGroup.length - 1));
+      }
+    } else if (this._filterTab === 'ready') {
+      const readyList = known.filter((r) => recipeCookCount(view, r.id) > 0);
+      if (!readyList.length) {
+        addEmptyHint(
+          '眼下暂无齐备可下锅的菜肴',
+          '去菜场挑些鲜货回来，或点「全部」看看缺哪味食材吧',
+        );
+      } else {
+        const urgentReady = readyList.filter((r) => wantedSet.has(r.id));
+        const otherReady = readyList.filter((r) => !wantedSet.has(r.id));
+        if (urgentReady.length) {
+          addSectionHeader('急单优先', SCENE_INK.red);
+          urgentReady.forEach((r, idx) => addRecipeRow(r, idx < urgentReady.length - 1));
+        }
+        if (otherReady.length) {
+          if (urgentReady.length) addSectionHeader('食材齐备', SCENE_INK.green);
+          otherReady.forEach((r, idx) => addRecipeRow(r, idx < otherReady.length - 1));
+        }
+      }
+    } else {
+      const activeDef = FILTER_TABS.find((t) => t.id === this._filterTab)!;
+      const catList = this._recipesForTab(this._filterTab, known, view);
+      if (!catList.length) {
+        addEmptyHint(
+          `暂未解锁「${activeDef.label}」食谱`,
+          '升级灶台、开启寻味秘匣或老坛腌菜可习得更多拿手好菜',
+        );
+      } else {
+        const urgentCat = sortReadyFirst(catList.filter((r) => wantedSet.has(r.id)));
+        const restCat = sortReadyFirst(catList.filter((r) => !wantedSet.has(r.id)));
+        if (urgentCat.length) {
+          addSectionHeader('急单优先', SCENE_INK.red);
+          urgentCat.forEach((r, idx) => addRecipeRow(r, idx < urgentCat.length - 1));
+        }
+        if (this._filterTab === 'soup_cold') {
+          for (const subGroup of ['汤', '凉菜']) {
+            const subList = restCat.filter((r) => r.group === subGroup);
+            if (!subList.length) continue;
+            addSectionHeader(GROUP_DISPLAY_LABEL[subGroup] ?? subGroup, SCENE_INK.soft);
+            subList.forEach((r, idx) => addRecipeRow(r, idx < subList.length - 1));
+          }
+        } else if (restCat.length) {
+          if (urgentCat.length) {
+            addSectionHeader(GROUP_DISPLAY_LABEL[restCat[0].group] ?? activeDef.label, SCENE_INK.soft);
+          }
+          restCat.forEach((r, idx) => addRecipeRow(r, idx < restCat.length - 1));
+        }
+      }
     }
 
     const maxScroll = Math.max(0, cy - listViewH);
+    if (this._needScrollToPick) {
+      this._needScrollToPick = false;
+      if (maxScroll > 0) {
+        const targetOffset = Math.max(0, Math.min(maxScroll, pickRowY - listViewH * 0.3));
+        this._scroller.y = -targetOffset;
+      }
+    }
+
+    const initScrollTop = maxScroll <= 0 ? 0 : Math.max(0, Math.min(maxScroll, -this._scroller.y));
+    const warmRecipes: RecipeDef[] = [];
+    for (const e of entries) {
+      if (!e.recipe) continue;
+      if (e.y + e.h >= initScrollTop - 106) {
+        warmRecipes.push(e.recipe);
+        if (warmRecipes.length >= 6) break;
+      }
+    }
+    if (warmRecipes.length < 6) {
+      for (const e of entries) {
+        if (!e.recipe || warmRecipes.includes(e.recipe)) continue;
+        warmRecipes.push(e.recipe);
+        if (warmRecipes.length >= 6) break;
+      }
+    }
+    this._warm(warmRecipes);
+
     content.position.set(0, listTop);
     if (maxScroll > 0) {
       const mask = new PIXI.Graphics();
@@ -873,6 +1066,30 @@ export class CookPanel extends PIXI.Container {
     }
     scene.addChild(content);
 
+    const BUFFER = 106;
+    const mounted = new Map<number, PIXI.Container>();
+    const syncWindow = (scrollY: number): void => {
+      if (content.destroyed) return;
+      const scrollTop = -scrollY;
+      const minY = scrollTop - BUFFER;
+      const maxY = scrollTop + listViewH + BUFFER;
+      for (const [idx, node] of mounted) {
+        const e = entries[idx];
+        if (!e || e.y + e.h < minY || e.y > maxY) {
+          mounted.delete(idx);
+          destroyDisplayNode(node);
+        }
+      }
+      for (let i = 0; i < entries.length; i++) {
+        if (mounted.has(i)) continue;
+        const e = entries[i];
+        if (e.y + e.h < minY || e.y > maxY) continue;
+        const node = e.render();
+        content.addChild(node);
+        mounted.set(i, node);
+      }
+    };
+
     const stageTopLeft = toStage(L.sheetX, listTop);
     this._scroller.attach({
       content,
@@ -884,13 +1101,196 @@ export class CookPanel extends PIXI.Container {
         w: (W - L.sheetX * 2) * scale,
         h: listViewH * scale,
       },
+      onScroll: syncWindow,
+    });
+  }
+
+  private _buildRecipeRow(
+    recipe: RecipeDef,
+    rowY: number,
+    showDivider: boolean,
+    view: ReturnType<typeof recipeUnlockView>,
+    wantedSet: Set<RecipeId>,
+  ): PIXI.Container {
+    const on = this._pick === recipe.id;
+    const can = recipeCookCount(view, recipe.id);
+    const waiting = wantedSet.has(recipe.id);
+    const needs = recipeNeeds(view, recipe.id);
+
+    const row = new PIXI.Container();
+    row.position.set(0, rowY);
+
+    if (on) {
+      const highlight = new PIXI.Graphics();
+      highlight.beginFill(0xE8C788, 0.36);
+      highlight.drawRoundedRect(L.contentX - 10, 4, L.contentR - L.contentX + 20, L.rowH - 10, 10);
+      highlight.endFill();
+      highlight.beginFill(SCENE_INK.red, 0.92);
+      highlight.drawRoundedRect(L.contentX - 10, 14, 6, L.rowH - 30, 3);
+      highlight.endFill();
+      row.addChild(highlight);
+    }
+
+    const dishPath = resolveDishAssetPath(recipe.id);
+    const dishSize = 90;
+    const rowContourOpts = {
+      selected: on,
+      alpha: can === 0 && !on ? 0.55 : undefined,
+      thicknessScale: 0.9,
+    };
+    const dishNode = makeDishDisplay({
+      dishPath,
+      size: dishSize,
+      dim: can === 0 && !on,
+      shadowAlpha: 0.20,
+      rarity: recipe.rarity,
+      contourOpts: rowContourOpts,
+    });
+    dishNode.position.set(L.contentX + 46, 54);
+    row.addChild(dishNode);
+    if (!isTextureReady(gameTexture(dishPath))) {
+      whenTextureReady(dishPath, () => {
+        if (dishNode.destroyed || !dishNode.parent) return;
+        const tex = gameTexture(dishPath);
+        if (!isTextureReady(tex)) return;
+        const iconSp = new PIXI.Sprite(tex);
+        fitSpriteInBox(iconSp, dishSize, dishSize);
+        iconSp.anchor.set(0.5);
+        iconSp.position.set(0, -Math.round(dishSize * 0.04));
+        iconSp.eventMode = 'none';
+        dishNode.addChild(iconSp);
+        attachSpriteContour(dishNode, iconSp, recipe.rarity, rowContourOpts);
+      });
+    }
+
+    const midX = L.contentX + 108;
+    const rightColW = 148;
+    const maxMidW = L.contentR - rightColW - midX;
+    const nameColor = recipe.rarity !== 'common'
+      ? RARITY_STYLE[recipe.rarity].ink
+      : (can > 0 || on ? SCENE_INK.ink : SCENE_INK.soft);
+
+    const rName = makeText(
+      'title',
+      recipe.name,
+      nameColor,
+      { size: 28 },
+    );
+    rName.position.set(midX, 14);
+    fitTextWidth(rName, waiting ? maxMidW - 54 : maxMidW);
+    if (can === 0 && !on) rName.alpha = 0.78;
+    row.addChild(rName);
+
+    if (waiting) {
+      const seal = makeSealStamp('急单', 42, -0.08);
+      seal.position.set(midX + rName.width + 26, 32);
+      row.addChild(seal);
+    }
+
+    const needIcons = this._makeLazyNeedIcons(
+      needs.map((n) => ({
+        iconPath: resolveItemAssetPath(n.iconId),
+        have: n.have,
+        need: n.need,
+      })),
+      36,
+      23,
+      maxMidW + 10,
+    );
+    needIcons.position.set(midX, 74);
+    if (can === 0 && !on) needIcons.alpha = 0.82;
+    row.addChild(needIcons);
+
+    const statusTxt = makeText(
+      'heading',
+      can > 0 ? `可做 ${can} 锅` : '缺食材',
+      can > 0 ? SCENE_INK.green : SCENE_INK.red,
+      { size: 25 },
+    );
+    statusTxt.anchor.set(1, 0);
+    statusTxt.position.set(L.contentR, 18);
+    if (can === 0 && !on) statusTxt.alpha = 0.75;
+    row.addChild(statusTxt);
+
+    const priceVal = recipeSellPrice(recipe.id);
+    const priceTxt = makeText('number', `${priceVal}`, SCENE_INK.gold, { size: 23 });
+    priceTxt.anchor.set(1, 0.5);
+    priceTxt.position.set(L.contentR, 72);
+    row.addChild(priceTxt);
+    const cSp = sceneSprite(HUD_ICON.coin, 24, 24);
+    if (cSp) {
+      cSp.anchor.set(1, 0.5);
+      cSp.position.set(L.contentR - priceTxt.width - 5, 72);
+      row.addChild(cSp);
+    }
+
+    if (showDivider) {
+      drawInkDivider(row, L.contentX, L.rowH - 8, L.contentR - L.contentX, 0.3, 8);
+    }
+
+    row.eventMode = 'static';
+    row.cursor = 'pointer';
+    row.hitArea = new PIXI.Rectangle(L.sheetX + 10, 0, W - (L.sheetX + 10) * 2, L.rowH);
+    row.on('pointertap', () => {
+      if (this._scroller.moved) return;
+      if (this._inCookTut && recipe.id !== 'stirfry') {
+        TutorialGuard.block('pickRecipe');
+        return;
+      }
+      if (recipe.id !== 'stirfry' && TutorialGuard.block('pickRecipe')) return;
+      AudioManager.play('ui_click');
+      if (this._pick !== recipe.id) this._cookQty = 1;
+      this._pick = recipe.id;
+      this.relayout();
     });
 
-    if (this._needScrollToPick && maxScroll > 0) {
-      this._needScrollToPick = false;
-      const targetOffset = Math.max(0, Math.min(maxScroll, pickRowY - listViewH * 0.3));
-      this._scroller.apply(-targetOffset);
+    return row;
+  }
+
+  private _makeLazyNeedIcons(
+    needs: Array<{ iconPath: string; have: number; need: number }>,
+    iconSize: number,
+    fontSize: number,
+    maxW: number,
+  ): PIXI.Container {
+    const node = new PIXI.Container();
+    node.eventMode = 'none';
+    let x = 0;
+    for (const n of needs) {
+      const ok = n.have >= n.need;
+      const t = makeText('number', `${n.have}/${n.need}`, ok ? SCENE_INK.green : SCENE_INK.red, {
+        size: fontSize,
+      });
+      const w = iconSize + 4 + t.width;
+      if (maxW && x + w > maxW) {
+        destroyDisplayNode(t);
+        break;
+      }
+      const slotX = x;
+      const sp = sceneSprite(n.iconPath, iconSize, iconSize);
+      if (sp) {
+        sp.anchor.set(0, 0.5);
+        sp.position.set(slotX, 0);
+        node.addChild(sp);
+      } else {
+        whenTextureReady(n.iconPath, () => {
+          if (node.destroyed || !node.parent) return;
+          const rTex = gameTexture(n.iconPath);
+          if (!isTextureReady(rTex)) return;
+          const lateSp = new PIXI.Sprite(rTex);
+          fitSpriteInBox(lateSp, iconSize, iconSize);
+          lateSp.anchor.set(0, 0.5);
+          lateSp.position.set(slotX, 0);
+          lateSp.eventMode = 'none';
+          node.addChild(lateSp);
+        });
+      }
+      t.anchor.set(0, 0.5);
+      t.position.set(slotX + iconSize + 4, 1);
+      node.addChild(t);
+      x += w + 14;
     }
+    return node;
   }
 
   private _onTutorialCook = (): void => {
@@ -905,9 +1305,41 @@ export class CookPanel extends PIXI.Container {
       return;
     }
     if (TutorialGuard.block('cook')) return;
+    const recipeId = this._pick;
+    const batchQty = this._cookQty;
+    const beforeSave = KitchenManager.save;
+    const beforeLv = beforeSave.level;
+    const beforeTickets = beforeSave.recipeTickets;
+    const fireOn = isChefFireActive(beforeSave);
+    const beforeCooked = recipeMasteryView(beforeSave, recipeId).cooked;
+
     const step = TutorialManager.currentStep;
-    KitchenManager.cook(this._pick, this._cookQty);
-    TutorialManager.onCooked(this._pick);
+    KitchenManager.cook(recipeId, batchQty);
+
+    const afterSave = KitchenManager.save;
+    const afterMastery = recipeMasteryView(afterSave, recipeId);
+    const cookedDelta = Math.max(0, afterMastery.cooked - beforeCooked);
+    if (cookedDelta > 0) {
+      const levelsGained = Math.max(0, afterSave.level - beforeLv);
+      const ticketsGained = Math.max(0, afterSave.recipeTickets - beforeTickets);
+      analytics.trackCookAction({
+        action: 'cook',
+        recipeId,
+        rarity: recipeById(recipeId)?.rarity ?? 'common',
+        batchQty,
+        cookedCount: cookedDelta,
+        chefFireActive: fireOn,
+        cookLevel: afterSave.level,
+        levelsGained,
+        masteryStars: afterMastery.stars,
+        masteryTickets: ticketsGained,
+      });
+      if (levelsGained > 0) {
+        analytics.trackCookLevelUp(beforeLv, afterSave.level, 'cook');
+      }
+    }
+
+    TutorialManager.onCooked(recipeId);
     if (TutorialManager.currentStep !== step) {
       this.close(true);
       return;

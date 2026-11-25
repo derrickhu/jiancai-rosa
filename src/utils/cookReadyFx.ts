@@ -8,13 +8,13 @@ import { cookXpView, type RecipeId } from '@/sim';
 import type { Rarity } from '@/sim/rarity';
 import { KitchenManager } from '@/managers/KitchenManager';
 import { dishTexture, fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from './assets';
-import { HUD_ICON, PLAYER_LEVEL_HUD, makeLabel, makePlayerLevelHud, makeRarityFlare } from './ui';
+import { destroyDisplayNode } from './destroy';
+import { HUD_ICON, PLAYER_LEVEL_HUD, attachSpriteContour, makeLabel, makePlayerLevelHud } from './ui';
 
 const Z = 30500;
 const TITLE_FONT = 'Songti SC, STSong, PingFang SC, serif';
 const INK = 0x2A2018;
 const DISH = 168;
-const FLARE = 320;
 const BADGE = 52;
 const EXP_GAP = 76;
 
@@ -136,9 +136,9 @@ export function clearCookReadyFx(flush = true): void {
   for (const fly of _flies) TweenManager.cancelTarget(fly);
   _flies = [];
   if (!_layer) return;
-  _cancelTree(_layer);
-  if (!_layer.destroyed) _layer.destroy({ children: true });
+  const layer = _layer;
   _layer = null;
+  destroyDisplayNode(layer);
 }
 
 function _starCount(xp: number): number {
@@ -190,7 +190,7 @@ function _flyExp(
         star.scale.set(grow);
       },
       onComplete: () => {
-        if (!star.destroyed) star.destroy({ children: true });
+        destroyDisplayNode(star);
         left -= 1;
         if (left > 0) return;
         _flies = [];
@@ -234,10 +234,6 @@ function _drawPop(info: CookReadyInfo): PIXI.Container {
   const showXp = info.xp > 0;
   const root = new PIXI.Container();
 
-  const glow = makeRarityFlare(info.rarity, FLARE);
-  glow.position.set(0, 0);
-  root.addChild(glow);
-
   const dish = new PIXI.Sprite(dishTexture(info.recipeId));
   if (isTextureReady(dish.texture)) fitSpriteInBox(dish, DISH, DISH);
   else {
@@ -247,6 +243,7 @@ function _drawPop(info: CookReadyInfo): PIXI.Container {
   dish.anchor.set(0.5);
   dish.eventMode = 'none';
   root.addChild(dish);
+  attachSpriteContour(root, dish, info.rarity, { onDark: true, selected: true });
 
   const count = makeLabel(`×${qty}`, 48, 0xFFF8F0, {
     fontFamily: TITLE_FONT,
@@ -322,25 +319,15 @@ function _fadeOut(layer: PIXI.Container, pop: PIXI.Container): void {
 
 function _finish(layer: PIXI.Container): void {
   if (_layer !== layer) return;
+  _layer = null;
   _flushLevels();
   for (const fly of _flies) TweenManager.cancelTarget(fly);
   _flies = [];
-  _cancelTree(layer);
-  if (!layer.destroyed) layer.destroy({ children: true });
-  if (_layer === layer) _layer = null;
+  destroyDisplayNode(layer);
 }
 
 function _flushLevels(): void {
   if (!_pendingLevels) return;
   _pendingLevels = false;
   EventBus.emit(EV.cookLeveled);
-}
-
-function _cancelTree(node: PIXI.Container): void {
-  TweenManager.cancelTarget(node);
-  TweenManager.cancelTarget(node.scale);
-  for (const child of node.children) {
-    if (child instanceof PIXI.Container) _cancelTree(child);
-    else TweenManager.cancelTarget(child);
-  }
 }

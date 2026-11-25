@@ -1,9 +1,11 @@
 import * as PIXI from 'pixi.js';
 import { AudioManager } from '@/core/AudioManager';
 import { Ease, TweenManager } from '@/core/TweenManager';
-import { RARITY_STYLE, type Rarity } from '@/sim/rarity';
+import { RARITY_STYLE, type Rarity, type RarityTier } from '@/sim/rarity';
 import { buffIconPath, type HudBuff } from '@/sim/dishEffects';
 import { fitSpriteInBox, gameTexture, isTextureReady, itemTexture, resolveItemAssetPath, whenTextureReady } from './assets';
+import { destroyDisplayChildren } from './destroy';
+export { attachSpriteContour, ContourRimMesh, type SpriteContourOptions } from './contourGlow';
 
 export const FONT = 'PingFang SC, Hiragino Sans GB, sans-serif';
 
@@ -94,7 +96,7 @@ export const UI_KIT = {
 } as const;
 
 /**
- * 格子的稀有度描边：收敛原本粗艳荧光框，改为精致深棕外框 + 品质柔和内边与左上角品质小圆点。
+ * 格子的稀有度描边：精致边框 + 左上角品阶色圆点，对齐普通素褐 / 良品翠绿 / 上品宝蓝 / 珍品紫罗兰 / 天选鎏金。
  */
 export function drawRarityFrame(
   g: PIXI.Graphics,
@@ -102,48 +104,66 @@ export function drawRarityFrame(
   y: number,
   w: number,
   h: number,
-  rarity: Rarity,
+  rarity: RarityTier,
   opts: { radius?: number; thick?: boolean } = {},
 ): void {
   const r = opts.radius ?? 11;
-  const accent = rarity === 'legendary'
-    ? 0x8256A8
-    : rarity === 'epic'
-      ? 0x4E82AC
-      : rarity === 'rare'
-        ? 0x5B9452
-        : 0xC8B08E;
-  g.lineStyle(opts.thick ? 2.4 : 1.6, accent, rarity === 'common' ? 0.55 : 0.92);
+  const accent = rarity === 'god'
+    ? 0xEE8C18
+    : rarity === 'legendary'
+      ? 0x9442E0
+      : rarity === 'epic'
+        ? 0x2E82E6
+        : rarity === 'rare'
+          ? 0x3EB848
+          : 0xC8B08E;
+  g.lineStyle(opts.thick ? 2.6 : 1.8, accent, rarity === 'common' ? 0.58 : 0.95);
   g.drawRoundedRect(x, y, w, h, r);
   if (rarity !== 'common') {
     g.lineStyle(0);
-    g.beginFill(accent, 0.95);
-    g.drawCircle(x + 8, y + 8, 3.2);
+    g.beginFill(accent, 0.96);
+    g.drawCircle(x + 8, y + 8, 3.4);
     g.endFill();
   }
 }
 
-const RARITY_FLARE = 'subpkg_kitchen/ui_pickup_flare.png';
+export interface RarityFlareOptions {
+  /** 选中态（历史兼容参数，轮廓描边请优先使用 attachSpriteContour）。 */
+  selected?: boolean;
+  /** 暗底舞台氛围提示。 */
+  onDark?: boolean;
+  /** 显式覆盖整体透明度。 */
+  alpha?: number;
+}
 
-/** 捡到菜时垫在后面的发散光：用收摊那张光晕，按品质染色，叠光。 */
-export function makeRarityFlare(rarity: Rarity, size: number): PIXI.Sprite {
-  const style = RARITY_STYLE[rarity];
-  const flare = new PIXI.Sprite(gameTexture(RARITY_FLARE));
-  flare.anchor.set(0.5);
-  flare.blendMode = PIXI.BLEND_MODES.ADD;
-  flare.tint = style.float;
-  flare.alpha = rarity === 'common' ? 0.52 : 0.68;
-  flare.width = size;
-  flare.height = size;
-  flare.rotation = Math.random() * Math.PI * 2;
-  flare.eventMode = 'none';
-  whenTextureReady(RARITY_FLARE, () => {
-    if (flare.destroyed) return;
-    flare.texture = gameTexture(RARITY_FLARE);
-    flare.width = size;
-    flare.height = size;
-  });
-  return flare;
+/**
+ * 历史光晕接口兜底：已全面升级为贴合剪影的 `attachSpriteContour`，此处不再绘制高不透明度彩色大光团，
+ * 仅在暗底天选（`onDark && rarity === 'god'`）纯氛围场景保留 <=0.10 极轻柔暖意轻衬，其余一律返回零开销空容器。
+ */
+export function makeRarityFlare(
+  rarity: RarityTier,
+  size: number,
+  opts?: RarityFlareOptions,
+): PIXI.Container {
+  const root = new PIXI.Container();
+  root.eventMode = 'none';
+
+  if (opts?.onDark && rarity === 'god' && size > 24) {
+    const maxAlpha = Math.min(0.10, Math.max(0, opts.alpha ?? 0.08));
+    if (maxAlpha > 0.01) {
+      const g = new PIXI.Graphics();
+      g.beginFill(0xFFEAC2, maxAlpha * 0.65);
+      g.drawCircle(0, 0, Math.round(size * 0.36));
+      g.endFill();
+      g.beginFill(0xFFF6DE, maxAlpha * 0.45);
+      g.drawCircle(0, 0, Math.round(size * 0.22));
+      g.endFill();
+      g.eventMode = 'none';
+      root.addChild(g);
+    }
+  }
+
+  return root;
 }
 
 export function makeLabel(
@@ -2016,7 +2036,7 @@ function attachUiClick(root: PIXI.Container): void {
 export function makeMuteButton(size = 46): PIXI.Container {
   const root = new PIXI.Container();
   const paint = (): void => {
-    root.removeChildren();
+    destroyDisplayChildren(root);
     const muted = AudioManager.isMuted();
     const g = new PIXI.Graphics();
     g.beginFill(0x180F07, 0.24);
@@ -2322,7 +2342,7 @@ export function makeHandProgressBar(opts: {
   const inset = Math.max(2, Math.round(opts.height * 0.18));
   const fh = opts.height - inset * 2;
   const setRatio = (r: number): void => {
-    fillHolder.removeChildren();
+    destroyDisplayChildren(fillHolder);
     const ratio = Math.min(1, Math.max(0, r));
     const fw = Math.max(fh * 1.2, Math.round((opts.width - inset * 2) * ratio));
     const fill = makeBarSlice('barFill', fw, fh);

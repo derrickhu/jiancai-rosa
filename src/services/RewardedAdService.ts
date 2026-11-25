@@ -1,4 +1,4 @@
-import { analytics } from '@/analytics';
+import { analytics, type AdTrackOptions } from '@/analytics';
 import { REWARDED_AD_UNITS_BY_PLATFORM, type RewardedAdScene } from '@/config/AdsConfig';
 import { Platform } from '@/core/PlatformService';
 
@@ -7,20 +7,23 @@ export type RewardedAdResult = 'completed' | 'skipped' | 'unavailable' | 'error'
 type RewardedVideoAd = {
   load: () => Promise<void>;
   show: () => Promise<void>;
+  destroy?: () => void;
   onClose: (handler: (res?: { isEnded?: boolean }) => void) => void;
   onError: (handler: (err: { errMsg?: string; errCode?: number }) => void) => void;
 };
 
 const SDK_ERR_UNAVAILABLE = -100;
 const SDK_ERR_BUSY = -101;
+// 微信多例模式下同时保留过多激励视频实例会触发性能警告并占用原生解码缓存，LRU 上限收敛为 3
+const MAX_CACHED_ADS = 3;
 
 const ads = new Map<string, RewardedVideoAd>();
 const bound = new Set<string>();
 let pending: { unitId: string; scene: RewardedAdScene; resolve: (result: RewardedAdResult) => void } | null = null;
 let errorReportedThisCycle = false;
 
-function adExtras(unitId: string): { ad_unit_id: string } {
-  return { ad_unit_id: unitId };
+function adExtras(unitId: string): AdTrackOptions {
+  return { ad_type: 'reward', ad_unit_id: unitId };
 }
 
 function reportAdErrorOnce(scene: RewardedAdScene, unitId: string, errCode: number, errMsg: string): void {
@@ -62,19 +65,45 @@ function bind(ad: RewardedVideoAd, unitId: string): void {
   });
 }
 
+function touchAd(unitId: string, ad: RewardedVideoAd): void {
+  ads.delete(unitId);
+  ads.set(unitId, ad);
+}
+
+function evictOldestAdIfNeeded(): void {
+  while (ads.size >= MAX_CACHED_ADS) {
+    let victimKey: string | null = null;
+    for (const key of ads.keys()) {
+      if (pending?.unitId !== key) {
+        victimKey = key;
+        break;
+      }
+    }
+    if (!victimKey) break;
+    const victim = ads.get(victimKey);
+    ads.delete(victimKey);
+    bound.delete(victimKey);
+    try {
+      victim?.destroy?.();
+    } catch (_) {}
+  }
+}
+
 function getAd(unitId: string): RewardedVideoAd | null {
   const api = Platform.api;
   if (!api?.createRewardedVideoAd) return null;
   const existing = ads.get(unitId);
   if (existing) {
+    touchAd(unitId, existing);
     bind(existing, unitId);
     return existing;
   }
+  evictOldestAdIfNeeded();
   try {
     const ad = api.createRewardedVideoAd(
       Platform.name === 'wechat' ? { adUnitId: unitId, multiton: true } : { adUnitId: unitId },
     ) as RewardedVideoAd;
-    ads.set(unitId, ad);
+    touchAd(unitId, ad);
     bind(ad, unitId);
     return ad;
   } catch (error) {

@@ -1,79 +1,243 @@
 /**
- * @pixi/unsafe-eval 内联 patch + PIXI.settings.ADAPTER 配置
+ * @pixi/unsafe-eval 内联 patch + PIXI.settings.ADAPTER 配置 + 有界 2D Canvas 对象池
  * 必须在 new PIXI.Application() 之前执行
  * 单独文件，避免 Game.ts 因副作用代码被 bundler 打包多份
  */
 import { ShaderSystem, BaseImageResource, Texture, BaseTexture } from '@pixi/core';
 import { settings } from '@pixi/settings';
+import { Text } from '@pixi/text';
 import { getNativePlatformApi } from './platformDetect';
 
-// ======== 配置 PIXI.settings.ADAPTER ========
-// 关键：PixiJS 的 BrowserAdapter 默认通过 document.createElement('canvas') 创建离屏 canvas，
-// 真机环境中 document 可能不可用或不完整，导致 Graphics/Text 全部不渲染。
-// 直接注入 wx/tt API 调用，完全绕过 document。
+export interface CanvasPoolStats {
+  totalCreated: number;
+  totalRequests: number;
+  reuseRate: number;
+  pooled: number;
+  activeOut: number;
+}
+
+interface CanvasPoolState {
+  pool: any[];
+  pooledSet: Set<any>;
+  totalCreated: number;
+  totalRequests: number;
+  activeOut: number;
+  adapterPatched: boolean;
+}
+
+const MAX_CANVAS_POOL = 160;
+
+const _holder: any = typeof GameGlobal !== 'undefined' ? GameGlobal
+  : typeof window !== 'undefined' ? window
+  : globalThis;
+
+const _poolState: CanvasPoolState = _holder.__jiancaiCanvasPoolState ?? (
+  _holder.__jiancaiCanvasPoolState = {
+    pool: [],
+    pooledSet: new Set<any>(),
+    totalCreated: 0,
+    totalRequests: 0,
+    activeOut: 0,
+    adapterPatched: false,
+  }
+);
+
+/**
+ * 回收 PIXI.Text 等独占的 2D 离屏 Canvas：
+ * 1) 立即缩回 1×1 释放底层 Metal/Skia IOSurface 数 MB 原生像素缓冲；
+ * 2) 清理旧 _pixiId，避免复用时命中已销毁纹理缓存 ID；
+ * 3) 有界入池复用（上限 64），超出上限则置 0×0 彻底释放。
+ */
+export function recycle2DCanvas(canvas: any): void {
+  if (!canvas || _poolState.pooledSet.has(canvas)) return;
+
+  try {
+    delete canvas._pixiId;
+  } catch (_) {
+    canvas._pixiId = undefined;
+  }
+
+  _poolState.activeOut = Math.max(0, _poolState.activeOut - 1);
+
+  if (_poolState.pool.length < MAX_CANVAS_POOL) {
+    try {
+      canvas.width = 1;
+      canvas.height = 1;
+    } catch (_) { /* ignore */ }
+    _poolState.pooledSet.add(canvas);
+    _poolState.pool.push(canvas);
+  } else {
+    try {
+      canvas.width = 0;
+      canvas.height = 0;
+    } catch (_) {
+      try {
+        canvas.width = 1;
+        canvas.height = 1;
+      } catch (_2) { /* ignore */ }
+    }
+  }
+}
+
+export function getCanvasPoolStats(): CanvasPoolStats {
+  const totalRequests = _poolState.totalRequests || 0;
+  const totalCreated = _poolState.totalCreated;
+  const reuseRate = totalRequests > 0
+    ? Math.max(0, Math.round(((totalRequests - totalCreated) / totalRequests) * 10000) / 10000)
+    : 1;
+  return {
+    totalCreated,
+    totalRequests,
+    reuseRate,
+    pooled: _poolState.pool.length,
+    activeOut: _poolState.activeOut,
+  };
+}
+
+_holder.__jiancaiCanvasStats = getCanvasPoolStats;
+(globalThis as any).__jiancaiCanvasStats = getCanvasPoolStats;
+
+// Game.stage 已按物理像素缩放（750 设计宽本身已是 2x 高清密度），锁死 Text 默认分辨率为 1，杜绝叠加 DPR 生成 9 倍巨型文字贴图
+Text.defaultResolution = 1;
+Text.defaultAutoResolution = false;
+
+// ======== 配置 PIXI.settings.ADAPTER + 2D Canvas 池化 ========
 const _api: any = getNativePlatformApi();
 settings.CREATE_IMAGE_BITMAP = false;
-if (_api) {
-  try {
-    // 创建 2D 离屏 canvas 的辅助函数
-    // 优先 createOffscreenCanvas({ type:'2d' }) 确保真机 canvas 2D 上下文可用；
-    // 部分设备（如鸿蒙/旧版微信）可能不支持，安全降级到 createCanvas()
-    let _useOffscreen = false;
-    try {
-      if (typeof _api.createOffscreenCanvas === 'function') {
-        const _test = _api.createOffscreenCanvas({ type: '2d', width: 1, height: 1 });
-        const _testCtx = _test.getContext('2d');
-        if (_testCtx) _useOffscreen = true;
-      }
-    } catch (_) { /* 不支持则回退 */ }
-    console.log('[pixiPatch] createOffscreenCanvas 可用:', _useOffscreen);
 
-    const _create2DCanvas = (w?: number, h?: number): any => {
-      let c: any;
-      if (_useOffscreen) {
-        try {
-          c = _api.createOffscreenCanvas({ type: '2d', width: w || 1, height: h || 1 });
-        } catch (_) {
+if (!_poolState.adapterPatched) {
+  _poolState.adapterPatched = true;
+
+  if (_api) {
+    try {
+      // 优先 createOffscreenCanvas({ type:'2d' }) 确保真机 canvas 2D 上下文可用；
+      // 初始化仅探测 1 次并直接复用该探测 canvas 与 context 构造器，绝不重复创建！
+      let _useOffscreen = false;
+      let _cachedCtx2DCtor: any = null;
+      let _cachedWebGLCtor: any = null;
+
+      try {
+        if (typeof _api.createOffscreenCanvas === 'function') {
+          const _test = _api.createOffscreenCanvas({ type: '2d', width: 1, height: 1 });
+          const _testCtx = _test.getContext('2d');
+          if (_testCtx) {
+            _useOffscreen = true;
+            _cachedCtx2DCtor = _testCtx.constructor || Object;
+            _poolState.totalCreated += 1;
+            _poolState.pooledSet.add(_test);
+            _poolState.pool.push(_test);
+          }
+        }
+      } catch (_) { /* 不支持则回退 */ }
+      console.log('[pixiPatch] createOffscreenCanvas 可用:', _useOffscreen);
+
+      const _rawCreate2DCanvas = (w?: number, h?: number): any => {
+        let c: any;
+        const cw = w && w > 0 ? w : 1;
+        const ch = h && h > 0 ? h : 1;
+        if (_useOffscreen) {
+          try {
+            c = _api.createOffscreenCanvas({ type: '2d', width: cw, height: ch });
+          } catch (_) {
+            c = _api.createCanvas();
+          }
+        } else {
           c = _api.createCanvas();
         }
-      } else {
-        c = _api.createCanvas();
-      }
-      if (w !== undefined) c.width = w;
-      if (h !== undefined) c.height = h;
-      return c;
-    };
+        if (w !== undefined) c.width = w;
+        if (h !== undefined) c.height = h;
+        return c;
+      };
 
-    settings.ADAPTER = {
-      createCanvas: _create2DCanvas,
-      getCanvasRenderingContext2D: (): any => {
+      const _pooledCreate2DCanvas = (w?: number, h?: number): any => {
+        _poolState.totalRequests = (_poolState.totalRequests || 0) + 1;
+        if (_poolState.pool.length > 0) {
+          const c = _poolState.pool.pop()!;
+          _poolState.pooledSet.delete(c);
+          _poolState.activeOut += 1;
+          const cw = w !== undefined ? w : 1;
+          const ch = h !== undefined ? h : 1;
+          c.width = cw;
+          c.height = ch;
+          try {
+            const ctx = c.getContext?.('2d');
+            ctx?.setTransform?.(1, 0, 0, 1, 0, 0);
+            if (cw > 0 && ch > 0) ctx?.clearRect?.(0, 0, cw, ch);
+          } catch (_) { /* ignore */ }
+          return c;
+        }
+        const c = _rawCreate2DCanvas(w, h);
+        _poolState.totalCreated += 1;
+        _poolState.activeOut += 1;
+        return c;
+      };
+
+      settings.ADAPTER = {
+        createCanvas: _pooledCreate2DCanvas,
+        getCanvasRenderingContext2D: (): any => {
+          if (_cachedCtx2DCtor) return _cachedCtx2DCtor;
+          try {
+            const c = _pooledCreate2DCanvas(1, 1);
+            const ctx = c.getContext('2d');
+            _cachedCtx2DCtor = ctx ? ctx.constructor : Object;
+            recycle2DCanvas(c);
+          } catch {
+            _cachedCtx2DCtor = Object;
+          }
+          return _cachedCtx2DCtor;
+        },
+        getWebGLRenderingContext: (): any => {
+          if (_cachedWebGLCtor) return _cachedWebGLCtor;
+          try {
+            const c = _api.createCanvas();
+            // 业界已知：必须传 stencil:true，否则鸿蒙/部分安卓 stencil 不可用
+            const gl = c.getContext('webgl', { stencil: true, antialias: false, alpha: true, depth: true });
+            _cachedWebGLCtor = gl ? gl.constructor : Object;
+            try { c.width = 0; c.height = 0; } catch (_) { /* ignore */ }
+          } catch {
+            _cachedWebGLCtor = Object;
+          }
+          return _cachedWebGLCtor;
+        },
+        getNavigator: (): any => ({
+          userAgent: 'wxgame',
+          gpu: null,
+        }),
+        getBaseUrl: (): string => '',
+        getFontFaceSet: (): any => null,
+        fetch: ((_url: any, _opts?: any): any => {
+          return Promise.reject(new Error('fetch not available in mini game'));
+        }) as any,
+      } as any;
+      console.log('[pixiPatch] PIXI.settings.ADAPTER 已配置为小游戏池化模式');
+    } catch (e) {
+      console.warn('[pixiPatch] ADAPTER 配置失败:', e);
+    }
+  } else if (settings.ADAPTER && typeof settings.ADAPTER.createCanvas === 'function') {
+    // 浏览器 / WebGL 预览环境同样接入有界 2D Canvas 对象池，消除频繁创建 DOM Canvas 与 GC 抖动
+    const _origCreateCanvas = settings.ADAPTER.createCanvas.bind(settings.ADAPTER);
+    settings.ADAPTER.createCanvas = ((w?: number, h?: number): any => {
+      _poolState.totalRequests = (_poolState.totalRequests || 0) + 1;
+      if (_poolState.pool.length > 0) {
+        const c = _poolState.pool.pop()!;
+        _poolState.pooledSet.delete(c);
+        _poolState.activeOut += 1;
+        const cw = w !== undefined ? w : 1;
+        const ch = h !== undefined ? h : 1;
+        c.width = cw;
+        c.height = ch;
         try {
-          const c = _create2DCanvas(1, 1);
-          const ctx = c.getContext('2d');
-          return ctx ? ctx.constructor : Object;
-        } catch { return Object; }
-      },
-      getWebGLRenderingContext: (): any => {
-        try {
-          const c = _api.createCanvas();
-          // 业界已知：必须传 stencil:true，否则鸿蒙/部分安卓 stencil 不可用
-          const gl = c.getContext('webgl', { stencil: true, antialias: true, alpha: true, depth: true });
-          return gl ? gl.constructor : Object;
-        } catch { return Object; }
-      },
-      getNavigator: (): any => ({
-        userAgent: 'wxgame',
-        gpu: null,
-      }),
-      getBaseUrl: (): string => '',
-      getFontFaceSet: (): any => null,
-      fetch: ((_url: any, _opts?: any): any => {
-        return Promise.reject(new Error('fetch not available in mini game'));
-      }) as any,
-    } as any;
-    console.log('[pixiPatch] PIXI.settings.ADAPTER 已配置为小游戏模式');
-  } catch (e) {
-    console.warn('[pixiPatch] ADAPTER 配置失败:', e);
+          const ctx = c.getContext?.('2d');
+          ctx?.setTransform?.(1, 0, 0, 1, 0, 0);
+          if (cw > 0 && ch > 0) ctx?.clearRect?.(0, 0, cw, ch);
+        } catch (_) { /* ignore */ }
+        return c;
+      }
+      const c = _origCreateCanvas(w, h);
+      _poolState.totalCreated += 1;
+      _poolState.activeOut += 1;
+      return c;
+    }) as any;
   }
 }
 
@@ -150,11 +314,7 @@ Object.assign(ShaderSystem.prototype, {
 
 console.log('[pixiPatch] unsafe-eval patch 已应用');
 
-// ======== 真机 Canvas 纹理 patch ========
-// 微信小游戏真机 gl.texImage2D(canvas) 静默失败，getImageData 返回全黑。
-// 策略：
-// 1) Texture.WHITE → 直接用 fromBuffer 纯白像素，完全绕过 Canvas
-// 2) PIXI.Text canvas → 用 toDataURL 转 Image 再上传（Image 上传真机可用）
+// ======== 真机 Canvas 纹理单次直传 patch ========
 const _isRealDevice = (() => {
   try {
     if (!_api) return false;
@@ -166,38 +326,35 @@ const _isRealDevice = (() => {
 console.log('[pixiPatch] _isRealDevice:', _isRealDevice);
 
 if (_isRealDevice) {
-  // ---- 1) 强制用纯像素数据创建 Texture.WHITE ----
+  // ---- 1) 强制用纯像素数据创建 Texture.WHITE（完全绕过 Canvas） ----
   const whitePixels = new Uint8Array(16 * 16 * 4);
   whitePixels.fill(255);
   const whiteBT = BaseTexture.fromBuffer(whitePixels, 16, 16);
   const whiteTex = new Texture(whiteBT);
   (whiteTex as any).destroy = () => {};
-  // WHITE 是 getter 只读属性，必须用 defineProperty 覆盖
   try { Object.defineProperty(Texture, '_WHITE', { value: whiteTex, writable: true, configurable: true }); } catch (_e) { /* */ }
   try { Object.defineProperty(Texture, 'WHITE', { get: () => whiteTex, configurable: true }); } catch (_e) { /* */ }
   console.log('[pixiPatch] Texture.WHITE 已用 fromBuffer 重建（绕过 Canvas）');
 
-  // ---- 2) 真机 Canvas 纹理上传修复 ----
-  // 策略：永远先调用原始 upload（确保所有 GL 状态正确、Image 源正常工作），
-  // 然后仅对 Canvas 源用 getImageData 读取像素并同步覆盖 GL 纹理。
-  // 关键安全措施：
-  // - 不调用 renderer.texture.bind()，避免触发递归 upload
-  // - 用 toTempFilePathSync 存在性判断 Canvas（Image 无此方法）
-  // - 加重入保护防止无限递归
+  // ---- 2) 真机 Canvas 纹理单次上传（消除 _origUpload 废上传 + 双重 gl.texImage2D 卡顿） ----
   const _origUpload = BaseImageResource.prototype.upload;
   let _uploadLog = 0;
   let _inUpload = false;
 
-  // 预检测 getImageData 是否返回有效像素
+  // 预检测一次 getImageData 是否返回有效像素，测完立即回收探测 canvas
   let _canReadPixels = false;
   try {
     const tc = settings.ADAPTER.createCanvas(4, 4);
-    const tctx = tc.getContext('2d');
-    if (tctx) {
-      tctx.fillStyle = '#FF0000';
-      tctx.fillRect(0, 0, 4, 4);
-      const td = tctx.getImageData(0, 0, 1, 1).data;
-      _canReadPixels = td[0] > 200 && td[3] > 200;
+    try {
+      const tctx = tc.getContext('2d');
+      if (tctx) {
+        tctx.fillStyle = '#FF0000';
+        tctx.fillRect(0, 0, 4, 4);
+        const td = tctx.getImageData(0, 0, 1, 1).data;
+        _canReadPixels = td[0] > 200 && td[3] > 200;
+      }
+    } finally {
+      recycle2DCanvas(tc);
     }
   } catch (_) { /* */ }
   console.log('[pixiPatch] canvas getImageData 可用:', _canReadPixels);
@@ -205,7 +362,6 @@ if (_isRealDevice) {
   BaseImageResource.prototype.upload = function (
     renderer: any, baseTexture: any, glTexture: any, source?: any,
   ): boolean {
-    // 重入保护：如果已在 upload 中，直接走原始路径
     if (_inUpload) {
       return _origUpload.call(this, renderer, baseTexture, glTexture, source);
     }
@@ -214,11 +370,7 @@ if (_isRealDevice) {
     try {
       source = source || this.source;
 
-      // 1) 永远先执行原始 upload（Image 纹理靠这步正常工作）
-      const result = _origUpload.call(this, renderer, baseTexture, glTexture, source);
-
-      // 2) 仅对 Canvas 源做像素补救
-      // Canvas 独有 toTempFilePathSync，Image 对象没有
+      // 针对小游戏 2D Canvas 源（独有 toTempFilePathSync）：直接单次上传像素缓冲，跳过无效的 _origUpload！
       if (_canReadPixels
           && source
           && source.width > 0 && source.height > 0
@@ -230,35 +382,53 @@ if (_isRealDevice) {
             const w = source.width;
             const h = source.height;
             const imageData = ctx.getImageData(0, 0, w, h);
-            const pixels = new Uint8Array(imageData.data.buffer);
+            const pixels = new Uint8Array(
+              imageData.data.buffer,
+              imageData.data.byteOffset,
+              imageData.data.byteLength,
+            );
 
-            // 原始 upload 已绑定纹理，直接用 GL 覆盖像素
             const gl = renderer.gl;
-            gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,
-              baseTexture.alphaMode > 0 ? 1 : 0);
-            gl.texImage2D(gl.TEXTURE_2D, 0, glTexture.internalFormat,
-              w, h, 0, baseTexture.format, glTexture.type, pixels);
+            gl.bindTexture(gl.TEXTURE_2D, glTexture.texture);
+            glTexture.width = w;
+            glTexture.height = h;
+            gl.pixelStorei(
+              gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,
+              baseTexture.alphaMode > 0 ? 1 : 0,
+            );
+            gl.texImage2D(
+              gl.TEXTURE_2D,
+              0,
+              glTexture.internalFormat,
+              w,
+              h,
+              0,
+              baseTexture.format,
+              glTexture.type,
+              pixels,
+            );
 
-            if (_uploadLog < 5) {
-              console.log('[pixiPatch] canvas buffer 覆盖成功:', w, 'x', h);
+            if (_uploadLog < 3) {
+              console.log('[pixiPatch] canvas 单次直传成功:', w, 'x', h);
               _uploadLog++;
             }
+            return true;
           }
         } catch (e) {
-          if (_uploadLog < 10) {
-            console.warn('[pixiPatch] canvas buffer 覆盖失败:', e);
+          if (_uploadLog < 8) {
+            console.warn('[pixiPatch] canvas 直传异常，回退原始路径:', e);
             _uploadLog++;
           }
         }
       }
 
-      return result;
+      return _origUpload.call(this, renderer, baseTexture, glTexture, source);
     } finally {
       _inUpload = false;
     }
   };
 
-  console.log('[pixiPatch] 真机 canvas 纹理上传 patch 已应用');
+  console.log('[pixiPatch] 真机 canvas 单次纹理直传 patch 已应用');
 }
 
 } // end if !__patched

@@ -6,6 +6,7 @@ import { OverlayManager } from '@/core/OverlayManager';
 import { Ease, TweenManager } from '@/core/TweenManager';
 import { EV } from '@/config/events';
 import { KitchenManager } from '@/managers/KitchenManager';
+import { destroyDisplayChildren } from '@/utils/destroy';
 import {
   RARITY_STYLE,
   rarityLabel,
@@ -19,8 +20,8 @@ import {
   FONT,
   HUD_ICON,
   UI_KIT,
+  attachSpriteContour,
   fitTextWidth,
-  makeRarityFlare,
   makeSlicedButton,
   makeText,
 } from '@/utils/ui';
@@ -37,6 +38,7 @@ import {
   SCENE_INK,
   drawInkDivider,
   makeDishDisplay,
+  makeRaritySeal,
   makeSealStamp,
   makeSceneRoot,
   sceneArtPaths,
@@ -46,7 +48,6 @@ import {
 const ART = {
   paper: 'subpkg_kitchen/ui_recipe_paper.png',
   cushion: 'subpkg_images/scene_gacha_cushion.png',
-  flare: 'subpkg_kitchen/ui_pickup_flare.png',
 } as const;
 
 const W = 660;
@@ -85,7 +86,7 @@ export class RecipeUnlockPanel extends PIXI.Container {
     this.visible = false;
     this._paintQueued = false;
     this._stampedId = null;
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
     TutorialOverlay.refresh();
   }
 
@@ -102,7 +103,7 @@ export class RecipeUnlockPanel extends PIXI.Container {
   };
 
   relayout(): void {
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
     if (!this._isOpen) return;
 
     const id = KitchenManager.peekRecipeUnlock();
@@ -141,13 +142,7 @@ export class RecipeUnlockPanel extends PIXI.Container {
       onDimTap: () => this._advance(),
     });
 
-    // 背景祥瑞霞光
-    const backFlare = makeRarityFlare(recipe.rarity, 680);
-    backFlare.alpha = 0.65;
-    backFlare.position.set(W / 2, 430);
-    scene.addChild(backFlare);
-
-    // 木夹古法食谱宣纸（720x1101 等比落位）
+    // 木夹古法食谱宣纸（720x1101 等比落位，外沿勾勒品阶贴边轮廓光）
     const paperW = 616;
     const paperH = 942;
     const paperX = Math.round((W - paperW) / 2);
@@ -159,6 +154,11 @@ export class RecipeUnlockPanel extends PIXI.Container {
       sp.position.set(W / 2, 0);
       sp.eventMode = 'none';
       scene.addChild(sp);
+      attachSpriteContour(scene, sp, recipe.rarity, {
+        onDark: true,
+        selected: true,
+        thicknessScale: 1.05,
+      });
     } else {
       const fb = new PIXI.Graphics();
       fb.lineStyle(3, SCENE_INK.ink, 1);
@@ -180,7 +180,7 @@ export class RecipeUnlockPanel extends PIXI.Container {
     brow.position.set(cx, 204);
     scene.addChild(brow);
 
-    // 2. 锦缎托垫 + 大尺寸立体成菜直呈 + 朱印盖章（去掉中间多余的青花底盘）
+    // 2. 锦缎托垫 + 大尺寸立体成菜贴边发光直呈 + 左右对称品阶印/新谱朱印
     const cushion = sceneSprite(ART.cushion, 360, 200);
     if (cushion) {
       cushion.anchor.set(0.5);
@@ -188,37 +188,54 @@ export class RecipeUnlockPanel extends PIXI.Container {
       scene.addChild(cushion);
     }
 
-    const dishFlare = makeRarityFlare(recipe.rarity, 286);
-    dishFlare.alpha = 0.58;
-    dishFlare.position.set(cx, 348);
-    scene.addChild(dishFlare);
-
     const plateDish = makeDishDisplay({
       dishPath,
       size: 192,
       shadowAlpha: 0.30,
       shadowColor: 0x3A0A06,
+      rarity: recipe.rarity,
+      contourOpts: { selected: true, thicknessScale: 1.12 },
     });
     plateDish.position.set(cx, 356);
     scene.addChild(plateDish);
 
-    const seal = makeSealStamp('新谱收录', 74, -0.14);
+    const raritySeal = makeRaritySeal(recipe.rarity, 64, -0.09);
+    raritySeal.position.set(cx - 168, 278);
+    scene.addChild(raritySeal);
+
+    const seal = makeSealStamp('新谱收录', 74, 0.12);
     seal.position.set(cx + 168, 276);
     scene.addChild(seal);
 
     if (this._stampedId !== id) {
       this._stampedId = id;
+      raritySeal.scale.set(1.75);
+      raritySeal.alpha = 0.15;
+      TweenManager.to({
+        target: raritySeal,
+        props: { alpha: 1 },
+        duration: 0.14,
+      });
+      TweenManager.to({
+        target: raritySeal.scale,
+        props: { x: 1, y: 1 },
+        duration: 0.24,
+        ease: Ease.easeOutBack,
+      });
+
       seal.scale.set(1.85);
       seal.alpha = 0.2;
       TweenManager.to({
         target: seal,
         props: { alpha: 1 },
         duration: 0.14,
+        delay: 0.05,
       });
       TweenManager.to({
         target: seal.scale,
         props: { x: 1, y: 1 },
         duration: 0.26,
+        delay: 0.05,
         ease: Ease.easeOutBack,
       });
     }
@@ -241,7 +258,7 @@ export class RecipeUnlockPanel extends PIXI.Container {
       'heading',
       `${rarityLabel(recipe.rarity)} · ${recipe.group} · 售价 ${sell} 金`,
       RARITY_STYLE[recipe.rarity].ink,
-      { size: 25 },
+      { size: 25, stroke: 0xFFF8EA, strokeWidth: 3 },
     );
     meta.anchor.set(0.5);
     meta.position.set(cx, 636);

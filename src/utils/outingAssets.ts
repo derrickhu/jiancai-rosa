@@ -1,4 +1,17 @@
-import { MARKETS, MARKET_ART, SPECIAL_MARKETS, VEHICLES, getSpecialMarket, hudBuffPaths, specialBootItems, sceneBg, type MarketId, type RunState, type SpecialMarketId } from '@/sim';
+import {
+  MARKETS,
+  MARKET_ART,
+  SPECIAL_MARKETS,
+  VEHICLES,
+  getSpecialMarket,
+  hudBuffPaths,
+  specialBootItems,
+  sceneBg,
+  type MarketId,
+  type RunState,
+  type SpecialFlavor,
+  type SpecialMarketId,
+} from '@/sim';
 import { CARD_FRAME } from '@/gameobjects/market/MapView';
 import { HUD_ICON, MARKET_PROP_ART, UI_BTN } from '@/utils/ui';
 
@@ -7,12 +20,33 @@ export const OUTING_CURTAIN = 'subpkg_images/outing_curtain.jpg';
 
 /** 挑完回家领奖壳，进菜场时预载，收摊不用再等贴图。 */
 export const RESULT_UI = [
-  'subpkg_kitchen/ui_result_panel.png',
   'subpkg_kitchen/ui_result_burst.png',
   'subpkg_kitchen/ui_result_title_safe.png',
   'subpkg_kitchen/ui_result_title_messy.png',
   'subpkg_kitchen/ui_pickup_flare.png',
 ] as const;
+
+const SPECIAL_FLAVOR_PROPS: Record<SpecialFlavor, readonly string[]> = {
+  spice: [
+    'subpkg_images/special_spice_table.png',
+    'subpkg_images/special_spice_jar.png',
+    'subpkg_images/special_spice_jar_lid.png',
+    'subpkg_images/special_spice_steam.png',
+  ],
+  fish: [
+    'subpkg_images/special_fish_rod.png',
+    'subpkg_images/special_fish_bobber.png',
+    'subpkg_images/special_fish_splash.png',
+  ],
+  dry: [
+    'subpkg_images/special_dry_tray_raw.png',
+    'subpkg_images/special_dry_tray_gold.png',
+  ],
+  field: [
+    'subpkg_images/special_field_mound.png',
+    'subpkg_images/special_field_lantern.png',
+  ],
+};
 
 /** 选点页开门后立刻要用的图。 */
 export function destinationBootPaths(): string[] {
@@ -36,12 +70,14 @@ export function destinationBootPaths(): string[] {
 
 export function specialBootPaths(id: SpecialMarketId): string[] {
   const def = getSpecialMarket(id);
-  const extra = def.flavor === 'spice'
-    ? ['subpkg_images/special_spice_jar.png', 'subpkg_images/special_spice_jar_lid.png']
-    : [];
+  const extra = SPECIAL_FLAVOR_PROPS[def.flavor] ?? [];
   return [...new Set([
     def.bg,
     def.thumb,
+    'subpkg_images/special_action_drum.png',
+    HUD_ICON.peek,
+    HUD_ICON.leave,
+    HUD_ICON.coin,
     ...RESULT_UI,
     ...extra,
     ...specialBootItems(def).map((itemId) => `subpkg_images/${itemId}.png`),

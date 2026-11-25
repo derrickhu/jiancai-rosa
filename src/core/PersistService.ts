@@ -2,9 +2,15 @@ import {
   CLOUD_SYNC_ALLOWLIST,
   CLOUD_SYNC_META_KEY,
   CLOUD_SYNC_SCHEMA_VERSION,
+  GAME_KEY,
   SAVE_KEY,
 } from '@/config/CloudConfig';
 import { Platform } from './PlatformService';
+
+/** 独立赶集实时断点存储键（仅本地快照，与主存档及云同步 dirty 标记解耦互不污染）。 */
+export const OUTING_CHECKPOINT_KEY = `${GAME_KEY}_outing_checkpoint_v1`;
+
+const ASYNC_FLUSH_DEBOUNCE_MS = 260;
 
 export interface CloudSyncMeta {
   updatedAt: number;
@@ -41,7 +47,34 @@ class PersistServiceClass {
   private readonly _allowlist = new Set<string>(CLOUD_SYNC_ALLOWLIST);
   private readonly _listeners = new Set<DirtyListener>();
   private readonly _importListeners = new Set<CloudImportListener>();
+  private readonly _beforeFlushHooks = new Set<() => void>();
   private _dirtyTrackingSuspended = 0;
+
+  /** 权威内存缓存：命中后 0ms 零跨桥读取，确保快照与业务逻辑实时一致。 */
+  private readonly _memCache = new Map<string, string | null>();
+  /** 待异步落盘脏键值（null 表示删除）。 */
+  private readonly _dirtyStorage = new Map<string, string | null>();
+  /** 内存缓存 CloudSyncMeta，消除每次数据变更重复 JSON.parse。 */
+  private _cloudMetaCache: CloudSyncMeta | null = null;
+  private _flushTimer: ReturnType<typeof setTimeout> | null = null;
+  private _flushingSync = false;
+  private _immediateSyncWindow = false;
+  private _immediateSyncResetTimer: ReturnType<typeof setTimeout> | null = null;
+  private _hooksBound = false;
+
+  constructor() {
+    this._bindLifecycleSafetyHooks();
+  }
+
+  /** 是否正处于切后台 / 页面卸载紧急同步刷盘窗口。 */
+  get isImmediateSyncActive(): boolean {
+    return this._immediateSyncWindow;
+  }
+
+  onBeforeFlush(hook: () => void): () => void {
+    this._beforeFlushHooks.add(hook);
+    return () => this._beforeFlushHooks.delete(hook);
+  }
 
   getAllowlistKeys(): readonly string[] {
     return CLOUD_SYNC_ALLOWLIST;
@@ -52,7 +85,12 @@ class PersistServiceClass {
   }
 
   readRaw(key: string): string | null {
-    return Platform.getStorageSync(key);
+    if (this._memCache.has(key)) {
+      return this._memCache.get(key) ?? null;
+    }
+    const val = Platform.getStorageSync(key);
+    this._memCache.set(key, val);
+    return val;
   }
 
   readJSON<T>(key: string): T | null {
@@ -84,6 +122,55 @@ class PersistServiceClass {
     }
   }
 
+  readOutingCheckpoint<T>(): T | null {
+    return this.readJSON<T>(OUTING_CHECKPOINT_KEY);
+  }
+
+  writeOutingCheckpoint(value: unknown): void {
+    this.writeJSON(OUTING_CHECKPOINT_KEY, value, { markDirty: false });
+  }
+
+  clearOutingCheckpoint(): void {
+    this.remove(OUTING_CHECKPOINT_KEY, { markDirty: false });
+  }
+
+  /**
+   * 紧急同步落盘：立即执行前置聚合钩子（如赶集待定断点、埋点待写队列）并将全部未落盘键值同步刷入磁盘。
+   * 仅在 onHide / onMemoryWarning / visibilitychange(hidden) / pagehide / beforeunload / restartMiniProgram 调用。
+   */
+  flushAllSync(): void {
+    if (this._flushingSync) return;
+    this._flushingSync = true;
+    try {
+      for (const hook of this._beforeFlushHooks) {
+        try {
+          hook();
+        } catch (e) {
+          console.warn('[Persist] beforeFlush hook 执行失败:', e);
+        }
+      }
+
+      if (this._flushTimer !== null) {
+        clearTimeout(this._flushTimer);
+        this._flushTimer = null;
+      }
+
+      if (this._dirtyStorage.size === 0) return;
+      const entries = [...this._dirtyStorage.entries()];
+      this._dirtyStorage.clear();
+
+      for (const [key, val] of entries) {
+        if (val === null) {
+          Platform.removeStorageSync(key);
+        } else {
+          Platform.setStorageSync(key, val);
+        }
+      }
+    } finally {
+      this._flushingSync = false;
+    }
+  }
+
   subscribe(listener: DirtyListener): () => void {
     this._listeners.add(listener);
     return () => this._listeners.delete(listener);
@@ -104,22 +191,27 @@ class PersistServiceClass {
   }
 
   getCloudSyncMeta(): CloudSyncMeta {
+    if (this._cloudMetaCache) {
+      return { ...this._cloudMetaCache };
+    }
     const parsed = this.readJSON<Partial<CloudSyncMeta>>(CLOUD_SYNC_META_KEY);
     if (parsed && typeof parsed.updatedAt === 'number') {
-      return {
+      this._cloudMetaCache = {
         updatedAt: parsed.updatedAt,
         dirty: !!parsed.dirty,
         lastSyncAt: typeof parsed.lastSyncAt === 'number' ? parsed.lastSyncAt : 0,
         remoteUpdatedAt: typeof parsed.remoteUpdatedAt === 'number' ? parsed.remoteUpdatedAt : 0,
       };
+      return { ...this._cloudMetaCache };
     }
 
-    return {
+    this._cloudMetaCache = {
       updatedAt: this._inferInitialUpdatedAt(),
       dirty: false,
       lastSyncAt: 0,
       remoteUpdatedAt: 0,
     };
+    return { ...this._cloudMetaCache };
   }
 
   isCloudDirty(): boolean {
@@ -270,18 +362,133 @@ class PersistServiceClass {
   }
 
   private _writeMeta(meta: CloudSyncMeta): void {
+    const copy: CloudSyncMeta = {
+      updatedAt: meta.updatedAt,
+      dirty: meta.dirty,
+      lastSyncAt: meta.lastSyncAt,
+      remoteUpdatedAt: meta.remoteUpdatedAt,
+    };
+    this._cloudMetaCache = copy;
     this.withSuppressedDirtyTracking(() => {
-      this._setLocalRaw(CLOUD_SYNC_META_KEY, JSON.stringify(meta));
+      this._setLocalRaw(CLOUD_SYNC_META_KEY, JSON.stringify(copy));
     });
   }
 
   private _setLocalRaw(key: string, value: string): void {
-    Platform.setStorageSync(key, value);
+    this._memCache.set(key, value);
+    if (key === CLOUD_SYNC_META_KEY && !this._dirtyTrackingSuspended) {
+      this._cloudMetaCache = null;
+    }
+    if (this._immediateSyncWindow) {
+      this._dirtyStorage.delete(key);
+      Platform.setStorageSync(key, value);
+      return;
+    }
+    this._dirtyStorage.set(key, value);
+    this._scheduleAsyncFlush();
   }
 
   private _removeLocalRaw(key: string): void {
-    Platform.removeStorageSync(key);
+    this._memCache.set(key, null);
+    if (key === CLOUD_SYNC_META_KEY) {
+      this._cloudMetaCache = null;
+    }
+    if (this._immediateSyncWindow) {
+      this._dirtyStorage.delete(key);
+      Platform.removeStorageSync(key);
+      return;
+    }
+    this._dirtyStorage.set(key, null);
+    this._scheduleAsyncFlush();
+  }
+
+  private _scheduleAsyncFlush(): void {
+    if (this._flushTimer !== null) return;
+    this._flushTimer = globalThis.setTimeout(() => {
+      this._flushTimer = null;
+      void this._flushDirtyAsync();
+    }, ASYNC_FLUSH_DEBOUNCE_MS);
+  }
+
+  private async _flushDirtyAsync(): Promise<void> {
+    if (this._dirtyStorage.size === 0) return;
+    const entries = [...this._dirtyStorage.entries()];
+    this._dirtyStorage.clear();
+
+    for (const [key, val] of entries) {
+      if (val === null) {
+        await Platform.removeStorageAsync(key);
+      } else {
+        await Platform.setStorageAsync(key, val);
+      }
+    }
+  }
+
+  private _enterImmediateSyncTurn(): void {
+    this._immediateSyncWindow = true;
+    this.flushAllSync();
+    if (this._immediateSyncResetTimer !== null) {
+      clearTimeout(this._immediateSyncResetTimer);
+    }
+    this._immediateSyncResetTimer = globalThis.setTimeout(() => {
+      this._immediateSyncResetTimer = null;
+      this._immediateSyncWindow = false;
+    }, 0);
+  }
+
+  private _bindLifecycleSafetyHooks(): void {
+    if (this._hooksBound) return;
+    if (typeof Platform === 'undefined' || !Platform || typeof Platform.registerEmergencyFlush !== 'function') {
+      const defer = typeof queueMicrotask === 'function'
+        ? queueMicrotask
+        : (fn: () => void) => { globalThis.setTimeout(fn, 0); };
+      defer(() => this._bindLifecycleSafetyHooks());
+      return;
+    }
+    this._hooksBound = true;
+
+    Platform.registerEmergencyFlush(() => {
+      this.flushAllSync();
+    });
+    Platform.onHide(() => {
+      this._enterImmediateSyncTurn();
+    });
+    Platform.onMemoryWarning(() => {
+      this.flushAllSync();
+    });
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      const onUnloadLike = () => {
+        this._enterImmediateSyncTurn();
+      };
+      window.addEventListener('pagehide', onUnloadLike);
+      window.addEventListener('beforeunload', onUnloadLike);
+    }
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+          this._enterImmediateSyncTurn();
+        } else {
+          this._immediateSyncWindow = false;
+        }
+      });
+    }
   }
 }
 
-export const PersistService = new PersistServiceClass();
+const _global: any = typeof GameGlobal !== 'undefined' ? GameGlobal : globalThis;
+if (!_global.__persistService) {
+  _global.__persistService = new PersistServiceClass();
+}
+export const PersistService: PersistServiceClass = _global.__persistService;
+
+const _persistPerfProps = {
+  flushAllSync(): void {
+    PersistService.flushAllSync();
+  },
+  get pendingDirtyKeys(): number {
+    return (PersistService as any)._dirtyStorage?.size ?? 0;
+  },
+};
+const _perfTarget = _global.__jiancaiPerf || (_global.__jiancaiPerf = {});
+Object.defineProperties(_perfTarget, Object.getOwnPropertyDescriptors(_persistPerfProps));
+(globalThis as any).__jiancaiPerf = _perfTarget;

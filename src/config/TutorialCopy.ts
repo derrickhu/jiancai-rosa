@@ -48,11 +48,11 @@ export const TUTORIAL_COPY: Record<number, { title: string; body: string }> = {
   },
   [TutorialStep.BASKET_DRY]: {
     title: '浅色是干区',
-    body: '菜苔、土豆、鸡蛋这类耐放干货\n自动摆在浅色格。点一下继续。',
+    body: '菜苔、豆腐、鸡蛋这类日常干货\n自动摆在浅色格。点一下继续。',
   },
   [TutorialStep.BASKET_WET]: {
     title: '青色是湿区',
-    body: '小白菜、鲜鱼豆腐放青色湿格保鲜。\n点一下看收尾。',
+    body: '鲜鱼、河虾、螃蟹这类水产湿货\n放入青色湿格保鲜。点一下看收尾。',
   },
   [TutorialStep.CLOSE_BASKET]: {
     title: '关好继续逛',

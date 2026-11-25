@@ -13,6 +13,7 @@ import {
   makeText,
 } from '@/utils/ui';
 import { watchTextures } from '@/utils/assets';
+import { destroyDisplayChildren } from '@/utils/destroy';
 import {
   SCENE_ART,
   SCENE_INK,
@@ -63,7 +64,7 @@ export class HudBuffPanel extends PIXI.Container {
     this._isOpen = false;
     this.visible = false;
     this._paintQueued = false;
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
   }
 
   private _scheduleRelayout = (): void => {
@@ -79,7 +80,7 @@ export class HudBuffPanel extends PIXI.Container {
   };
 
   relayout(): void {
-    this._root.removeChildren();
+    destroyDisplayChildren(this._root);
     if (!this._isOpen) return;
     const buffs = liveHudBuffs(KitchenManager.save);
     if (!buffs.length) {

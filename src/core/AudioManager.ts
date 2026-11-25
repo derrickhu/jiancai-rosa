@@ -1,6 +1,6 @@
 /**
  * 对齐花花：逻辑路径一律 `subpkg_audio/*.mp3`，整目录 CDN。
- * 播放前 resolveAudioSrc：下载到用户目录，按文件真实所在路径播。
+ * 路径解析内存缓存 + 高频短音效 55ms 防连点节流 + 微信/抖音固定上限 8 槽位 InnerAudioContext 复用池（零原生句柄泄漏）。
  */
 import { AUDIO_SETTINGS_KEY } from '@/config/CloudConfig';
 import { CdnAssetService } from '@/core/CdnAssetService';
@@ -76,6 +76,18 @@ const PICKUP_VOL = 0.46;
 /** 结算 / 神捡 / 升级：压过 BGM 的爽感短句 */
 const REWARD_SFX = new Set<SfxId>(['result_safe', 'result_dusk', 'pickup_god', 'level_up', 'cook_ready']);
 const REWARD_VOL = 1;
+/** 高频短音效最小重入间隔（防止连点瞬间并发轰炸音频桥） */
+const SFX_THROTTLE_MS = 55;
+const THROTTLED_SFX = new Set<SfxId>([
+  'ui_click',
+  'pickup_veg',
+  'pickup_wet',
+  'rummage',
+  'basket_place',
+  'walk',
+]);
+/** 微信/抖音常驻复用音频槽位上限（彻底杜绝短音效不触发 onEnded 导致的原生 AVAudioPlayer 泄漏） */
+const MAX_WX_SFX_POOL = 8;
 const TAG = '[Audio]';
 
 interface AudioSettings {
@@ -100,6 +112,17 @@ type WxInnerAudioContext = {
   onPlay?: (handler: () => void) => void;
 };
 
+interface WxSfxSlot {
+  ctx: WxInnerAudioContext;
+  src: string;
+  logical: string;
+  name: SfxId | string;
+  busy: boolean;
+  lastUsedSeq: number;
+  usedHttps: boolean;
+  playTimer: ReturnType<typeof setTimeout> | null;
+}
+
 interface AudioSettingsState {
   musicEnabled: boolean;
   soundEnabled: boolean;
@@ -119,8 +142,12 @@ class AudioManagerClass {
   private bgmRequestSeq = 0;
   private bgmHttpsTried = false;
   private readonly webSfxPool = new Map<string, HTMLAudioElement>();
+  private readonly wxSfxPool: WxSfxSlot[] = [];
+  private readonly _resolvedSfx = new Map<SfxId, string>();
+  private readonly _lastSfxAt = new Map<SfxId, number>();
+  private _sfxUseSeq = 0;
   private revealToken = 0;
-  private revealWx: WxInnerAudioContext | null = null;
+  private revealSlot: WxSfxSlot | null = null;
 
   sfxPath(id: SfxId): string {
     if (id === 'tutorial_pop' || id === 'tutorial_hint' || id === 'tutorial_ok') {
@@ -140,6 +167,7 @@ class AudioManagerClass {
     Platform.onHide(() => {
       this.hidden = true;
       this.pauseBackgroundMusic();
+      this.stopAllWxSfx();
     });
     Platform.onShow(() => {
       this.hidden = false;
@@ -149,9 +177,21 @@ class AudioManagerClass {
 
   preloadSfx(): Promise<void> {
     this.init();
-    return CdnAssetService.preloadPaths(SFX_IDS.map((id) => this.sfxPath(id))).catch((err) => {
-      console.warn(TAG, '音效预加载失败', err);
-    });
+    return CdnAssetService.preloadPaths(SFX_IDS.map((id) => this.sfxPath(id)))
+      .then(async () => {
+        await Promise.all(
+          SFX_IDS.map(async (id) => {
+            if (this._resolvedSfx.has(id)) return;
+            try {
+              const src = await CdnAssetService.resolveAudioSrc(this.sfxPath(id));
+              if (src) this._resolvedSfx.set(id, src);
+            } catch (_) { /* ignore */ }
+          }),
+        );
+      })
+      .catch((err) => {
+        console.warn(TAG, '音效预加载失败', err);
+      });
   }
 
   isMusicEnabled(): boolean {
@@ -170,8 +210,12 @@ class AudioManagerClass {
     this.musicEnabled = !muted;
     this.soundEnabled = !muted;
     this.writeSettings();
-    if (muted) this.pauseBackgroundMusic();
-    else this.playBackgroundMusic();
+    if (muted) {
+      this.pauseBackgroundMusic();
+      this.stopAllWxSfx();
+    } else {
+      this.playBackgroundMusic();
+    }
   }
 
   toggleMuted(): void {
@@ -179,12 +223,27 @@ class AudioManagerClass {
   }
 
   play(id: SfxId, volume = PICKUP_SFX.has(id) ? PICKUP_VOL : REWARD_SFX.has(id) ? REWARD_VOL : SFX_VOL): void {
-    if (!this.soundEnabled) return;
+    if (!this.soundEnabled || this.hidden) return;
+    if (THROTTLED_SFX.has(id)) {
+      const now = Date.now();
+      const prev = this._lastSfxAt.get(id) ?? 0;
+      if (now - prev < SFX_THROTTLE_MS) return;
+      this._lastSfxAt.set(id, now);
+    }
+
     this.init();
     const logical = this.sfxPath(id);
+    const cachedSrc = this._resolvedSfx.get(id);
+    if (cachedSrc) {
+      this.playResolvedSfx(id, cachedSrc, volume, logical);
+      return;
+    }
+
     const token = this.revealToken;
     void CdnAssetService.resolveAudioSrc(logical)
       .then((src) => {
+        if (src) this._resolvedSfx.set(id, src);
+        if (!this.soundEnabled || this.hidden) return;
         if (id === 'item_reveal' && token !== this.revealToken) return;
         this.playResolvedSfx(id, src, volume, logical);
       })
@@ -208,8 +267,16 @@ class AudioManagerClass {
     this.playBgm(MARKET_BGM[marketId] ?? 'market_xiangko');
   }
 
+  get currentBgmId(): BgmId | null {
+    return this.bgmId;
+  }
+
   playBgm(id: BgmId): void {
     this.init();
+    if (this.bgmId === id && this.bgmSrc) {
+      this.playBackgroundMusic();
+      return;
+    }
     const logical = this.bgmPath(id);
     this.bgmId = id;
     this.bgmLogical = logical;
@@ -243,81 +310,193 @@ class AudioManagerClass {
   }
 
   private stopRevealWx(): void {
-    const audio = this.revealWx;
-    this.revealWx = null;
-    if (!audio) return;
-    try { audio.stop?.(); } catch (_) {}
-    try { audio.destroy?.(); } catch (_) {}
+    const slot = this.revealSlot;
+    this.revealSlot = null;
+    if (!slot) return;
+    this._resetSlotTimer(slot);
+    slot.busy = false;
+    try { slot.ctx.stop?.(); } catch (_) {}
   }
 
-  private playResolvedSfx(name: string, src: string, volume: number, logical?: string): void {
-    const wxCtx = Platform.createInnerAudioContext() as WxInnerAudioContext | null;
-    if (wxCtx) {
-      if (name === 'item_reveal') {
-        this.stopRevealWx();
-        this.revealWx = wxCtx;
+  private stopAllWxSfx(): void {
+    this.revealSlot = null;
+    for (const slot of this.wxSfxPool) {
+      this._resetSlotTimer(slot);
+      slot.busy = false;
+      try { slot.ctx.stop?.(); } catch (_) {}
+    }
+  }
+
+  private _resetSlotTimer(slot: WxSfxSlot): void {
+    if (slot.playTimer !== null) {
+      clearTimeout(slot.playTimer);
+      slot.playTimer = null;
+    }
+  }
+
+  private _createWxSfxSlot(): WxSfxSlot | null {
+    const ctx = Platform.createInnerAudioContext() as WxInnerAudioContext | null;
+    if (!ctx) return null;
+
+    ctx.loop = false;
+    ctx.autoplay = false;
+    ctx.obeyMuteSwitch = false;
+
+    const slot: WxSfxSlot = {
+      ctx,
+      src: '',
+      logical: '',
+      name: '',
+      busy: false,
+      lastUsedSeq: 0,
+      usedHttps: false,
+      playTimer: null,
+    };
+
+    ctx.onEnded?.(() => {
+      this._resetSlotTimer(slot);
+      slot.busy = false;
+      if (this.revealSlot === slot) this.revealSlot = null;
+    });
+
+    ctx.onCanplay?.(() => {
+      if (!slot.busy || slot.playTimer === null) return;
+      this._resetSlotTimer(slot);
+      try {
+        slot.ctx.play();
+      } catch (err) {
+        slot.busy = false;
+        console.warn(TAG, `音效 "${slot.name}" play()`, err);
       }
-      this.playWxSfx(name, wxCtx, src, volume, logical);
-      return;
+    });
+
+    ctx.onError?.((error) => {
+      this._resetSlotTimer(slot);
+      const https = slot.logical && CdnAssetService.isCdnPath(slot.logical)
+        ? CdnAssetService.publicUrl(slot.logical)
+        : '';
+      if (!slot.usedHttps && https && slot.src !== https) {
+        slot.usedHttps = true;
+        slot.src = https;
+        if (SFX_IDS.includes(slot.name as SfxId)) {
+          this._resolvedSfx.set(slot.name as SfxId, https);
+        }
+        try {
+          slot.ctx.src = https;
+          slot.playTimer = globalThis.setTimeout(
+            () => {
+              slot.playTimer = null;
+              if (!slot.busy) return;
+              try { slot.ctx.play(); } catch (_) { slot.busy = false; }
+            },
+            typeof slot.ctx.onCanplay === 'function' ? 300 : 0,
+          );
+        } catch (_) {
+          slot.busy = false;
+        }
+        return;
+      }
+      slot.busy = false;
+      if (this.revealSlot === slot) this.revealSlot = null;
+      const msg = error && typeof error === 'object' && 'errMsg' in error
+        ? String((error as { errMsg?: string }).errMsg)
+        : String(error);
+      console.warn(TAG, `音效 "${slot.name}" 播放失败`, msg);
+    });
+
+    this.wxSfxPool.push(slot);
+    return slot;
+  }
+
+  private _acquireWxSfxSlot(targetSrc: string): WxSfxSlot | null {
+    // 1. 优先命中同 src 的空闲槽位（无需重设 src，直接 seek(0) + play() 零解码延迟）
+    for (const slot of this.wxSfxPool) {
+      if (!slot.busy && slot.src === targetSrc) return slot;
+    }
+    // 2. 任意空闲槽位
+    for (const slot of this.wxSfxPool) {
+      if (!slot.busy) return slot;
+    }
+    // 3. 池未满 8 个则扩容创建
+    if (this.wxSfxPool.length < MAX_WX_SFX_POOL) {
+      return this._createWxSfxSlot();
+    }
+    // 4. 池已满 8 个：复用最老槽位（避开正在播的重要结算短句或取最早启动实例）
+    let oldest = this.wxSfxPool[0];
+    for (let i = 1; i < this.wxSfxPool.length; i++) {
+      if (this.wxSfxPool[i].lastUsedSeq < oldest.lastUsedSeq) {
+        oldest = this.wxSfxPool[i];
+      }
+    }
+    return oldest;
+  }
+
+  private playResolvedSfx(name: SfxId | string, src: string, volume: number, logical?: string): void {
+    if (Platform.isMinigame) {
+      const slot = this._acquireWxSfxSlot(src);
+      if (slot) {
+        if (name === 'item_reveal') {
+          this.stopRevealWx();
+          this.revealSlot = slot;
+        }
+        this._playOnWxSlot(slot, name, src, volume, logical);
+        return;
+      }
     }
     if (typeof Audio !== 'undefined') this.playWebSfx(src, volume);
   }
 
-  private playWxSfx(
-    name: string,
-    audio: WxInnerAudioContext,
+  private _playOnWxSlot(
+    slot: WxSfxSlot,
+    name: SfxId | string,
     src: string,
     volume: number,
     logical?: string,
   ): void {
-    let done = false;
-    let started = false;
-    let usedHttps = false;
-    const https = logical && CdnAssetService.isCdnPath(logical) ? CdnAssetService.publicUrl(logical) : '';
-    const cleanup = () => {
-      if (done) return;
-      done = true;
-      if (this.revealWx === audio) this.revealWx = null;
-      try { audio.destroy?.(); } catch (_) {}
-    };
-    const tryPlay = () => {
-      if (done || started) return;
-      started = true;
-      try {
-        audio.play();
-      } catch (error) {
-        console.warn(TAG, `音效 "${name}" play()`, error);
-        cleanup();
-      }
-    };
+    this._resetSlotTimer(slot);
+    try { slot.ctx.stop?.(); } catch (_) {}
 
-    audio.loop = false;
-    audio.volume = Math.max(0, Math.min(1, volume));
-    audio.obeyMuteSwitch = false;
-    audio.onError?.((error) => {
-      if (!usedHttps && https && src !== https) {
-        usedHttps = true;
-        started = false;
-        try {
-          audio.src = https;
-          setTimeout(() => tryPlay(), typeof audio.onCanplay === 'function' ? 300 : 0);
-        } catch (_) {
-          cleanup();
-        }
-        return;
+    slot.name = name;
+    slot.logical = logical || '';
+    slot.busy = true;
+    slot.lastUsedSeq = ++this._sfxUseSeq;
+    slot.ctx.loop = false;
+    slot.ctx.volume = Math.max(0, Math.min(1, volume));
+    slot.ctx.obeyMuteSwitch = false;
+
+    if (slot.src === src && src) {
+      try { slot.ctx.seek?.(0); } catch (_) {}
+      try {
+        slot.ctx.play();
+      } catch (err) {
+        slot.busy = false;
+        console.warn(TAG, `音效 "${name}" replay()`, err);
       }
-      const msg = error && typeof error === 'object' && 'errMsg' in error
-        ? String((error as { errMsg?: string }).errMsg)
-        : String(error);
-      console.warn(TAG, `音效 "${name}" 播放失败`, msg);
-      cleanup();
-    });
-    audio.onEnded?.(() => cleanup());
-    if (typeof audio.onCanplay === 'function') {
-      audio.onCanplay(() => tryPlay());
+      return;
     }
-    audio.src = src;
-    setTimeout(() => tryPlay(), typeof audio.onCanplay === 'function' ? 300 : 0);
+
+    slot.usedHttps = false;
+    slot.src = src;
+    slot.playTimer = globalThis.setTimeout(
+      () => {
+        slot.playTimer = null;
+        if (!slot.busy) return;
+        try {
+          slot.ctx.play();
+        } catch (err) {
+          slot.busy = false;
+          console.warn(TAG, `音效 "${name}" play()`, err);
+        }
+      },
+      typeof slot.ctx.onCanplay === 'function' ? 300 : 0,
+    );
+    try {
+      slot.ctx.src = src;
+    } catch (err) {
+      this._resetSlotTimer(slot);
+      slot.busy = false;
+      console.warn(TAG, `音效 "${name}" set src`, err);
+    }
   }
 
   private playWebSfx(src: string, volume: number): void {

@@ -22,6 +22,10 @@ class CdnAssetServiceClass {
   private _manifestReady = false;
   private _downloadQueue = new Map<string, Promise<boolean>>();
   private _localExistsCache = new Map<string, boolean>();
+  /** 已通过尺寸与 hash 完整校验的缓存路径（logicalPath -> cachePath），命中后 0ms 零 fs 跨桥开销。 */
+  private _validatedCache = new Map<string, string>();
+  /** 已校验文件大小 >= 64B 的物理路径集合，避免每次播音效同步调 fs.statSync。 */
+  private _readyFileCache = new Set<string>();
   private _accessLog = new Map<string, number>();
   private _accessFrame = 0;
 
@@ -58,7 +62,11 @@ class CdnAssetServiceClass {
     if (!this.isCdnPath(logicalPath)) return logicalPath;
 
     this._touch(logicalPath);
-    if (this._isCacheValid(logicalPath)) return this._getCachePath(logicalPath);
+    const hit = this._validatedCache.get(logicalPath);
+    if (hit !== undefined) return hit;
+    if (this._isCacheValid(logicalPath)) {
+      return this._validatedCache.get(logicalPath) || this._getCachePath(logicalPath);
+    }
     return null;
   }
 
@@ -72,7 +80,9 @@ class CdnAssetServiceClass {
     }
 
     const ok = await this.download(logicalPath);
-    if (ok && this._isCacheValid(logicalPath)) return this._getCachePath(logicalPath);
+    if (ok && this._isCacheValid(logicalPath)) {
+      return this._validatedCache.get(logicalPath) || this._getCachePath(logicalPath);
+    }
 
     // CDN 专属资源不在微信包里。再回落相对路径只会让图片/音效二次失败。
     if (this._config.baseUrl) {
@@ -115,6 +125,7 @@ class CdnAssetServiceClass {
   invalidateCache(path: string): void {
     const logicalPath = this._normalize(path);
     const cachePath = this._getCachePath(logicalPath);
+    this._evictCachedValidation(logicalPath, cachePath);
     this._localExistsCache.delete(cachePath);
     const fs = this._getFs();
     try { fs?.unlinkSync(cachePath); } catch (_) {}
@@ -149,8 +160,12 @@ class CdnAssetServiceClass {
 
       this._manifest = JSON.parse(text) as CdnManifest;
       this._manifestReady = true;
+      // 新 manifest 到位后重置校验记忆，让后续首次访问按最新 hash/size 核验一次后再常驻命中
+      this._validatedCache.clear();
+      this._readyFileCache.clear();
       this._ensureCacheDir(this._getCachePath('manifest.json'));
       try { fs.writeFileSync(this._getCachePath('manifest.json'), text, 'utf-8'); } catch (_) {}
+      setTimeout(() => this._pruneOrphanedCache(fs), 3000);
       return true;
     } catch (e) {
       console.warn('[CDN] manifest 拉取失败，使用本地缓存:', e);
@@ -213,6 +228,7 @@ class CdnAssetServiceClass {
       const cachePath = this._getCachePath(logicalPath);
       try { fs.unlinkSync(cachePath); } catch (_) {}
       try { fs.unlinkSync(`${cachePath}.meta`); } catch (_) {}
+      this._evictCachedValidation(logicalPath, cachePath);
       this._localExistsCache.delete(cachePath);
       this._accessLog.delete(logicalPath);
     }
@@ -223,6 +239,8 @@ class CdnAssetServiceClass {
     const root = this._getCacheRootPath();
     if (!fs || !root) return;
     this._localExistsCache.clear();
+    this._validatedCache.clear();
+    this._readyFileCache.clear();
     this._accessLog.clear();
     try {
       fs.rmdirSync(root, true);
@@ -232,10 +250,91 @@ class CdnAssetServiceClass {
     }
   }
 
+  private _evictCachedValidation(logicalPath: string, cachePath: string): void {
+    this._validatedCache.delete(logicalPath);
+    this._readyFileCache.delete(cachePath);
+    const alt = this.toInnerAudioSrc(cachePath);
+    if (alt !== cachePath) this._readyFileCache.delete(alt);
+  }
+
+  /** 遍历本地 CDN 缓存目录（排除 manifest.json），返回逻辑路径列表。 */
+  private _scanCachedFiles(fs: any): string[] {
+    const root = this._getCacheRootPath();
+    if (!fs || !root || typeof fs.readdirSync !== 'function') return [];
+    const results: string[] = [];
+    const walk = (dir: string, relPrefix: string): void => {
+      let names: string[];
+      try {
+        names = fs.readdirSync(dir) || [];
+      } catch (_) {
+        return;
+      }
+      for (const name of names) {
+        if (!name || name === 'manifest.json' || name.endsWith('.meta')) continue;
+        const full = `${dir}/${name}`;
+        const rel = relPrefix ? `${relPrefix}/${name}` : name;
+        try {
+          const st = fs.statSync?.(full);
+          if (st?.isDirectory?.()) {
+            walk(full, rel);
+          } else {
+            results.push(rel);
+          }
+        } catch (_) {
+          // 某些基础库 statSync 异常时按扩展名兜底判断目录
+          if (!name.includes('.')) walk(full, rel);
+          else results.push(rel);
+        }
+      }
+    };
+    walk(root, '');
+    return results;
+  }
+
+  private _unlinkLogicalFile(fs: any, logicalPath: string): void {
+    const cachePath = this._getCachePath(logicalPath);
+    try { fs.unlinkSync(cachePath); } catch (_) {}
+    try { fs.unlinkSync(`${cachePath}.meta`); } catch (_) {}
+    this._evictCachedValidation(logicalPath, cachePath);
+    this._localExistsCache.delete(cachePath);
+    this._accessLog.delete(logicalPath);
+  }
+
+  /** 清理已不在最新 manifest 中的历史废弃文件（v1~v45 遗留旧资源）。 */
+  private _pruneOrphanedCache(fs: any): number {
+    const manifestFiles = this._manifest?.files;
+    if (!fs || !manifestFiles || Object.keys(manifestFiles).length === 0) return 0;
+    let removed = 0;
+    for (const rel of this._scanCachedFiles(fs)) {
+      if (!(rel in manifestFiles)) {
+        this._unlinkLogicalFile(fs, rel);
+        removed += 1;
+      }
+    }
+    return removed;
+  }
+
+  /** USER_DATA_PATH 触达上限时自动淘汰孤儿文件与最久未用缓存，腾出空间后重试落盘。 */
+  private _evictDiskFilesForSpace(fs: any, keepLogicalPath: string): void {
+    const pruned = this._pruneOrphanedCache(fs);
+    if (this._accessLog.size > 0) {
+      this.clearCache();
+      return;
+    }
+    const diskFiles = this._scanCachedFiles(fs).filter(p => p !== keepLogicalPath);
+    if (diskFiles.length === 0) return;
+    // 优先淘汰非必需大图，保留少量样本；若之前已删孤儿仍不够再清 25% 磁盘缓存
+    const targetCount = Math.max(pruned > 0 ? 8 : 16, Math.ceil(diskFiles.length * 0.25));
+    for (let i = 0; i < Math.min(targetCount, diskFiles.length); i++) {
+      this._unlinkLogicalFile(fs, diskFiles[i]);
+    }
+  }
+
   private async _downloadWithRetry(logicalPath: string): Promise<boolean> {
     const fs = this._getFs();
     if (!fs || !this._config.baseUrl) return false;
     const cachePath = this._getCachePath(logicalPath);
+    this._evictCachedValidation(logicalPath, cachePath);
     this._ensureCacheDir(cachePath);
 
     for (let attempt = 0; attempt <= this._config.downloadRetry; attempt++) {
@@ -243,11 +342,23 @@ class CdnAssetServiceClass {
         const res = await this._downloadUrl(this._getCdnUrl(logicalPath));
         if (!res.tempFilePath) throw new Error('downloadFile missing tempFilePath');
 
-        fs.copyFileSync(res.tempFilePath, cachePath);
+        try {
+          fs.copyFileSync(res.tempFilePath, cachePath);
+        } catch (copyErr) {
+          const copyMsg = copyErr instanceof Error ? copyErr.message : String(copyErr);
+          if (/maximum size|storage limit|exceeded|no space/i.test(copyMsg)) {
+            this._evictDiskFilesForSpace(fs, logicalPath);
+            this._ensureCacheDir(cachePath);
+            fs.copyFileSync(res.tempFilePath, cachePath);
+          } else {
+            throw copyErr;
+          }
+        }
         const size = this._getLocalFileSize(cachePath);
         const expected = this._manifest?.files?.[logicalPath]?.size;
         if (size < 64 || (typeof expected === 'number' && expected > 0 && size !== expected)) {
           this._localExistsCache.set(cachePath, false);
+          this._evictCachedValidation(logicalPath, cachePath);
           try { fs.unlinkSync(cachePath); } catch (_) {}
           try { fs.unlinkSync(`${cachePath}.meta`); } catch (_) {}
           throw new Error(`bad size ${size} expected ${expected || '>=64'}`);
@@ -255,6 +366,8 @@ class CdnAssetServiceClass {
         this._localExistsCache.set(cachePath, true);
         const hash = this._manifest?.files?.[logicalPath]?.hash || '';
         try { fs.writeFileSync(`${cachePath}.meta`, hash, 'utf-8'); } catch (_) {}
+        this._validatedCache.set(logicalPath, cachePath);
+        this._readyFileCache.add(cachePath);
         return true;
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -298,23 +411,32 @@ class CdnAssetServiceClass {
   }
 
   private _isCacheValid(logicalPath: string): boolean {
-    if (!this._cacheFileExists(logicalPath)) return false;
-    const localSize = this._getLocalFileSize(this._getCachePath(logicalPath));
+    if (this._validatedCache.has(logicalPath)) return true;
+
+    const cachePath = this._getCachePath(logicalPath);
+    if (!this._localFileExists(cachePath)) return false;
+    const localSize = this._getLocalFileSize(cachePath);
     if (localSize < 64) return false;
     const entry = this._manifest?.files?.[logicalPath];
     if (entry?.size && localSize !== entry.size) {
       return false;
     }
-    if (!entry?.hash) return true;
-    return this._readCachedHash(logicalPath) === entry.hash;
+    if (entry?.hash && this._readCachedHash(logicalPath) !== entry.hash) {
+      return false;
+    }
+    this._validatedCache.set(logicalPath, cachePath);
+    this._readyFileCache.add(cachePath);
+    return true;
   }
 
   private _fileReady(path: string): boolean {
-    return Boolean(path) && this._getLocalFileSize(path) >= 64;
-  }
-
-  private _cacheFileExists(logicalPath: string): boolean {
-    return this._localFileExists(this._getCachePath(logicalPath));
+    if (!path) return false;
+    if (this._readyFileCache.has(path)) return true;
+    if (this._getLocalFileSize(path) >= 64) {
+      this._readyFileCache.add(path);
+      return true;
+    }
+    return false;
   }
 
   private _localFileExists(path: string): boolean {

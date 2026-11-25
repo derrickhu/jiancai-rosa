@@ -11,31 +11,35 @@ import { ensureRecipeUnlockPanel } from '@/gameobjects/ui/RecipeUnlockPanel';
 import {
   GOD_PICK,
   MARKET_ART,
-  RARITY_STYLE,
   buffIconPath,
   cardName,
+  diagnoseCannotPlace,
   displayName,
   getItem,
-  getSpecialty,
   isBasketFull,
   isRummageNode,
-  itemsForStall,
   liveHudBuffs,
   marketWeatherById,
   nodeEncounter,
   pileToBasketDraft,
+  rarityStyleOf,
+  rarityTierLabel,
+  resolveRarityTier,
   sceneBg,
   stallPileArt,
   stallRummageArt,
-  tryAutoPlace,
+  tryAutoPackBasket,
   urgentTaskFoodIds,
   visibleDefId,
   type ExtractResult,
   type PileItem,
+  type Quality,
+  type RarityTier,
   type RunEventLog,
   type StallId,
 } from '@/sim';
 import { ensureHudBuffPanel } from '@/gameobjects/ui/HudBuffPanel';
+import { makeRaritySeal } from '@/gameobjects/ui/scenePanel';
 import { DuskExtendPanel } from '@/gameobjects/ui/DuskExtendPanel';
 import { SteelyardPanel, type SteelyardEnterResult } from '@/gameobjects/ui/SteelyardPanel';
 import { MysterySackPanel } from '@/gameobjects/ui/MysterySackPanel';
@@ -45,13 +49,13 @@ import {
   FONT,
   HUD_ICON,
   UI_PALETTE,
+  attachSpriteContour,
   bindUiClick,
   fillRect,
   fitTextWidth,
   makeHandProgressBar,
   makeLabel,
   makeNewFoodTag,
-  makeRarityFlare,
   makeSlicedButton,
   makeText,
   makeUrgentFoodTag,
@@ -77,6 +81,7 @@ import type { Scene } from '@/core/SceneManager';
 import { TutorialManager, TutorialStep } from '@/managers/TutorialManager';
 import { TutorialOverlay, stageRectOf, type TutorialTarget } from '@/gameobjects/ui/TutorialOverlay';
 import { TutorialGuard } from '@/systems/TutorialGuard';
+import { destroyDisplayChildren, destroyDisplayNode, isStageMounted } from '@/utils/destroy';
 
 const REVEAL_FACE = 188;
 const REVEAL_POP = 0.14;
@@ -231,11 +236,16 @@ export class MarketScene implements Scene {
     this._tablePins.clear();
     this._walking = false;
     this._body.alpha = 1;
-    this._shownEvent = RunManager.run?.lastEvent?.nodeId ?? '';
+    const pendingChoice = !!(
+      RunManager.run?.lastEvent?.choices?.length
+      && RunManager.run.lastEvent.nodeId === RunManager.run.atNodeId
+    );
+    this._shownEvent = pendingChoice ? '' : (RunManager.run?.lastEvent?.nodeId ?? '');
     AudioManager.playMarketBgm(RunManager.run?.marketId ?? 'xiangko');
     TutorialOverlay.register('market', () => this.tutorialRect());
     watchTextures([...Object.values(MARKET_SCENE_ART), ...uiBarPaths()], this._scheduleSync);
     this._sync(true);
+    if (pendingChoice) this._afterStep();
     if (!TutorialManager.isActive) ensureRecipeUnlockPanel().present();
   }
 
@@ -248,12 +258,23 @@ export class MarketScene implements Scene {
     this._duskClearQueued = false;
     this._clearDuskWait();
     this._walking = false;
+    TweenManager.cancelTarget(this._walkTimer);
+    TweenManager.cancelTarget(this._body);
     this._mapView = null;
     this._body.alpha = 1;
+    this._tutCard = null;
+    this._tutPile = null;
+    this._tutToken = null;
+    this._basketBtn = null;
+    this._backBtn = null;
+    this._leaveBtn = null;
     this._clearReveal();
     this._clearGodPick();
     this._tablePins.clear();
     this._clearDusk();
+    destroyDisplayChildren(this._bg);
+    destroyDisplayChildren(this._body);
+    destroyDisplayChildren(this._res);
     this._duskExtend.close(true);
     this._steelyard.close(true);
     this._mysterySack.close(true);
@@ -408,8 +429,8 @@ export class MarketScene implements Scene {
     if (!run) {
       if (force || this._bodyKey !== 'empty') {
         this._bodyKey = 'empty';
-        this._body.removeChildren();
-        this._bg.removeChildren();
+        destroyDisplayChildren(this._body);
+        destroyDisplayChildren(this._bg);
         const empty = makeLabel('本局已结束', 32, 0xC9B8A4);
         empty.position.set(32, Game.safeTop + 40);
         this._body.addChild(empty);
@@ -423,7 +444,7 @@ export class MarketScene implements Scene {
         this._clearStalePops();
       }
       this._bodyKey = key;
-      this._body.removeChildren();
+      destroyDisplayChildren(this._body);
       this._mapView = null;
       if (run.mode === 'map') this._drawMap(Game.designWidth);
       else if (run.mode === 'play') this._drawPlay(Game.designWidth, Game.logicHeight);
@@ -505,7 +526,7 @@ export class MarketScene implements Scene {
   // ═══════════════════════════════════════════════════════════════════════════
 
   private _drawHud(): void {
-    this._res.removeChildren();
+    destroyDisplayChildren(this._res);
     this._basketBtn = null;
     this._backBtn = null;
     const run = RunManager.run;
@@ -932,9 +953,8 @@ export class MarketScene implements Scene {
   private _clearDusk(): void {
     if (this._duskNum) {
       TweenManager.cancelTarget(this._duskNum);
-      TweenManager.cancelTarget(this._duskNum.scale);
     }
-    this._dusk.removeChildren();
+    destroyDisplayChildren(this._dusk);
     this._duskNum = null;
     this._duskSteps = -1;
     this._duskUrgent = false;
@@ -958,14 +978,14 @@ export class MarketScene implements Scene {
       halo.eventMode = 'none';
       root.addChild(halo);
       const pulse = (): void => {
-        if (halo.destroyed || !halo.parent) return;
+        if (!isStageMounted(halo)) return;
         TweenManager.to({
           target: halo,
           props: { alpha: 0.28 },
           duration: 0.55,
           ease: Ease.easeInOutQuad,
           onComplete: () => {
-            if (halo.destroyed || !halo.parent) return;
+            if (!isStageMounted(halo)) return;
             TweenManager.to({
               target: halo,
               props: { alpha: 1 },
@@ -1247,7 +1267,12 @@ export class MarketScene implements Scene {
     }
   }
 
-  /** 白捡鲜货弹出：光晕 + 实物 + 温润宣纸名签飞入菜篮。 */
+  private _visualTier(defId: string, quality?: Quality): RarityTier {
+    if (defId === GOD_PICK.id || quality === 'god') return 'god';
+    return resolveRarityTier(getItem(defId).rarity, quality);
+  }
+
+  /** 白捡鲜货弹出：光晕 + 实物 + 品阶小章 + 温润宣纸名签飞入菜篮。 */
   private _popFreebie(ev: RunEventLog): void {
     const gain = ev.gain;
     if (!gain) return;
@@ -1270,34 +1295,60 @@ export class MarketScene implements Scene {
       return;
     }
 
+    const rotten = gain.quality === 'rotten';
+    const tier: RarityTier = rotten ? 'common' : this._visualTier(gain.defId, gain.quality);
+    const style = rarityStyleOf(tier);
+    const labelText = displayName(gain.defId, false, gain.quality);
+
     const wrap = new PIXI.Container();
-    const glow = makeRarityFlare(getItem(gain.defId).rarity, 400);
     const sprite = new PIXI.Sprite(tex);
     sprite.anchor.set(0.5);
     fitSpriteInBox(sprite, 224, 224);
     if (!gain.taken) sprite.tint = 0x9A9086;
 
-    // 宣纸木钉名签承载拾取品名（28pt）
+    // 宣纸木钉名签承载拾取品名（按品阶点缀边框与墨色）
     const nameSlip = new PIXI.Container();
-    const name = makeText('title', displayName(gain.defId, false, gain.quality), INK, { size: 28 });
+    const nameInk = rotten ? 0x8A6E52 : (tier === 'common' ? INK : style.ink);
+    const name = makeText('title', labelText, nameInk, { size: 28 });
     name.anchor.set(0.5);
-    const nw = Math.max(180, Math.ceil(name.width) + 44);
-    const nh = 52;
+    const nw = Math.max(188, Math.ceil(name.width) + 48);
+    const nh = 54;
     const nbg = new PIXI.Graphics();
-    nbg.lineStyle(2.4, INK, 1);
+    nbg.beginFill(0x160E08, 0.28);
+    nbg.drawRoundedRect(-nw / 2 + 2, -nh / 2 + 4, nw - 4, nh, 10);
+    nbg.endFill();
+    nbg.lineStyle(2.6, !rotten && tier !== 'common' ? style.frame : INK, 1);
     nbg.beginFill(0xFAF0DA, 0.98);
     nbg.drawRoundedRect(-nw / 2, -nh / 2, nw, nh, 10);
     nbg.endFill();
+    if (!rotten && tier !== 'common') {
+      nbg.lineStyle(1.2, style.glow, 0.65);
+      nbg.drawRoundedRect(-nw / 2 + 4, -nh / 2 + 4, nw - 8, nh - 8, 7);
+    }
     nameSlip.addChild(nbg, name);
     nameSlip.position.set(0, 140);
 
-    wrap.addChild(glow, sprite, nameSlip);
-    if (gain.firstSeen && gain.quality !== 'rotten') {
+    wrap.addChild(sprite, nameSlip);
+    if (!rotten) {
+      attachSpriteContour(wrap, sprite, tier, {
+        onDark: true,
+        selected: tier !== 'common',
+        thicknessScale: 1.15,
+      });
+    }
+    if (!rotten && tier !== 'common') {
+      const rSeal = makeRaritySeal(tier, 48, -0.1);
+      rSeal.position.set(92, -92);
+      wrap.addChild(rSeal);
+    }
+    if (gain.firstSeen && !rotten) {
       const badge = makeNewFoodTag(26);
       badge.position.set(0, -136);
       wrap.addChild(badge);
     }
-    wrap.position.set(Game.designWidth / 2, Math.round(Game.logicHeight * 0.46));
+    const startX = Game.designWidth / 2;
+    const startY = Math.round(Game.logicHeight * 0.46);
+    wrap.position.set(startX, startY);
     wrap.scale.set(0.2);
     wrap.alpha = 0;
     this._revealLayer.addChild(wrap);
@@ -1319,7 +1370,7 @@ export class MarketScene implements Scene {
       onComplete: () => {
         if (!gain.taken) {
           AudioManager.play('ui_deny');
-          Platform.showToast('篮子满了，拖开点位子再捡');
+          Platform.showToast(diagnoseCannotPlace(RunManager.basket, gain.defId));
           const lootUid = RunManager.pendingLoot[0]?.uid;
           if (lootUid) this._basket.open(lootUid);
           TweenManager.to({
@@ -1328,12 +1379,17 @@ export class MarketScene implements Scene {
             duration: 0.28,
             delay: 0.35,
             onComplete: () => {
-              if (wrap.parent) wrap.parent.removeChild(wrap);
-              wrap.destroy({ children: true });
+              destroyDisplayNode(wrap);
             },
           });
           return;
         }
+        this._spawnTierFloat(
+          tier !== 'common' ? `${rarityTierLabel(tier)} · ${labelText} +1` : `${labelText} +1`,
+          tier,
+          startX,
+          startY - 64,
+        );
         TweenManager.to({
           target: wrap,
           props: { x: land.x, y: land.y },
@@ -1354,10 +1410,70 @@ export class MarketScene implements Scene {
           duration: 0.18,
           delay: 0.5,
           onComplete: () => {
-            if (wrap.parent) wrap.parent.removeChild(wrap);
-            wrap.destroy({ children: true });
+            this._punchBasketBtn();
+            destroyDisplayNode(wrap);
           },
         });
+      },
+    });
+  }
+
+  private _spawnTierFloat(text: string, tier: RarityTier, x: number, y: number): void {
+    const style = rarityStyleOf(tier);
+    const flt = makeText('title', text, style.float, {
+      size: 30,
+      stroke: 0x241408,
+      strokeWidth: 6,
+    });
+    flt.anchor.set(0.5);
+    flt.position.set(x, y);
+    flt.alpha = 0;
+    flt.scale.set(0.75);
+    this._revealLayer.addChild(flt);
+    TweenManager.to({ target: flt, props: { alpha: 1 }, duration: 0.1 });
+    TweenManager.to({
+      target: flt.scale,
+      props: { x: 1, y: 1 },
+      duration: 0.2,
+      ease: Ease.easeOutBack,
+    });
+    TweenManager.to({
+      target: flt,
+      props: { y: y - 76 },
+      duration: 0.72,
+      ease: Ease.easeOutQuad,
+    });
+    TweenManager.to({
+      target: flt,
+      props: { alpha: 0 },
+      duration: 0.24,
+      delay: 0.48,
+      ease: Ease.easeInQuad,
+      onComplete: () => {
+        destroyDisplayNode(flt);
+      },
+    });
+  }
+
+  private _punchBasketBtn(): void {
+    const btn = this._basketBtn;
+    if (!btn || btn.destroyed || !isStageMounted(btn)) return;
+    TweenManager.cancelTarget(btn.scale);
+    btn.scale.set(1);
+    TweenManager.to({
+      target: btn.scale,
+      props: { x: 1.08, y: 1.08 },
+      duration: 0.09,
+      ease: Ease.easeOutQuad,
+      onComplete: () => {
+        if (!btn.destroyed && isStageMounted(btn)) {
+          TweenManager.to({
+            target: btn.scale,
+            props: { x: 1, y: 1 },
+            duration: 0.16,
+            ease: Ease.easeOutBack,
+          });
+        }
       },
     });
   }
@@ -1388,6 +1504,9 @@ export class MarketScene implements Scene {
 
     play.spots.forEach((spot) => {
       if (spot.taken) return;
+      const def = getItem(spot.defId);
+      const spotTier = def.rarity as RarityTier;
+      const spotStyle = rarityStyleOf(spotTier);
       const path = resolveItemAssetPath(spot.defId);
       this._watchSyncOnce(path);
       const tex = itemTexture(spot.defId);
@@ -1398,11 +1517,17 @@ export class MarketScene implements Scene {
       wrap.eventMode = 'static';
       wrap.cursor = play.picksLeft > 0 ? 'pointer' : 'default';
       wrap.hitArea = new PIXI.Rectangle(-58, -58, 116, 116);
+
       if (isTextureReady(tex)) {
         const sp = new PIXI.Sprite(tex);
         sp.anchor.set(0.5);
         fitSpriteInBox(sp, 112, 112);
         wrap.addChild(sp);
+        attachSpriteContour(wrap, sp, spotTier, {
+          onDark: true,
+          selected: spotTier === 'legendary' || spotTier === 'god',
+          pulse: spotTier !== 'common',
+        });
       } else {
         const fallback = new PIXI.Graphics();
         fallback.beginFill(0x6B4A32);
@@ -1410,6 +1535,15 @@ export class MarketScene implements Scene {
         fallback.endFill();
         wrap.addChild(fallback);
       }
+      const spotLbl = makeText('caption', def.name, spotStyle.float, {
+        size: 20,
+        fontWeight: '700',
+        stroke: 0x241408,
+        strokeWidth: 4,
+      });
+      spotLbl.anchor.set(0.5, 0);
+      spotLbl.position.set(0, 48);
+      wrap.addChild(spotLbl);
       if (spot.firstSeen) {
         const badge = makeNewFoodTag(24);
         badge.position.set(0, -72);
@@ -1423,13 +1557,15 @@ export class MarketScene implements Scene {
         }
         const result = RunManager.pickGather(spot.uid);
         const ev = RunManager.run?.lastEvent;
+        if (result === 'need_space') {
+          AudioManager.play('ui_deny');
+          Platform.showToast(diagnoseCannotPlace(RunManager.basket, spot.defId));
+          this._basket.open(RunManager.pendingLoot.at(-1)?.uid);
+          return;
+        }
         if (ev?.gain) {
           this._shownEvent = ev.nodeId;
           this._popFreebie(ev);
-        }
-        if (result === 'need_space') {
-          AudioManager.play('ui_deny');
-          this._basket.open();
         }
       });
       this._body.addChild(wrap);
@@ -1471,17 +1607,17 @@ export class MarketScene implements Scene {
     const enc = nodeEncounter(node);
     const specialty = enc.type === 'rummage' ? enc.specialty : undefined;
     const stallId = (enc.type === 'rummage' && enc.stall) || node.stall;
-    const spec = specialty ? getSpecialty(specialty) : undefined;
-    const preloadIds = spec
-      ? [...spec.common, ...spec.rare, ...spec.epic]
-      : stallId
-        ? itemsForStall(stallId).map((def) => def.id)
-        : [];
-    preloadIds.forEach((id) => {
-      gameTexture(`subpkg_images/${id}.png`);
-      gameTexture(`subpkg_images/${id}_rotten.png`);
-    });
-    if (stallId === 'fish') gameTexture(GOD_FISH);
+    const nodePile = run.piles[nodeId] ?? [];
+    for (const it of nodePile) {
+      const vId = visibleDefId(it);
+      gameTexture(resolveItemAssetPath(vId, false));
+      if (it.quality === 'rotten') {
+        itemLookTexture(vId, 'rotten');
+      }
+    }
+    if (nodePile.some((it) => it.defId === GOD_PICK.id)) {
+      gameTexture(GOD_FISH);
+    }
     this._paintScene(stallRummageArt(run.marketId, stallId, specialty), 'cover');
 
     const tableTop = run.marketId === 'heyan' && stallId === 'egg' ? 0.36 : 0.26;
@@ -1609,17 +1745,20 @@ export class MarketScene implements Scene {
     const flight = this._flying.get(item.uid);
     if (!flight) return;
     const defId = visibleDefId(item);
-    const look = item.quality === 'rotten' ? 'rotten' : 'clean';
-    const lookPath = look === 'clean' ? `subpkg_images/${defId}.png` : `subpkg_images/${defId}_${look}.png`;
-    const sprite = new PIXI.Sprite(itemLookTexture(defId, look));
-    if (look === 'rotten' && !isTextureReady(gameTexture(`subpkg_images/${defId}_rotten.png`))) sprite.tint = 0x6B4A32;
+    const rotten = item.quality === 'rotten';
+    const look = rotten ? 'rotten' : 'clean';
+    const cleanPath = resolveItemAssetPath(defId, false);
+    const cleanTex = itemTexture(defId);
+    const lookTex = itemLookTexture(defId, look);
+    const sprite = new PIXI.Sprite(lookTex);
+    if (rotten && lookTex === cleanTex) sprite.tint = 0x6B4A32;
     sprite.anchor.set(0.5);
     if (!isTextureReady(sprite.texture)) {
-      if (isTextureFailed(lookPath)) {
+      if (isTextureFailed(cleanPath)) {
         this._landFlight(item.uid);
         return;
       }
-      whenTextureReady(lookPath, () => {
+      whenTextureReady(cleanPath, () => {
         if (this._flying.get(item.uid)?.playing) this._playDrawReveal(item, slot);
       });
       return;
@@ -1627,9 +1766,9 @@ export class MarketScene implements Scene {
     if (flight.wrap) return;
     AudioManager.playGain();
 
-    const glow = makeRarityFlare(getItem(defId).rarity, 280);
-    const flareA = glow.alpha;
-    glow.alpha = 0;
+    const rottenReveal = item.quality === 'rotten';
+    const tier: RarityTier = rottenReveal ? 'common' : this._visualTier(defId, item.quality);
+    const style = rarityStyleOf(tier);
 
     fitSpriteInBox(sprite, REVEAL_FACE, REVEAL_FACE);
     const tableScale = Math.min(slot.w / REVEAL_FACE, slot.h / REVEAL_FACE) * 0.92;
@@ -1638,17 +1777,27 @@ export class MarketScene implements Scene {
     const startY = this._stackPos.y - index * 22;
 
     const wrap = new PIXI.Container();
-    wrap.addChild(glow);
     wrap.addChild(sprite);
+    if (!rottenReveal) {
+      attachSpriteContour(wrap, sprite, tier, {
+        onDark: true,
+        selected: tier !== 'common',
+        thicknessScale: 1.1,
+      });
+    }
     wrap.position.set(startX, startY);
     wrap.scale.set(0.22);
     this._revealLayer.addChild(wrap);
     flight.wrap = wrap;
 
+    const baseRevealName = displayName(defId, item.inspected, item.quality === 'god' ? 'common' : item.quality);
+    const revealCopy = !rottenReveal && tier !== 'common'
+      ? `${rarityTierLabel(tier)} · ${baseRevealName}`
+      : baseRevealName;
     const name = makeText(
       'heading',
-      displayName(defId, item.inspected, item.quality === 'god' ? 'common' : item.quality),
-      item.quality === 'rotten' ? 0xFFA58E : 0xFFF8F0,
+      revealCopy,
+      rottenReveal ? 0xFFA58E : style.float,
       { size: 26, stroke: 0x241408, strokeWidth: 5 },
     );
     name.anchor.set(0.5, 1);
@@ -1667,7 +1816,6 @@ export class MarketScene implements Scene {
     const landY = slot.y + slot.h / 2;
     const finish = () => this._landFlight(item.uid);
 
-    TweenManager.to({ target: glow, props: { alpha: flareA }, duration: 0.1 });
     TweenManager.to({ target: name, props: { alpha: 1 }, duration: 0.1 });
     if (badge) TweenManager.to({ target: badge, props: { alpha: 1 }, duration: 0.1 });
     TweenManager.to({
@@ -1676,7 +1824,6 @@ export class MarketScene implements Scene {
       duration: REVEAL_POP,
       ease: Ease.easeOutBack,
       onComplete: () => {
-        TweenManager.to({ target: glow, props: { alpha: 0 }, duration: 0.16 });
         TweenManager.to({ target: name, props: { alpha: 0 }, duration: 0.16 });
         if (badge) TweenManager.to({ target: badge, props: { alpha: 0 }, duration: 0.16 });
         TweenManager.to({
@@ -1714,14 +1861,7 @@ export class MarketScene implements Scene {
     const flight = this._flying.get(uid);
     if (!flight) return;
     if (flight.wrap) {
-      TweenManager.cancelTarget(flight.wrap);
-      TweenManager.cancelTarget(flight.wrap.scale);
-      flight.wrap.children.forEach((child) => {
-        TweenManager.cancelTarget(child);
-        if (child instanceof PIXI.Container) TweenManager.cancelTarget(child.scale);
-      });
-      if (flight.wrap.parent) flight.wrap.parent.removeChild(flight.wrap);
-      flight.wrap.destroy({ children: true });
+      destroyDisplayNode(flight.wrap);
     }
     if (flight.token && !flight.token.destroyed) flight.token.alpha = 1;
     this._flying.delete(uid);
@@ -1729,7 +1869,7 @@ export class MarketScene implements Scene {
 
   private _clearReveal(): void {
     [...this._flying.keys()].forEach((uid) => this._landFlight(uid));
-    this._revealLayer.removeChildren();
+    destroyDisplayChildren(this._revealLayer);
     this._pileKick = 0;
   }
 
@@ -1739,18 +1879,12 @@ export class MarketScene implements Scene {
     );
     for (const child of [...this._revealLayer.children]) {
       if (keep.has(child as PIXI.Container)) continue;
-      TweenManager.cancelTarget(child);
-      if (child instanceof PIXI.Container) {
-        TweenManager.cancelTarget(child.scale);
-        child.children.forEach((inner) => TweenManager.cancelTarget(inner));
-      }
-      this._revealLayer.removeChild(child);
-      child.destroy({ children: true });
+      destroyDisplayNode(child);
     }
   }
 
   private _paintScene(path: string, mode: 'bottom' | 'cover' = 'bottom'): void {
-    this._bg.removeChildren();
+    destroyDisplayChildren(this._bg);
     const w = Game.designWidth;
     const h = Game.logicHeight;
     const fallback = new PIXI.Graphics();
@@ -1829,7 +1963,7 @@ export class MarketScene implements Scene {
     return out;
   }
 
-  /** 摊桌上的鲜货：清晰大描边品名（22pt）+ 新食材/急需角标。 */
+  /** 摊桌上的鲜货：对应品质呼吸背光 + 品阶色标菜名牌 + 新食材/急需角标。 */
   private _pileToken(
     item: PileItem,
     x: number,
@@ -1837,40 +1971,89 @@ export class MarketScene implements Scene {
     tw: number,
     th: number,
   ): PIXI.Container {
-    const def = getItem(visibleDefId(item));
+    const vDefId = visibleDefId(item);
+    const def = getItem(vDefId);
     const root = new PIXI.Container();
     root.position.set(x, y);
 
-    const look = item.quality === 'rotten' ? 'rotten' : 'clean';
-    const icon = new PIXI.Sprite(itemLookTexture(visibleDefId(item), look));
-    this._watchSyncOnce(resolveItemAssetPath(visibleDefId(item), look === 'rotten'));
     const rotten = item.quality === 'rotten';
-    const rawLabel = RunManager.labelFor(item);
-    const tag = makeText(
-      'body',
-      rotten ? `✕ ${rawLabel}` : rawLabel,
-      rotten ? 0xFFA088 : RARITY_STYLE[def.rarity].float,
-      {
-        size: 23,
-        fontWeight: '700',
-        stroke: 0x241408,
-        strokeWidth: 5,
-      },
-    );
-    tag.anchor.set(0.5, 1);
-    fitTextWidth(tag, Math.max(106, tw + 12));
-    const tagH = tag.height;
-    fitSpriteInBox(icon, tw * 0.88, Math.max(48, th - tagH - 2));
-    icon.anchor.set(0.5);
-    icon.position.set(tw / 2, (th - tagH) / 2);
-    if (rotten) icon.alpha = 0.72;
-    if (look === 'rotten' && !isTextureReady(gameTexture(`subpkg_images/${def.id}_rotten.png`))) icon.tint = 0x6B4A32;
-    root.addChild(icon);
-    tag.position.set(tw / 2, th);
-    root.addChild(tag);
+    const look = rotten ? 'rotten' : 'clean';
+    const tier: RarityTier = rotten ? 'common' : this._visualTier(vDefId, item.quality);
+    const style = rarityStyleOf(tier);
+    const cleanTex = itemTexture(vDefId);
+    const lookTex = itemLookTexture(vDefId, look);
+    const icon = new PIXI.Sprite(lookTex);
+    this._watchSyncOnce(resolveItemAssetPath(vDefId, false));
 
-    const isUrgent = item.quality !== 'rotten' && this._urgentFoods.has(def.id);
-    if (item.firstSeen && item.quality !== 'rotten') {
+    const rawLabel = RunManager.labelFor(item);
+    const tagH = 30;
+    const iconAreaH = Math.max(48, th - tagH - 2);
+    const iconCy = iconAreaH / 2;
+
+    fitSpriteInBox(icon, tw * 0.88, iconAreaH);
+    icon.anchor.set(0.5);
+    icon.position.set(tw / 2, iconCy);
+    if (rotten) icon.alpha = 0.72;
+    if (rotten && lookTex === cleanTex) icon.tint = 0x6B4A32;
+    root.addChild(icon);
+    if (!rotten && tier !== 'common') {
+      attachSpriteContour(root, icon, tier, {
+        onDark: true,
+        selected: tier === 'legendary' || tier === 'god',
+        pulse: tier === 'legendary' || tier === 'god',
+        thicknessScale: 1.05,
+      });
+    }
+
+    if (!rotten && tier !== 'common') {
+      const pillWrap = new PIXI.Container();
+      pillWrap.eventMode = 'none';
+      const tag = makeText('body', rawLabel, style.float, {
+        size: 22,
+        fontWeight: '700',
+        stroke: 0x1E120A,
+        strokeWidth: 4,
+      });
+      tag.anchor.set(0, 0.5);
+      const maxPillW = Math.max(108, tw + 14);
+      fitTextWidth(tag, maxPillW - 26);
+      const dotSpace = 13;
+      const innerW = dotSpace + tag.width;
+      const pw = Math.min(maxPillW, Math.max(76, Math.ceil(innerW) + 18));
+      const ph = 28;
+      const pbg = new PIXI.Graphics();
+      pbg.lineStyle(1.8, style.frame, 0.96);
+      pbg.beginFill(0x21140B, 0.84);
+      pbg.drawRoundedRect(-pw / 2, -ph / 2, pw, ph, ph / 2);
+      pbg.endFill();
+      pbg.lineStyle(1, 0xFFFDF8, 0.55);
+      pbg.beginFill(style.glow, 1);
+      pbg.drawCircle(-innerW / 2 + 4, 0, 4.2);
+      pbg.endFill();
+      tag.position.set(-innerW / 2 + dotSpace, -0.5);
+      pillWrap.addChild(pbg, tag);
+      pillWrap.position.set(tw / 2, th - ph / 2);
+      root.addChild(pillWrap);
+    } else {
+      const tag = makeText(
+        'body',
+        rotten ? `✕ ${rawLabel}` : rawLabel,
+        rotten ? 0xFFA088 : style.float,
+        {
+          size: 23,
+          fontWeight: '700',
+          stroke: 0x241408,
+          strokeWidth: 5,
+        },
+      );
+      tag.anchor.set(0.5, 1);
+      fitTextWidth(tag, Math.max(106, tw + 12));
+      tag.position.set(tw / 2, th);
+      root.addChild(tag);
+    }
+
+    const isUrgent = !rotten && this._urgentFoods.has(def.id);
+    if (item.firstSeen && !rotten) {
       const badge = makeNewFoodTag(24);
       badge.position.set(tw / 2, icon.y - icon.height * 0.5 + 6);
       root.addChild(badge);
@@ -1888,11 +2071,11 @@ export class MarketScene implements Scene {
     root.eventMode = 'static';
     root.cursor = 'pointer';
     root.hitArea = new PIXI.Rectangle(0, 0, tw, th);
-    root.on('pointertap', () => this._takeItem(item.uid));
+    root.on('pointertap', () => this._takeItem(item.uid, { x: x + tw / 2, y: y + iconCy }));
     return root;
   }
 
-  private _takeItem(uid: string): void {
+  private _takeItem(uid: string, fromPos?: { x: number; y: number }): void {
     const item = this._findPile(uid);
     if (!item) return;
     if (item.quality === 'rotten') {
@@ -1911,14 +2094,19 @@ export class MarketScene implements Scene {
       this._playGodPick(uid);
       return;
     }
-    if (!tryAutoPlace(RunManager.basket, pileToBasketDraft(item))) {
+    const vDefId = visibleDefId(item);
+    if (!tryAutoPackBasket(RunManager.basket, pileToBasketDraft(item))) {
       AudioManager.play('ui_deny');
+      Platform.showToast(diagnoseCannotPlace(RunManager.basket, vDefId));
       this._basket.open(uid);
       return;
     }
-    if (item.quality === 'god' || item.defId === GOD_PICK.id) AudioManager.playGain();
+    const tier = this._visualTier(vDefId, item.quality);
+    const labelText = RunManager.labelFor(item);
+    if (tier === 'god' || tier === 'legendary' || tier === 'epic') AudioManager.playGain();
     else AudioManager.play('basket_place');
     RunManager.take(uid);
+    this._playPickupFly(vDefId, tier, labelText, fromPos ?? this._stackPos);
     if (TutorialManager.isStep(TutorialStep.TAKE_LOOT)) {
       const crateEmpty = RunManager.crateLeft().length === 0;
       const cleanLeft = RunManager.currentPile().some((it) => it.quality !== 'rotten');
@@ -1928,6 +2116,65 @@ export class MarketScene implements Scene {
         TutorialOverlay.refresh();
       }
     }
+  }
+
+  /** 摊桌拾取鲜货飞入竹篮：对应白/绿/蓝/紫/金品质光效 + 飘字。 */
+  private _playPickupFly(
+    defId: string,
+    tier: RarityTier,
+    labelText: string,
+    from: { x: number; y: number },
+  ): void {
+    const land = this._basketBtn
+      ? { x: this._basketBtn.x + 32, y: this._basketBtn.y + 26 }
+      : { x: 528, y: Game.safeTop + 28 };
+
+    const wrap = new PIXI.Container();
+    wrap.eventMode = 'none';
+    wrap.position.set(from.x, from.y);
+
+    const tex = itemLookTexture(defId, 'clean');
+    if (isTextureReady(tex)) {
+      const sp = new PIXI.Sprite(tex);
+      fitSpriteInBox(sp, 94, 94);
+      sp.anchor.set(0.5);
+      wrap.addChild(sp);
+      attachSpriteContour(wrap, sp, tier, {
+        onDark: true,
+        selected: tier !== 'common',
+        thicknessScale: 1.05,
+      });
+    }
+    wrap.scale.set(1.08);
+    this._revealLayer.addChild(wrap);
+
+    const floatCopy = tier !== 'common'
+      ? `${rarityTierLabel(tier)} · ${labelText} +1`
+      : `${labelText} +1`;
+    this._spawnTierFloat(floatCopy, tier, from.x, from.y - 24);
+
+    TweenManager.to({
+      target: wrap,
+      props: { x: land.x, y: land.y },
+      duration: 0.32,
+      ease: Ease.easeInQuad,
+    });
+    TweenManager.to({
+      target: wrap.scale,
+      props: { x: 0.24, y: 0.24 },
+      duration: 0.32,
+      ease: Ease.easeInQuad,
+    });
+    TweenManager.to({
+      target: wrap,
+      props: { alpha: 0.15 },
+      duration: 0.16,
+      delay: 0.18,
+      onComplete: () => {
+        this._punchBasketBtn();
+        destroyDisplayNode(wrap);
+      },
+    });
   }
 
   private _playGodPick(uid: string): void {
@@ -1960,20 +2207,21 @@ export class MarketScene implements Scene {
     wrap.alpha = 0;
     this._godLayer.addChild(wrap);
 
-    const glow = new PIXI.Graphics();
-    glow.beginFill(0xF4C430, 0.28);
-    glow.drawCircle(0, 16, 168);
-    glow.endFill();
-    glow.beginFill(0xFFF8F0, 0.16);
-    glow.drawCircle(0, 16, 108);
-    glow.endFill();
-    wrap.addChild(glow);
-
     const fish = new PIXI.Sprite(tex);
     fish.anchor.set(0.5);
     fitSpriteInBox(fish, 340, 280);
     fish.position.set(0, 28);
     wrap.addChild(fish);
+    attachSpriteContour(wrap, fish, 'god', {
+      onDark: true,
+      selected: true,
+      thicknessScale: 1.25,
+      pulse: true,
+    });
+
+    const godSeal = makeRaritySeal('god', 56, -0.1, '天选');
+    godSeal.position.set(138, -88);
+    wrap.addChild(godSeal);
 
     const title = new PIXI.Text('神  捡', {
       fontFamily: TITLE_FONT,
@@ -2053,6 +2301,9 @@ export class MarketScene implements Scene {
           delay: 0.96,
           onComplete: () => {
             const result = RunManager.take(uid, { quiet: true });
+            if (result === 'need_space') {
+              Platform.showToast(diagnoseCannotPlace(RunManager.basket, GOD_PICK.id));
+            }
             finish(result === 'need_space');
           },
         });
@@ -2061,14 +2312,7 @@ export class MarketScene implements Scene {
   }
 
   private _clearGodPick(): void {
-    this._godLayer.children.forEach((child) => {
-      TweenManager.cancelTarget(child);
-      if ('scale' in child) TweenManager.cancelTarget((child as PIXI.Container).scale);
-      if (child instanceof PIXI.Container) {
-        child.children.forEach((grand) => TweenManager.cancelTarget(grand));
-      }
-    });
-    this._godLayer.removeChildren().forEach((child) => child.destroy({ children: true }));
+    destroyDisplayChildren(this._godLayer);
     this._godPlaying = false;
   }
 
