@@ -539,11 +539,12 @@ export class GameClubPanel extends PIXI.Container {
     if (bounds.width <= 0 || bounds.height <= 0) return null;
     const topLeft = root.toGlobal(new PIXI.Point(bounds.x, bounds.y));
     const bottomRight = root.toGlobal(new PIXI.Point(bounds.x + bounds.width, bounds.y + bounds.height));
+    const div = Game.renderDpr || Game.dpr || 1;
     return {
-      left: Math.round(topLeft.x / Game.dpr),
-      top: Math.round(topLeft.y / Game.dpr),
-      width: Math.max(1, Math.round((bottomRight.x - topLeft.x) / Game.dpr)),
-      height: Math.max(1, Math.round((bottomRight.y - topLeft.y) / Game.dpr)),
+      left: Math.round(topLeft.x / div),
+      top: Math.round(topLeft.y / div),
+      width: Math.max(1, Math.round((bottomRight.x - topLeft.x) / div)),
+      height: Math.max(1, Math.round((bottomRight.y - topLeft.y) / div)),
     };
   }
 

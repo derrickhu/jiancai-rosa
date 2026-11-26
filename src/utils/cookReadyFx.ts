@@ -7,7 +7,7 @@ import { Ease, TweenManager } from '@/core/TweenManager';
 import { cookXpView, type RecipeId } from '@/sim';
 import type { Rarity } from '@/sim/rarity';
 import { KitchenManager } from '@/managers/KitchenManager';
-import { dishTexture, fitSpriteInBox, gameTexture, isTextureReady, whenTextureReady } from './assets';
+import { dishTexture, fitSpriteInBox, gameTexture, resolveDishAssetPath, whenTextureReady } from './assets';
 import { destroyDisplayNode } from './destroy';
 import { HUD_ICON, PLAYER_LEVEL_HUD, attachSpriteContour, makeLabel, makePlayerLevelHud } from './ui';
 
@@ -234,12 +234,14 @@ function _drawPop(info: CookReadyInfo): PIXI.Container {
   const showXp = info.xp > 0;
   const root = new PIXI.Container();
 
+  const dishPath = resolveDishAssetPath(info.recipeId);
   const dish = new PIXI.Sprite(dishTexture(info.recipeId));
-  if (isTextureReady(dish.texture)) fitSpriteInBox(dish, DISH, DISH);
-  else {
-    dish.width = DISH;
-    dish.height = DISH;
-  }
+  fitSpriteInBox(dish, DISH, DISH, 256);
+  whenTextureReady(dishPath, () => {
+    if (dish.destroyed) return;
+    dish.texture = dishTexture(info.recipeId);
+    fitSpriteInBox(dish, DISH, DISH, 256);
+  });
   dish.anchor.set(0.5);
   dish.eventMode = 'none';
   root.addChild(dish);
@@ -279,15 +281,11 @@ function _expBadge(): PIXI.Container {
   const spr = new PIXI.Sprite(gameTexture(HUD_ICON.exp));
   spr.anchor.set(0.5);
   spr.eventMode = 'none';
-  if (isTextureReady(spr.texture)) fitSpriteInBox(spr, BADGE, BADGE);
-  else {
-    spr.width = BADGE;
-    spr.height = BADGE;
-  }
+  fitSpriteInBox(spr, BADGE, BADGE, 128);
   whenTextureReady(HUD_ICON.exp, () => {
     if (spr.destroyed) return;
     spr.texture = gameTexture(HUD_ICON.exp);
-    fitSpriteInBox(spr, BADGE, BADGE);
+    fitSpriteInBox(spr, BADGE, BADGE, 128);
   });
   const mark = makeLabel('EXP', 13, 0xFFF8F0, {
     fontWeight: '800',

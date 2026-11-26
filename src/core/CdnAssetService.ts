@@ -26,6 +26,8 @@ class CdnAssetServiceClass {
   private _validatedCache = new Map<string, string>();
   /** 已校验文件大小 >= 64B 的物理路径集合，避免每次播音效同步调 fs.statSync。 */
   private _readyFileCache = new Set<string>();
+  /** 已确认存在的缓存目录路径集合，避免每次下载重复执行同步 fs.accessSync(dir)。 */
+  private _ensuredDirs = new Set<string>();
   private _accessLog = new Map<string, number>();
   private _accessFrame = 0;
 
@@ -164,7 +166,7 @@ class CdnAssetServiceClass {
       this._validatedCache.clear();
       this._readyFileCache.clear();
       this._ensureCacheDir(this._getCachePath('manifest.json'));
-      try { fs.writeFileSync(this._getCachePath('manifest.json'), text, 'utf-8'); } catch (_) {}
+      void Platform.writeTextFileAsync(this._getCachePath('manifest.json'), text);
       setTimeout(() => this._pruneOrphanedCache(fs), 3000);
       return true;
     } catch (e) {
@@ -237,11 +239,12 @@ class CdnAssetServiceClass {
   clearAllCache(): void {
     const fs = this._getFs();
     const root = this._getCacheRootPath();
-    if (!fs || !root) return;
     this._localExistsCache.clear();
     this._validatedCache.clear();
     this._readyFileCache.clear();
+    this._ensuredDirs.clear();
     this._accessLog.clear();
+    if (!fs || !root) return;
     try {
       fs.rmdirSync(root, true);
       console.log('[CDN] 已清空本地 CDN 缓存');
@@ -343,18 +346,19 @@ class CdnAssetServiceClass {
         if (!res.tempFilePath) throw new Error('downloadFile missing tempFilePath');
 
         try {
-          fs.copyFileSync(res.tempFilePath, cachePath);
-        } catch (copyErr) {
-          const copyMsg = copyErr instanceof Error ? copyErr.message : String(copyErr);
+          await Platform.copyFileAsync(res.tempFilePath, cachePath);
+        } catch (copyErr: any) {
+          const copyMsg = copyErr?.errMsg || (copyErr instanceof Error ? copyErr.message : String(copyErr));
           if (/maximum size|storage limit|exceeded|no space/i.test(copyMsg)) {
             this._evictDiskFilesForSpace(fs, logicalPath);
+            this._ensuredDirs.clear();
             this._ensureCacheDir(cachePath);
-            fs.copyFileSync(res.tempFilePath, cachePath);
+            await Platform.copyFileAsync(res.tempFilePath, cachePath);
           } else {
             throw copyErr;
           }
         }
-        const size = this._getLocalFileSize(cachePath);
+        const size = await Platform.statFileSizeAsync(cachePath);
         const expected = this._manifest?.files?.[logicalPath]?.size;
         if (size < 64 || (typeof expected === 'number' && expected > 0 && size !== expected)) {
           this._localExistsCache.set(cachePath, false);
@@ -365,12 +369,12 @@ class CdnAssetServiceClass {
         }
         this._localExistsCache.set(cachePath, true);
         const hash = this._manifest?.files?.[logicalPath]?.hash || '';
-        try { fs.writeFileSync(`${cachePath}.meta`, hash, 'utf-8'); } catch (_) {}
+        void Platform.writeTextFileAsync(`${cachePath}.meta`, hash);
         this._validatedCache.set(logicalPath, cachePath);
         this._readyFileCache.add(cachePath);
         return true;
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
+      } catch (e: any) {
+        const msg = e?.errMsg || (e instanceof Error ? e.message : String(e));
         if (msg.includes('status=404') || attempt >= this._config.downloadRetry) {
           console.warn(`[CDN] 下载失败 ${logicalPath}:`, e);
           return false;
@@ -498,14 +502,26 @@ class CdnAssetServiceClass {
     if (!fs || !userDataPath) return;
 
     const dir = filePath.split('/').slice(0, -1).join('/');
-    try { fs.accessSync(dir); return; } catch (_) {}
+    if (!dir || this._ensuredDirs.has(dir)) return;
+    try {
+      fs.accessSync(dir);
+      this._ensuredDirs.add(dir);
+      return;
+    } catch (_) {}
 
     const segments = dir.replace(`${userDataPath}/`, '').split('/').filter(Boolean);
     let cur = userDataPath;
     for (const seg of segments) {
       cur += `/${seg}`;
-      try { fs.accessSync(cur); } catch (_) {
-        try { fs.mkdirSync(cur, true); } catch (_) {}
+      if (this._ensuredDirs.has(cur)) continue;
+      try {
+        fs.accessSync(cur);
+        this._ensuredDirs.add(cur);
+      } catch (_) {
+        try {
+          fs.mkdirSync(cur, true);
+          this._ensuredDirs.add(cur);
+        } catch (_) {}
       }
     }
   }

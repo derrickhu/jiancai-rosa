@@ -163,7 +163,7 @@ async function deleteObject(objectPath) {
 
 async function fetchRemoteManifest() {
   if (!CDN_BASE_URL) return null;
-  const url = new URL(`${CDN_BASE_URL}/${CDN_FILE_PREFIX}/manifest.json`);
+  const url = new URL(`${CDN_BASE_URL}/${CDN_FILE_PREFIX}/manifest.json?_t=${Date.now()}`);
   try {
     const res = await requestRaw({ method: 'GET', hostname: url.hostname, path: url.pathname + url.search });
     if (res.statusCode !== 200) return null;
@@ -326,23 +326,30 @@ async function main() {
 
   const toUpload = [];
   const toDelete = [];
+  const manifestPruned = [];
   let skipped = 0;
   for (const [rp, info] of Object.entries(localManifest)) {
     if (!FORCE && oldFiles[rp]?.hash === info.hash) skipped++;
     else toUpload.push(rp);
   }
-  if (PRUNE) {
-    for (const rp of Object.keys(oldFiles)) {
-      if (!localManifest[rp]) toDelete.push(rp);
+  for (const rp of Object.keys(oldFiles)) {
+    if (!localManifest[rp]) {
+      manifestPruned.push(rp);
+      if (PRUNE) toDelete.push(rp);
     }
   }
 
   console.log(`新增/更新: ${toUpload.length}`);
+  console.log(`清单移除(云桶${PRUNE ? '同步删除' : '保留旧文件'}): ${manifestPruned.length}`);
   console.log(`删除: ${toDelete.length}`);
   console.log(`跳过: ${skipped}`);
   if (toUpload.length > 0) {
     console.log('待上传:');
     for (const rp of [...toUpload].sort()) console.log(`  + ${rp} (${formatSize(localManifest[rp]?.size || 0)})`);
+  }
+  if (manifestPruned.length > 0 && !PRUNE) {
+    console.log('将从 manifest.json 移除（云桶保留历史文件）：');
+    for (const rp of [...manifestPruned].sort()) console.log(`  ~ ${rp}`);
   }
   if (toDelete.length > 0) {
     console.log('待删除:');
@@ -352,7 +359,7 @@ async function main() {
     console.log('dry-run 完成，未上传/删除任何文件。');
     return;
   }
-  if (toUpload.length === 0 && toDelete.length === 0) {
+  if (toUpload.length === 0 && toDelete.length === 0 && manifestPruned.length === 0) {
     console.log('无变更，已是最新。');
     return;
   }

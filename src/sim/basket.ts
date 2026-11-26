@@ -47,14 +47,14 @@ export type BasketCellKind = 'wet' | 'dry' | 'flex' | 'none';
 /** 最上预留的广告通用行。锁着时不占可用格，坐标仍从这一行下面起算，解锁不用挪货。 */
 export const BASKET_FLEX_ROWS = 1;
 
-/** 塑料袋/菜篮：出门干区列数。前 10 级每级至少加一列或一行，后五级放缓。 */
-export const BAG_DRY_COLS = [4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 8, 9, 9, 9, 10];
+/** 塑料袋/菜篮：出门干区列数。1~15 级每升 1 级必定 +1 列或 +1 行，绝无空升平台期。 */
+export const BAG_DRY_COLS = [4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11];
 /** 塑料袋/菜篮：出门干区行数。只影响干区，从上往下长。 */
-export const BAG_ROWS = [3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 8, 9, 9, 9];
-/** 泡沫箱/水桶：出门湿区列数。前 10 级每级至少加一列或一行，后五级放缓。 */
-export const FOAM_WET_COLS = [2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 6, 6, 7, 7, 7];
+export const BAG_ROWS = [3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10];
+/** 泡沫箱/水桶：出门湿区列数。1~15 级每升 1 级必定 +1 列或 +1 行。 */
+export const FOAM_WET_COLS = [2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 6, 7, 7, 8, 8];
 /** 泡沫箱/水桶：出门湿区行数。只影响湿区，从上往下长。 */
-export const FOAM_WET_ROWS = [3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 9, 10];
+export const FOAM_WET_ROWS = [3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 9, 9, 10, 10, 11];
 
 function clampBagLevel(level: number): number {
   return Math.max(0, Math.min(FURN_MAX_LEVEL, Math.floor(level)));

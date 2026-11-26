@@ -71,15 +71,20 @@ class GameClass {
 
     let renderer: PIXI.IRenderer | null = null;
     let app: PIXI.Application | null = null;
+    // 小游戏真机优先直接构造 PIXI.Renderer，避免 PIXI.Application 内部 autoDetectRenderer 误报异常栈
     try {
-      app = new PIXI.Application(baseOpts as any);
-    } catch (e) {
-      console.error('[Game] new PIXI.Application 失败:', e);
+      renderer = new PIXI.Renderer(baseOpts as any);
+    } catch (eWebGL) {
       try {
-        app = new PIXI.Application({ ...baseOpts, forceCanvas: true, antialias: false } as any);
-        console.warn('[Game] 已降级到 Canvas 渲染');
-      } catch (eCanvas) {
-        console.error('[Game] Canvas Application 也失败:', eCanvas);
+        app = new PIXI.Application(baseOpts as any);
+      } catch (eApp) {
+        console.warn('[Game] WebGL Renderer 初始化失败，尝试 Canvas 降级:', eWebGL, eApp);
+        try {
+          app = new PIXI.Application({ ...baseOpts, forceCanvas: true, antialias: false } as any);
+          console.warn('[Game] 已降级到 Canvas 渲染');
+        } catch (eCanvas) {
+          console.error('[Game] Canvas Application 也失败:', eCanvas);
+        }
       }
     }
 

@@ -20,10 +20,8 @@ export const OUTING_CURTAIN = 'subpkg_images/outing_curtain.jpg';
 
 /** 挑完回家领奖壳，进菜场时预载，收摊不用再等贴图。 */
 export const RESULT_UI = [
-  'subpkg_kitchen/ui_result_burst.png',
   'subpkg_kitchen/ui_result_title_safe.png',
   'subpkg_kitchen/ui_result_title_messy.png',
-  'subpkg_kitchen/ui_pickup_flare.png',
 ] as const;
 
 const SPECIAL_FLAVOR_PROPS: Record<SpecialFlavor, readonly string[]> = {

@@ -364,17 +364,31 @@ const XIANGKO_PILE: Record<StallId, string> = {
   meat: 'subpkg_images/stall_pile_egg.png',
 };
 
-/** 翻堆底图：巷口沿用旧文件，后四个场按市场×摊位各一张。专属摊走 specialty。 */
+const SPECIALTY_HOME_MARKET: Record<string, MarketId> = {
+  fungus: 'shanwu',
+  lotus: 'heyan',
+  nightcatch: 'jiangbian',
+  cured: 'laocheng',
+  treasure: 'shanzhen',
+};
+
+/** 翻堆底图：巷口沿用旧文件，后四个场按市场×摊位各一张。专属摊走其原属场贴图，避免跨场复用节点触发 404。 */
 export function stallRummageArt(marketId: MarketId, stall?: StallId, specialty?: string): string {
-  if (specialty) return `subpkg_images/stall_rummage_${marketId}_${specialty}.jpg`;
+  if (specialty) {
+    const owner = SPECIALTY_HOME_MARKET[specialty] ?? marketId;
+    return `subpkg_images/stall_rummage_${owner}_${specialty}.jpg`;
+  }
   if (!stall) return XIANGKO_RUMMAGE.egg;
   if (marketId === 'xiangko') return XIANGKO_RUMMAGE[stall];
   return `subpkg_images/stall_rummage_${marketId}_${stall}.jpg`;
 }
 
-/** 可点遮挡堆：巷口沿用旧文件，后四个场按市场×摊位各一张。 */
+/** 可点遮挡堆：巷口沿用旧文件，后四个场按市场×摊位各一张。专属摊走其原属场贴图。 */
 export function stallPileArt(marketId: MarketId, stall?: StallId, specialty?: string): string {
-  if (specialty) return `subpkg_images/stall_pile_${marketId}_${specialty}.png`;
+  if (specialty) {
+    const owner = SPECIALTY_HOME_MARKET[specialty] ?? marketId;
+    return `subpkg_images/stall_pile_${owner}_${specialty}.png`;
+  }
   if (!stall) return XIANGKO_PILE.egg;
   if (marketId === 'xiangko') return XIANGKO_PILE[stall];
   return `subpkg_images/stall_pile_${marketId}_${stall}.png`;

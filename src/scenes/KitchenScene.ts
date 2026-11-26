@@ -23,6 +23,7 @@ import { ensureCookLevelUpPanel } from '@/gameobjects/ui/CookLevelUpPanel';
 import { ensureTutorialGiftPanel } from '@/gameobjects/ui/TutorialGiftPanel';
 import { ensureHudBuffPanel } from '@/gameobjects/ui/HudBuffPanel';
 import { Platform } from '@/core/PlatformService';
+import { CdnAssetService } from '@/core/CdnAssetService';
 import { clearCookReadyFx, playCookReadyFx } from '@/utils/cookReadyFx';
 import {
   staminaMax,
@@ -140,6 +141,21 @@ const KITCHEN_SCENE_ART = {
   bubble: 'subpkg_images/scene_cat_bubble.png',
 } as const;
 
+const IDLE_DISK_PREFETCH_PATHS = [
+  'subpkg_images/scene_pk_cellar_wall.png',
+  'subpkg_images/scene_pk_recipe_sheet.png',
+  'subpkg_images/scene_pk_plaque.png',
+  'subpkg_images/scene_pk_plate.png',
+  'subpkg_images/scene_pk_seal.png',
+  'subpkg_images/scene_pk_ink_divider.png',
+  'subpkg_images/scene_dex_book.png',
+  'subpkg_images/scene_dex_tab.png',
+  'subpkg_images/scene_order_wall.png',
+  'subpkg_images/scene_menu_wall.png',
+  'subpkg_images/dest_street_bg.jpg',
+  'subpkg_images/outing_curtain.jpg',
+] as const;
+
 const INK = 0x2A2018;
 const INK_SOFT = 0x5A4430;
 const MUTED = 0x8A6E52;
@@ -174,8 +190,10 @@ export class KitchenScene implements Scene {
   private _gachaBtn: PIXI.Container | null = null;
   private _picklePropNode: PIXI.Container | null = null;
   private _catPropNode: PIXI.Container | null = null;
+  private static _idleDiskPrefetched = false;
   private _offerTimer = 0;
   private _overlayTrimTimer: ReturnType<typeof setTimeout> | null = null;
+  private _idlePrefetchTimer: ReturnType<typeof setTimeout> | null = null;
   private _inKitchen = false;
   private _dirtyUnderOverlay = false;
   private _onChange = () => {
@@ -261,12 +279,41 @@ export class KitchenScene implements Scene {
     }
   }
 
+  private _clearIdlePrefetchTimer(): void {
+    if (this._idlePrefetchTimer) {
+      clearTimeout(this._idlePrefetchTimer);
+      this._idlePrefetchTimer = null;
+    }
+  }
+
+  private _scheduleIdleDiskPrefetch(): void {
+    if (KitchenScene._idleDiskPrefetched || this._idlePrefetchTimer) return;
+    this._idlePrefetchTimer = setTimeout(() => {
+      this._idlePrefetchTimer = null;
+      if (KitchenScene._idleDiskPrefetched || !this._inKitchen || !this.container.parent) return;
+      KitchenScene._idleDiskPrefetched = true;
+      void KitchenScene._runIdleDiskPrefetch();
+    }, 1500);
+  }
+
+  private static async _runIdleDiskPrefetch(): Promise<void> {
+    for (let i = 0; i < IDLE_DISK_PREFETCH_PATHS.length; i++) {
+      const p = IDLE_DISK_PREFETCH_PATHS[i];
+      try {
+        await CdnAssetService.download(p);
+      } catch (_) {}
+      if (i + 1 < IDLE_DISK_PREFETCH_PATHS.length) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 160));
+      }
+    }
+  }
+
   private _scheduleOverlayTextureTrim(): void {
     this._clearOverlayTrimTimer();
     this._overlayTrimTimer = setTimeout(() => {
       this._overlayTrimTimer = null;
       if (!this._inKitchen || !this.container.parent || this._overlayBlocking()) return;
-      const evicted = trimTexturesToBudget(45, true);
+      const evicted = trimTexturesToBudget(48, false);
       if (evicted > 0) {
         Platform.triggerGC();
       }
@@ -407,6 +454,7 @@ export class KitchenScene implements Scene {
       this._queueNeighborOffer();
     }
     this._startP2Watch();
+    this._scheduleIdleDiskPrefetch();
   }
 
   private _p2Signature(): string {
@@ -466,6 +514,7 @@ export class KitchenScene implements Scene {
   onExit(): void {
     this._inKitchen = false;
     this._clearOverlayTrimTimer();
+    this._clearIdlePrefetchTimer();
     EventBus.off(EV.kitchenChanged, this._onChange);
     EventBus.off(EV.tutorialStepChanged, this._onTutorialStep);
     EventBus.off(EV.tutorialCompleted, this._onTutorialCompleted);

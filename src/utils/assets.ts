@@ -13,8 +13,26 @@ const _lastAccess = new Map<string, number>();
 let _accessSeq = 0;
 let _autoTrimTimer = 0;
 const IMAGE_RETRY = 2;
-const AUTO_TRIM_TRIGGER_MB = 60;
-const AUTO_TRIM_TARGET_MB = 45;
+const AUTO_TRIM_TRIGGER_MB = 62;
+const AUTO_TRIM_TARGET_MB = 48;
+const ADOPT_LARGE_PIXEL_THRESHOLD = 512 * 512;
+const ADOPT_FRAME_BUDGET = 2;
+const ADOPT_PRELOAD_BATCH = 8;
+const WATCH_THROTTLE_MS = 72;
+
+interface AdoptTask {
+  path: string;
+  tex: PIXI.Texture;
+  img: any;
+}
+
+const _adoptQueue: AdoptTask[] = [];
+let _adoptScheduled = false;
+let _activePreloads = 0;
+
+const _nextFrame: (cb: () => void) => unknown = typeof requestAnimationFrame === 'function'
+  ? requestAnimationFrame
+  : (cb: () => void) => globalThis.setTimeout(cb, 0);
 
 function touchAccess(path: string): void {
   _lastAccess.set(path, ++_accessSeq);
@@ -100,9 +118,72 @@ function bindWhenValid(path: string, tex: PIXI.Texture): void {
   globalThis.setTimeout(done, 800);
 }
 
+function runAdoptTask(task: AdoptTask): void {
+  try {
+    adopt(task.tex, task.img, task.path);
+    imageRetries.delete(task.path);
+    failed.delete(task.path);
+    bindWhenValid(task.path, task.tex);
+  } catch (e) {
+    console.warn('[assets] bind 失败', task.path, e);
+    flush(task.path);
+  }
+}
+
+function scheduleAdoptQueue(): void {
+  if (_adoptScheduled || _adoptQueue.length === 0) return;
+  _adoptScheduled = true;
+  _nextFrame(processAdoptQueue);
+}
+
+function processAdoptQueue(): void {
+  _adoptScheduled = false;
+  if (_adoptQueue.length === 0) return;
+
+  if (_activePreloads > 0) {
+    // 启动 Loading / 过场幕布预载阶段：每帧最多消费 8 张图，保障进度条极速跑满
+    let count = 0;
+    while (_adoptQueue.length > 0 && count < ADOPT_PRELOAD_BATCH) {
+      const task = _adoptQueue.shift()!;
+      if (task.tex.destroyed || cache.get(task.path) !== task.tex) {
+        continue;
+      }
+      count += 1;
+      runAdoptTask(task);
+    }
+  } else {
+    // 局内无遮罩游玩阶段：按帧预算（2 单位）平滑上传 GPU 纹理，消除多图同时 onload 引起的单帧掉帧尖峰
+    let used = 0;
+    while (_adoptQueue.length > 0 && used < ADOPT_FRAME_BUDGET) {
+      const head = _adoptQueue[0];
+      if (head.tex.destroyed || cache.get(head.path) !== head.tex) {
+        _adoptQueue.shift();
+        continue;
+      }
+      const pixels = (Number(head.img?.width) || 0) * (Number(head.img?.height) || 0);
+      const cost = pixels > ADOPT_LARGE_PIXEL_THRESHOLD ? 2 : 1;
+      if (used > 0 && used + cost > ADOPT_FRAME_BUDGET) {
+        break;
+      }
+      _adoptQueue.shift();
+      used += cost;
+      runAdoptTask(head);
+    }
+  }
+
+  if (_adoptQueue.length > 0) {
+    scheduleAdoptQueue();
+  }
+}
+
+function enqueueAdopt(path: string, tex: PIXI.Texture, img: any): void {
+  _adoptQueue.push({ path, tex, img });
+  scheduleAdoptQueue();
+}
+
 /**
  * 微信里不要 PIXI.Texture.from(path)。
- * 等 wx.createImage onload 后再绑 ImageResource，并关掉 createImageBitmap。
+ * 等 wx.createImage onload 后再分帧绑 ImageResource，并关掉 createImageBitmap。
  */
 export function gameTexture(path: string): PIXI.Texture {
   const hit = cache.get(path);
@@ -117,6 +198,7 @@ export function gameTexture(path: string): PIXI.Texture {
 
   const img = Platform.createImage();
   let httpsTried = false;
+  let loaded = false;
   const https = CdnAssetService.isCdnPath(path) ? CdnAssetService.publicUrl(path) : '';
   const finishFail = (err: unknown): void => {
     console.warn('[assets] 图片加载失败', path, err);
@@ -131,18 +213,10 @@ export function gameTexture(path: string): PIXI.Texture {
     }
   };
   img.onload = () => {
+    loaded = true;
     img.onload = null;
     img.onerror = null;
-    try {
-      adopt(tex, img, path);
-      imageRetries.delete(path);
-      failed.delete(path);
-      bindWhenValid(path, tex);
-      return;
-    } catch (e) {
-      console.warn('[assets] bind 失败', path, e);
-    }
-    flush(path);
+    enqueueAdopt(path, tex, img);
   };
   img.onerror = (err: unknown) => {
     if (!httpsTried && https && img.src !== https) {
@@ -172,7 +246,7 @@ export function gameTexture(path: string): PIXI.Texture {
     finishFail(err);
   };
   globalThis.setTimeout(() => {
-    if (isTextureReady(tex) || failed.has(path)) return;
+    if (loaded || isTextureReady(tex) || failed.has(path)) return;
     img.onerror?.(new Error('decode timeout'));
   }, 8000);
   void CdnAssetService.resolveOrDownload(path).then(assignSrc).catch((err) => {
@@ -220,13 +294,9 @@ function collectMountedBaseTextures(root: PIXI.DisplayObject | null | undefined)
         continue;
       }
     }
-    const tex: PIXI.Texture | undefined = anyCur.texture
-      ?? anyCur._texture
-      ?? anyCur.shader?.texture
-      ?? anyCur.shader?.uniforms?.uSampler;
-    if (tex?.baseTexture && !tex.baseTexture.destroyed) {
-      used.add(tex.baseTexture);
-    }
+    const rawTex = anyCur.texture ?? anyCur._texture ?? anyCur.shader?.texture ?? anyCur.shader?.uniforms?.uSampler;
+    const baseTex: PIXI.BaseTexture | undefined = rawTex instanceof PIXI.BaseTexture ? rawTex : rawTex?.baseTexture;
+    if (baseTex && !baseTex.destroyed) used.add(baseTex);
     if (cur instanceof PIXI.Container && cur.children.length > 0) {
       for (let i = 0; i < cur.children.length; i++) {
         stack.push(cur.children[i]);
@@ -236,19 +306,30 @@ function collectMountedBaseTextures(root: PIXI.DisplayObject | null | undefined)
   return used;
 }
 
+const PROTECTED_CORE_PATHS: ReadonlySet<string> = new Set([
+  'subpkg_kitchen/ui_cook_btn.png',
+  'subpkg_images/scene_pk_plaque.png',
+  'subpkg_images/scene_pk_tag_h.png',
+  'subpkg_images/scene_pk_plate.png',
+  'subpkg_images/scene_pk_seal.png',
+  'subpkg_images/scene_pk_hourglass.png',
+  'subpkg_images/scene_pk_ink_divider.png',
+]);
+
 /** 高频微型公共底件与启动核心小图标白名单，永不误删。 */
 function isProtectedCoreAsset(path: string): boolean {
   if (path === 'boot/loading_bg.jpg') return false;
   if (path.startsWith('boot/')) return true;
+  if (PROTECTED_CORE_PATHS.has(path)) return true;
   return path.startsWith('subpkg_kitchen/hud_')
     || path.startsWith('subpkg_kitchen/ui_btn_')
     || path.startsWith('subpkg_kitchen/ui_fridge_btn_')
     || path.startsWith('subpkg_kitchen/ui_kit_')
     || path.startsWith('subpkg_kitchen/ui_close_')
-    || path.startsWith('subpkg_kitchen/ui_header_')
-    || path === 'subpkg_kitchen/ui_pickup_flare.png';
+    || path.startsWith('subpkg_kitchen/ui_header_');
 }
 
+/** 真正跨大场景的一次性背景大图（不含弹窗底板；弹窗底板交由 48~62MB LRU 水位常驻保温与淘汰）。 */
 function isTransientLargeSceneAsset(path: string): boolean {
   return path === 'boot/loading_bg.jpg'
     || path === 'subpkg_images/dest_street_bg.jpg'
@@ -256,20 +337,7 @@ function isTransientLargeSceneAsset(path: string): boolean {
     || path.startsWith('subpkg_images/stall_')
     || path.startsWith('subpkg_images/market_')
     || path.startsWith('subpkg_images/special_')
-    || path.startsWith('subpkg_kitchen/kitchen_room_')
-    || (path.startsWith('subpkg_images/scene_') && path.endsWith('_wall.png'))
-    || path === 'subpkg_images/scene_dex_book.png'
-    || path === 'subpkg_images/scene_club_board.png'
-    || path === 'subpkg_images/scene_pk_recipe_sheet.png'
-    || path === 'subpkg_images/scene_order_slip.png'
-    || path === 'subpkg_kitchen/ui_fridge_panel.png'
-    || path === 'subpkg_kitchen/ui_basket_panel.png'
-    || path === 'subpkg_kitchen/ui_dex_panel.png'
-    || path === 'subpkg_kitchen/ui_cook_panel.png'
-    || path === 'subpkg_kitchen/ui_gameclub_panel.png'
-    || path === 'subpkg_kitchen/ui_result_panel.png'
-    || path === 'subpkg_kitchen/ui_recipe_paper.png'
-    || path === 'subpkg_kitchen/ui_gacha_stage.png';
+    || path.startsWith('subpkg_kitchen/kitchen_room_');
 }
 
 function evictCachedTexture(path: string, tex: PIXI.Texture): void {
@@ -299,12 +367,12 @@ function evictCachedTexture(path: string, tex: PIXI.Texture): void {
 
 /**
  * 显存预算与 LRU 自动水位裁剪：
- * 1. dropTransientScenes 为真时，立即卸载所有未挂载的场景大图与已关闭弹窗大底图；
+ * 1. dropTransientScenes 为真时，立即卸载所有未挂载的跨大场景背景大图；
  * 2. 若剩余缓存总显存仍高于 maxMB，按 _lastAccess 从最久未使用到最近使用（LRU）依次卸载未挂载的非保护贴图，直到回落至 maxMB 以下。
  * 严格保护：当前挂载节点引用的 BaseTexture、有 waiters 的路径、keepPaths 及高频公共微型底件绝不卸载。
  */
 export function trimTexturesToBudget(
-  maxMB = 45,
+  maxMB = AUTO_TRIM_TARGET_MB,
   dropTransientScenes = true,
   keepPaths?: Iterable<string>,
 ): number {
@@ -364,7 +432,7 @@ export function trimSceneTextures(opts?: {
   aggressive?: boolean;
   keepPaths?: Iterable<string>;
 }): number {
-  const maxMB = opts?.aggressive ? 36 : 45;
+  const maxMB = opts?.aggressive ? 36 : AUTO_TRIM_TARGET_MB;
   return trimTexturesToBudget(maxMB, true, opts?.keepPaths);
 }
 
@@ -421,18 +489,20 @@ const KITCHEN_BUNDLED_DISHES = new Set([
   'steam_bass',
 ]);
 
-/** minigame/subpkg_images/*_rotten.png 真实存在的全部 73 项烂菜贴图白名单，根除不存在贴图的 404 下载重试风暴。 */
+/** minigame/subpkg_images/*_rotten.png 真实存在的全部 94 项烂菜贴图白名单，根除不存在贴图的 404 下载重试风暴。 */
 export const ROTTEN_ITEM_IDS: ReadonlySet<string> = new Set([
-  'bamboo_shoot', 'beef_brisket', 'beef', 'bird_chili', 'bokchoy', 'broccoli', 'cabbage', 'caitai',
-  'carrot', 'celery', 'century_egg', 'chestnut', 'chicken_leg', 'chive', 'cilantro', 'clam',
-  'corn', 'crab', 'crucian', 'cucumber', 'dried_chili', 'dried_scallop', 'dried_tofu', 'duck_blood',
-  'duck_leg', 'egg', 'eggplant', 'garlic', 'ginger', 'goji', 'greenbean', 'hairtail',
-  'ham', 'kelp', 'lettuce', 'lily', 'lotus', 'lotus_seed', 'matsutake', 'melon',
-  'mushroom', 'onion', 'oyster', 'pepper', 'peppercorn', 'perilla', 'pork_belly', 'pork_liver',
-  'pork', 'potato', 'pumpkin', 'radish', 'rapeseed', 'ribs', 'river_eel', 'river_shrimp',
-  'round_cabbage', 'scallion', 'shrimp', 'smallfish', 'spinach', 'sprout', 'star_anise', 'taro',
-  'tofu', 'tomato', 'tremella', 'vermicelli', 'water_spinach', 'wild_yellowfish', 'wood_ear', 'yam',
-  'yellowfish',
+  'apple', 'asparagus', 'bamboo_shoot', 'beef_brisket', 'beef', 'bird_chili', 'bitter_melon',
+  'bokchoy', 'broccoli', 'cabbage', 'caitai', 'carrot', 'celery', 'century_egg', 'chestnut',
+  'chicken_leg', 'chicken_wing', 'chive', 'cilantro', 'clam', 'coconut', 'corn', 'crab',
+  'crucian', 'cucumber', 'dragonfruit', 'dried_chili', 'dried_scallop', 'dried_tofu',
+  'duck_blood', 'duck_leg', 'egg', 'eggplant', 'garlic', 'ginger', 'goji', 'greenbean',
+  'hairtail', 'ham', 'hawthorn', 'kelp', 'lamb', 'lemon', 'lettuce', 'lettuce_stem', 'lily',
+  'loofah', 'lotus', 'lotus_seed', 'lychee', 'mango', 'matsutake', 'melon', 'mushroom', 'okra',
+  'onion', 'orange', 'oyster', 'papaya', 'pea', 'pear', 'pepper', 'peppercorn', 'perilla',
+  'pineapple', 'pork_belly', 'pork_liver', 'pork', 'potato', 'pumpkin', 'radish', 'rapeseed',
+  'ribs', 'river_eel', 'river_shrimp', 'round_cabbage', 'scallion', 'seabass', 'shrimp',
+  'smallfish', 'spinach', 'sprout', 'squid', 'star_anise', 'taro', 'tofu', 'tomato',
+  'tremella', 'vermicelli', 'water_spinach', 'wild_yellowfish', 'wood_ear', 'yam', 'yellowfish',
 ]);
 
 export function hasRottenTexture(id: string): boolean {
@@ -521,24 +591,59 @@ export function whenTextureReady(path: string, onReady: () => void): void {
   waiters.set(path, list);
 }
 
-/** 打开菜单时预热当前页贴图；就绪后合并成一次刷新。 */
+/**
+ * 打开菜单/面板时预热当前页贴图，并按 72ms 节流窗口合并刷新（避免多图陆续解码引发十余次整页 relayout）；
+ * 当最后一张贴图到位（pendingCount <= 0）时，清掉节流定时器并立即在下一帧触发最终刷新，确保零额外延迟。
+ */
 export function watchTextures(paths: string[], onReady: () => void): void {
   const unique = [...new Set(paths.filter(Boolean))];
-  let scheduled = false;
-  const once = (): void => {
-    if (scheduled) return;
-    scheduled = true;
-    const later = typeof requestAnimationFrame === 'function'
-      ? requestAnimationFrame
-      : (cb: () => void) => setTimeout(cb, 0);
-    later(() => {
-      scheduled = false;
-      onReady();
-    });
-  };
+  if (!unique.length) return;
+
+  let pendingCount = 0;
+  const pendingPaths: string[] = [];
   for (const path of unique) {
-    gameTexture(path);
-    whenTextureReady(path, once);
+    const tex = gameTexture(path);
+    if (!isTextureReady(tex) && !failed.has(path)) {
+      pendingCount += 1;
+      pendingPaths.push(path);
+    }
+  }
+  if (pendingCount <= 0) return;
+
+  let throttleTimer: ReturnType<typeof setTimeout> | null = null;
+  let rafScheduled = false;
+
+  const handleOneSettled = (): void => {
+    pendingCount -= 1;
+    if (pendingCount <= 0) {
+      if (throttleTimer !== null) {
+        globalThis.clearTimeout(throttleTimer);
+        throttleTimer = null;
+      }
+      if (!rafScheduled) {
+        rafScheduled = true;
+        _nextFrame(() => {
+          rafScheduled = false;
+          onReady();
+        });
+      }
+      return;
+    }
+    if (throttleTimer === null) {
+      throttleTimer = globalThis.setTimeout(() => {
+        throttleTimer = null;
+        onReady();
+      }, WATCH_THROTTLE_MS);
+    }
+  };
+
+  for (const path of pendingPaths) {
+    let settled = false;
+    whenTextureReady(path, () => {
+      if (settled) return;
+      settled = true;
+      handleOneSettled();
+    });
   }
 }
 
@@ -548,7 +653,7 @@ export function isTextureSettled(path: string): boolean {
   return !!(tex && isTextureReady(tex));
 }
 
-/** 成功或失败都算完成，用来挡在进厨房之前。 */
+/** 成功或失败都算完成，用来挡在进厨房之前。活跃期间放宽分帧上传速率至每帧 8 张。 */
 export function preloadTextures(
   paths: string[],
   onProgress?: (done: number, total: number) => void,
@@ -556,11 +661,18 @@ export function preloadTextures(
   const unique = [...new Set(paths.filter(Boolean))];
   if (!unique.length) return Promise.resolve();
   let done = 0;
+  let finished = false;
+  _activePreloads += 1;
   return new Promise((resolve) => {
     const tick = (): void => {
+      if (finished) return;
       done += 1;
       onProgress?.(done, unique.length);
-      if (done >= unique.length) resolve();
+      if (done >= unique.length) {
+        finished = true;
+        _activePreloads = Math.max(0, _activePreloads - 1);
+        resolve();
+      }
     };
     for (const path of unique) {
       let armed = false;

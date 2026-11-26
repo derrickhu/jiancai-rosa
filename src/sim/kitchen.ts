@@ -863,9 +863,26 @@ function migrateFridgeItems(raw: unknown): FridgeItem[] {
       qty: fridgeItemQty(row),
     };
   });
-  return compactFridge(
-    mapped.filter((it) => !!it && fridgeItemQty(it) > 0 && (it.kind === 'dish' || it.quality !== 'rotten')) as FridgeItem[],
+  return dedupeFridgeUids(
+    compactFridge(
+      mapped.filter((it) => !!it && fridgeItemQty(it) > 0 && (it.kind === 'dish' || it.quality !== 'rotten')) as FridgeItem[],
+    ),
   );
+}
+
+/** 清理历史存档或合并预览中的重复 uid，防止「冰箱腾格子」点选一格联动误卖另一格。 */
+function dedupeFridgeUids(items: FridgeItem[]): FridgeItem[] {
+  const seen = new Set<string>();
+  return items.map((it) => {
+    if (it.uid && !seen.has(it.uid)) {
+      seen.add(it.uid);
+      return it;
+    }
+    let fresh = nextUid(it.kind === 'dish' ? 'd' : 'f');
+    while (seen.has(fresh)) fresh = nextUid(it.kind === 'dish' ? 'd' : 'f');
+    seen.add(fresh);
+    return { ...it, uid: fresh };
+  });
 }
 
 function migrateHouseLevel(raw: Partial<KitchenSave>): number {
@@ -961,7 +978,8 @@ function compactFridge(items: FridgeItem[]): FridgeItem[] {
 }
 
 export function simulateIngest(fridge: FridgeItem[], items: FridgeDraft[]): FridgeItem[] {
-  return items.reduce((next, it) => putIntoFridge(next, asFridgeItem(it)), fridge.map((row) => ({ ...row })));
+  const next = items.reduce((acc, it) => putIntoFridge(acc, asFridgeItem(it)), fridge.map((row) => ({ ...row })));
+  return dedupeFridgeUids(next);
 }
 
 /** 和真正进冰箱同一套规则：坏了的丢掉，黄鱼以外都按普通品质叠。 */

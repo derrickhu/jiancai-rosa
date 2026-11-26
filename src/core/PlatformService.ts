@@ -620,6 +620,103 @@ class PlatformServiceClass {
     }
   }
 
+  /**
+   * 异步拷贝文件（小游戏原生运行在宿主 IO 线程，不阻塞 JS 主线程；无异步 API 时回退同步）。
+   * 失败时原样 reject 原始错误对象以保留 errMsg（供磁盘空间超限自愈识别）。
+   */
+  copyFileAsync(srcPath: string, destPath: string): Promise<void> {
+    const fs = this.getFileSystemManager();
+    if (!fs) {
+      return Promise.reject(new Error('FileSystemManager unavailable'));
+    }
+    if (typeof fs.copyFile === 'function') {
+      return new Promise<void>((resolve, reject) => {
+        try {
+          fs.copyFile({
+            srcPath,
+            destPath,
+            success: () => resolve(),
+            fail: (err: any) => reject(err),
+          });
+        } catch (err) {
+          reject(err);
+        }
+      });
+    }
+    if (typeof fs.copyFileSync === 'function') {
+      return new Promise<void>((resolve, reject) => {
+        try {
+          fs.copyFileSync(srcPath, destPath);
+          resolve();
+        } catch (err) {
+          reject(err);
+        }
+      });
+    }
+    return Promise.reject(new Error('copyFile unavailable'));
+  }
+
+  /**
+   * 异步写入 UTF-8 文本文件（宿主 IO 线程执行；无异步 API 时回退同步）。
+   */
+  writeTextFileAsync(filePath: string, data: string): Promise<void> {
+    const fs = this.getFileSystemManager();
+    if (!fs) return Promise.resolve();
+    if (typeof fs.writeFile === 'function') {
+      return new Promise<void>((resolve) => {
+        try {
+          fs.writeFile({
+            filePath,
+            data,
+            encoding: 'utf8',
+            success: () => resolve(),
+            fail: () => resolve(),
+          });
+        } catch (_) {
+          resolve();
+        }
+      });
+    }
+    return Promise.resolve().then(() => {
+      try {
+        fs.writeFileSync?.(filePath, data, 'utf-8');
+      } catch (_) {}
+    });
+  }
+
+  /**
+   * 异步读取本地文件字节大小（宿主 IO 线程执行；失败或不存在时返回 0）。
+   */
+  statFileSizeAsync(filePath: string): Promise<number> {
+    const fs = this.getFileSystemManager();
+    if (!fs || !filePath) return Promise.resolve(0);
+    if (typeof fs.stat === 'function') {
+      return new Promise<number>((resolve) => {
+        try {
+          fs.stat({
+            path: filePath,
+            success: (res: any) => {
+              const size = Number(res?.stats?.size ?? res?.stat?.size ?? res?.size ?? 0);
+              resolve(Number.isFinite(size) && size > 0 ? size : 0);
+            },
+            fail: () => resolve(0),
+          });
+        } catch (_) {
+          resolve(0);
+        }
+      });
+    }
+    return Promise.resolve().then(() => {
+      try {
+        const stat = fs.statSync?.(filePath);
+        const size = Number(stat?.size ?? 0);
+        return Number.isFinite(size) && size > 0 ? size : 0;
+      } catch (_) {
+        return 0;
+      }
+    });
+  }
+
   get userDataPath(): string {
     try {
       return this._api?.env?.USER_DATA_PATH || '';

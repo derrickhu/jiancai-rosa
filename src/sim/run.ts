@@ -165,7 +165,8 @@ export interface ExtractResult {
   needsPick?: boolean;
 }
 
-let _uidSeq = 1;
+// 启动时注入时间与随机偏移，确保跨局/跨重启后 nextUid 永远不与历史存档重号，同时保留纯 base36 格式兼容 parseUidCounter
+let _uidSeq = Math.floor((Date.now() % 86400000) * 128 + Math.random() * 128) + 1000;
 export function nextUid(prefix = 'i'): string {
   _uidSeq += 1;
   return `${prefix}${_uidSeq.toString(36)}`;
