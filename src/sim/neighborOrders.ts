@@ -2,8 +2,11 @@ import { MARKETS, type MarketId } from './destinations';
 import { GOD_PICK, ITEMS, getItem, itemRarity, marketFoodIds } from './items';
 import { rarityRank, type Rarity } from './rarity';
 import {
+  isRecipeStoveReady,
   recipeById,
   recipeCanCook,
+  recipeMinStoveLv,
+  recipeMinTableLevel,
   recipeNeeds,
   recipeSellPrice,
   unlockedRecipes,
@@ -42,6 +45,8 @@ export interface NeighborOrder {
   expiresAt: number;
   offeredAt: number;
   reward: NeighborReward;
+  /** 仅差 1 级烹饪台即可开炒的升台激励单（赏金已上浮 +25%）。 */
+  teaseStove?: boolean;
 }
 
 export interface NeighborNpc {
@@ -56,6 +61,7 @@ export interface NeighborOfferDraft {
   text: string;
   reward: NeighborReward;
   dealLine: string;
+  teaseStove?: boolean;
 }
 
 export type NeighborRollView = RecipeUnlockView & {
@@ -173,7 +179,13 @@ export function formatOrderRemain(ms: number): string {
   return `还剩 ${s}秒`;
 }
 
+/** 与 kitchen.ts FURN_COOK_NEED.table 保持一致的升下一级烹饪台所需厨艺门槛。 */
+const TABLE_NEXT_COOK_NEED = [1, 3, 3, 5, 7, 9, 11, 12, 13, 16, 18, 20, 22, 24] as const;
+
 export function missingNeedHint(view: RecipeUnlockView, recipeId: RecipeId): string {
+  if (!isRecipeStoveReady(view, recipeId)) {
+    return `需升至 ${recipeMinStoveLv(recipeId)} 级烹饪台方可开火`;
+  }
   if (recipeCanCook(view, recipeId)) return '材料齐了，去做再交。';
   const lack = recipeNeeds(view, recipeId)
     .filter((row) => row.have < row.need)
@@ -211,21 +223,48 @@ export function rollNeighborOffer(
   if (!baseKnown.length) return null;
   const filtered = excludeRecipeId ? baseKnown.filter((r) => r.id !== excludeRecipeId) : baseKnown;
   const known = filtered.length ? filtered : baseKnown;
-  const hard = known.filter((r) => !recipeCanCook(view, r.id));
-  const pool = hard.length ? hard : known;
-  const recipe = rngPick(rng, pool);
+
+  const curTable = Math.max(0, Math.floor(view.tableLevel || 0));
+  const curCook = Math.max(1, Math.floor(view.level || 1));
+  const stoveOk = known.filter((r) => isRecipeStoveReady(view, r.id));
+  const nextCookNeed = TABLE_NEXT_COOK_NEED[curTable] ?? 99;
+  const alreadyHasTeaseOrder = hanging.some((o) => !isRecipeStoveReady(view, o.recipeId));
+  const teasePool = (!alreadyHasTeaseOrder && curCook + 1 >= nextCookNeed)
+    ? known.filter((r) => recipeMinTableLevel(r.id) === curTable + 1)
+    : [];
+
+  let recipe: RecipeDef;
+  let teaseStove = false;
+  if (teasePool.length > 0 && rng() < 0.15) {
+    recipe = rngPick(rng, teasePool);
+    teaseStove = true;
+  } else {
+    if (!stoveOk.length) return null;
+    const hard = stoveOk.filter((r) => !recipeCanCook(view, r.id));
+    const pool = hard.length ? hard : stoveOk;
+    recipe = rngPick(rng, pool);
+  }
+
   const npcs = NEIGHBOR_NPCS.filter((n) => !usedNpc.has(n.id));
   const npc = rngPick(rng, npcs.length ? npcs : NEIGHBOR_NPCS);
   const line = rngPick(rng, LINES)
     .replace('{name}', npc.name)
     .replace('{dish}', recipe.name);
-  const reward = rollNeighborReward(view, recipe, rng);
+  const baseReward = rollNeighborReward(view, recipe, rng);
+  const reward: NeighborReward = teaseStove
+    ? { ...baseReward, gold: Math.max(10, Math.round(baseReward.gold * 1.25)) }
+    : baseReward;
+  const baseDeal = neighborDealLine({ dish: recipe.name, reward, rng });
+  const dealLine = teaseStove
+    ? `${baseDeal}（升至 ${recipeMinStoveLv(recipe.id)} 级灶台即可开炒，成了多添两成赏钱！）`
+    : baseDeal;
   return {
     recipeId: recipe.id,
     npc,
     text: line,
     reward,
-    dealLine: neighborDealLine({ dish: recipe.name, reward, rng }),
+    dealLine,
+    ...(teaseStove ? { teaseStove: true } : {}),
   };
 }
 
@@ -254,6 +293,7 @@ export function makeNeighborOrder(draft: NeighborOfferDraft, now = Date.now()): 
     expiresAt: now + NEIGHBOR_ORDER_MS,
     offeredAt: now,
     reward: draft.reward,
+    ...(draft.teaseStove ? { teaseStove: true } : {}),
   };
 }
 
@@ -279,6 +319,7 @@ export function migrateNeighborOrders(raw: unknown): NeighborOrder[] {
       expiresAt: it.expiresAt,
       offeredAt: it.offeredAt,
       reward: parseReward(it.reward, it.recipeId as RecipeId),
+      ...(it.teaseStove === true ? { teaseStove: true } : {}),
     });
     if (out.length >= NEIGHBOR_ORDER_MAX) break;
   }

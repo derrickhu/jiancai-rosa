@@ -3,10 +3,10 @@ import { nextLockedMarketIds, unseenMarketFoods, type NeighborRollView } from '.
 import type { Rarity } from './rarity';
 import { mulberry32, rngPick, type Rng } from './rng';
 import {
+  cookableUnlockedRecipes,
   recipeById,
   recipeSellPrice,
   START_RECIPES,
-  unlockedRecipes,
   type RecipeDef,
   type RecipeFood,
   type RecipeId,
@@ -275,8 +275,8 @@ export function rollDailyMenu(view: DailyMenuRollView, date: string): DailyMenuS
 export function rollExtraDailyMenu(view: DailyMenuRollView, date: string, salt = 1): DailyMenuState | undefined {
   const prevIds = new Set((view.dailyMenu?.lines ?? []).map((l) => l.recipeId));
   const rngPickPool = dateRng(`${date}:extra:${salt}`);
-  // Prefer recipes not already on the daytime board if enough unlocked recipes exist
-  const unlocked = unlockedRecipes(unlockView(view)).filter((r) => !SKIP_RECIPES.has(r.id));
+  // Prefer recipes not already on the daytime board if enough cookable unlocked recipes exist
+  const unlocked = cookableUnlockedRecipes(unlockView(view)).filter((r) => !SKIP_RECIPES.has(r.id));
   const freshView: DailyMenuRollView = unlocked.filter((r) => !prevIds.has(r.id)).length >= DAILY_MENU_LINES
     ? { ...view, hangingRecipeIds: [...view.hangingRecipeIds, ...prevIds] }
     : view;
@@ -330,7 +330,7 @@ function neighborView(view: DailyMenuRollView): NeighborRollView {
 
 function pickDailyRecipes(view: DailyMenuRollView, rng: Rng): RecipeDef[] {
   const hanging = new Set(view.hangingRecipeIds);
-  const pool = unlockedRecipes(unlockView(view))
+  const pool = cookableUnlockedRecipes(unlockView(view))
     .filter((recipe) => !hanging.has(recipe.id) && !SKIP_RECIPES.has(recipe.id));
   const picked: RecipeDef[] = [];
   let left = pool.slice();

@@ -14,7 +14,9 @@ import {
   dailyMenuProgress,
   dailyMenuRewardChips,
   fridgeDishQty,
+  isRecipeStoveReady,
   recipeById,
+  recipeMinStoveLv,
   recipeNeeds,
   recipeUnlockView,
   type DailyMenuLine,
@@ -87,6 +89,7 @@ const L = {
 export class DailyMenuPanel extends PIXI.Container {
   _isOpen = false;
   onCook: ((recipeId: DailyMenuLine['recipeId']) => void) | null = null;
+  onUpgradeStove: (() => void) | null = null;
   private _root = new PIXI.Container();
   private _inspect: ItemInspectView | null = null;
   private _paintQueued = false;
@@ -354,6 +357,8 @@ export class DailyMenuPanel extends PIXI.Container {
     const view = recipeUnlockView(save);
     const have = fridgeDishQty(save.fridge, line.recipeId);
     const done = line.done >= line.need;
+    const stoveOk = isRecipeStoveReady(view, line.recipeId);
+    const needStoveLv = recipeMinStoveLv(line.recipeId);
     const needs = recipeNeeds(view, line.recipeId);
     const missing = needs.filter((n) => n.have < n.need);
 
@@ -503,6 +508,30 @@ export class DailyMenuPanel extends PIXI.Container {
       stockTxt.anchor.set(0.5);
       stockTxt.position.set(btnCx, 118);
       row.addChild(stockTxt);
+    } else if (!stoveOk) {
+      const upBtn = makeSlicedButton({
+        label: `升${needStoveLv}级灶`,
+        width: btnW,
+        height: btnH,
+        skin: 'olive',
+        fontSize: 25,
+        onReady: this._scheduleRelayout,
+      });
+      upBtn.position.set(btnX, 38);
+      upBtn.on('pointertap', () => {
+        if (this.onUpgradeStove) {
+          this.close(true);
+          this.onUpgradeStove();
+        } else {
+          this.onCook?.(line.recipeId);
+        }
+      });
+      row.addChild(upBtn);
+
+      const needTxt = makeText('caption', `需${needStoveLv}级灶台`, 0xB85418, { size: 21, fontWeight: '700' });
+      needTxt.anchor.set(0.5);
+      needTxt.position.set(btnCx, 118);
+      row.addChild(needTxt);
     } else if (missing.length === 0) {
       const cookBtn = makeSlicedButton({
         label: '去做菜',

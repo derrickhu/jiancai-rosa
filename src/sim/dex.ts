@@ -9,6 +9,7 @@ import {
   TABLE_UNLOCKS,
   isRecipeId,
   recipeById,
+  recipeMinStoveLv,
   type RecipeDef,
   type RecipeId,
 } from './recipes';
@@ -135,12 +136,14 @@ export function dexObtainHint(kind: DexEntryKind, id: string): string {
     return '获取途径：逛各处菜场摊位拾取，或收下街坊与阿橘谢礼。';
   }
   if (!isRecipeId(id)) return '获取途径：继续探索菜场与厨房解锁。';
-  if (id === 'wild_fish_soup') return '获取途径：识破或带回「野生大黄鱼」即可领悟此秘方。';
-  if (PICKLE_RECIPE_IDS.includes(id)) return '获取途径：在「老坛腌制坊」首次揭盖收获对应腌菜时领悟。';
+  const needStove = recipeMinStoveLv(id);
+  const stoveSuffix = needStove > 1 ? `\n火候要求：烹饪台升至 Lv.${needStove} 可开火。` : '';
+  if (id === 'wild_fish_soup') return `获取途径：识破或带回「野生大黄鱼」即可领悟此秘方。${stoveSuffix}`;
+  if (PICKLE_RECIPE_IDS.includes(id)) return `获取途径：在「老坛腌制坊」首次揭盖收获对应腌菜时领悟。${stoveSuffix}`;
   if (START_RECIPES.includes(id)) return '获取途径：开局自带家常手艺。';
   for (const [lvStr, grant] of Object.entries(COOK_UNLOCK_AT)) {
     const list = typeof grant === 'string' ? [grant] : grant;
-    if (list.includes(id)) return `获取途径：厨艺升至 Lv.${lvStr} 自动领悟。`;
+    if (list.includes(id)) return `获取途径：厨艺升至 Lv.${lvStr} 自动领悟。${stoveSuffix}`;
   }
   for (let i = 0; i < TABLE_UNLOCKS.length; i++) {
     if (TABLE_UNLOCKS[i].includes(id)) return `获取途径：将烹饪台升至 Lv.${i + 2} 随台附赠。`;
@@ -148,13 +151,13 @@ export function dexObtainHint(kind: DexEntryKind, id: string): string {
   for (const [mId, list] of Object.entries(MARKET_RECIPE_POOL)) {
     if (list.includes(id)) {
       const mName = MARKETS.find((m) => m.id === mId)?.name ?? '菜场';
-      return `获取途径：逛「${mName}」偶遇油纸包菜谱拾取。`;
+      return `获取途径：逛「${mName}」偶遇油纸包菜谱拾取。${stoveSuffix}`;
     }
   }
   if (HIDDEN_RECIPE_IDS.has(id)) {
-    return '获取途径：厨房「菜谱盲盒机」抽取私房菜谱解锁。';
+    return `获取途径：厨房「菜谱盲盒机」抽取私房菜谱解锁。${stoveSuffix}`;
   }
-  return '获取途径：逛菜场拾取油纸菜谱或升级厨艺解锁。';
+  return `获取途径：逛菜场拾取油纸菜谱或升级厨艺解锁。${stoveSuffix}`;
 }
 
 export function isFoodUnlocked(save: { dexSeen: readonly string[]; dexInspected: readonly string[] }, id: string): boolean {

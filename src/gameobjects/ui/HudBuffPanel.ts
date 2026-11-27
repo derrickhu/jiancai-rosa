@@ -22,9 +22,9 @@ import {
   drawSceneClose,
   drawSceneWall,
   drawStretchSheet,
-  makePlateItem,
   makeSealStamp,
   sceneArtPaths,
+  sceneSprite,
 } from './scenePanel';
 
 const WALL = 'subpkg_images/scene_order_wall.png';
@@ -175,22 +175,21 @@ export class HudBuffPanel extends PIXI.Container {
     const root = new PIXI.Container();
     root.position.set(0, y);
 
-    const plateW = 104;
-    const plate = makePlateItem({
-      iconPath: buffIconPath(buff.icon),
-      plateW,
-      iconSize: 64,
-    });
-    plate.position.set(x + plateW / 2, height / 2 + 4);
-    root.addChild(plate);
+    const iconSlotW = 80;
+    const icon = sceneSprite(buffIconPath(buff.icon), 68, 68);
+    if (icon) {
+      icon.anchor.set(0.5);
+      icon.position.set(x + iconSlotW / 2, height / 2);
+      root.addChild(icon);
+    }
 
-    const textX = x + plateW + 20;
+    const textX = x + iconSlotW + 16;
     const label = makeText('body', buff.label, SCENE_INK.ink, {
       size: 25,
       fontWeight: '700',
       wordWrap: true,
       breakWords: true,
-      wordWrapWidth: width - plateW - 24,
+      wordWrapWidth: width - iconSlotW - 20,
       lineHeight: 36,
     });
     label.anchor.set(0, 0.5);

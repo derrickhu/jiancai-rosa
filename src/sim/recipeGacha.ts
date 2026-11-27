@@ -4,8 +4,10 @@ import {
   HIDDEN_RECIPE_IDS,
   PICKLE_RECIPE_IDS,
   RECIPES,
+  isRecipeStoveReady,
   isRecipeUnlocked,
   recipeById,
+  recipeMinTableLevel,
   recipeSellPrice,
   type RecipeId,
   type RecipeUnlockView,
@@ -100,12 +102,15 @@ export function recipeGachaWeight(view: RecipeUnlockView, id: RecipeId): number 
   const base = isGachaActivity(id) ? WEIGHT_NEW_ACTIVITY : WEIGHT_NEW_HIDDEN;
   const rec = recipeById(id);
   if (!rec) return base;
+  const curTable = Math.max(0, Math.floor(view.tableLevel || 0));
+  const tableDiff = recipeMinTableLevel(id) - curTable;
+  const stoveMul = tableDiff <= 1 ? 1.5 : tableDiff === 2 ? 0.85 : 0.25;
   const { nowSet, nearSet } = unlockedMarketFoodSets(view.level);
   const allNow = rec.needs.every((fid) => nowSet.has(fid));
-  if (allNow) return base * 6;
+  if (allNow) return base * 6 * stoveMul;
   const allNear = rec.needs.every((fid) => nearSet.has(fid));
-  if (allNear) return base * 1.2;
-  return 0.08;
+  if (allNear) return base * 1.2 * stoveMul;
+  return 0.08 * stoveMul;
 }
 
 export function freshGachaRecipes(view: RecipeUnlockView): RecipeId[] {
@@ -135,6 +140,13 @@ export function rollGachaFood(view: GachaRollView, rng: Rng): string {
   }, rng) ?? RECIPE_GACHA_FOODS[0];
 }
 
+const MASTERY_GOLD_CAP: Record<Rarity, number> = {
+  common: 90,
+  rare: 60,
+  epic: 38,
+  legendary: 20,
+};
+
 /** 39 本隐藏菜谱抽齐后升级为「名厨秘匣」常青奖池：火候心得(35%) + 臻品/老坛陈酿(45%) + 出行鸿运签(20%)。 */
 function rollMasterChestPrize(view: GachaRollView, rng: Rng): GachaPrize {
   const roll = rng();
@@ -142,15 +154,15 @@ function rollMasterChestPrize(view: GachaRollView, rng: Rng): GachaPrize {
     const counts = view.recipeCookCounts ?? {};
     const cookedSet = new Set(view.recipesCooked ?? []);
     const candidates = RECIPES.filter((r) => {
-      if (!isRecipeUnlocked(view, r.id)) return false;
+      if (!isRecipeUnlocked(view, r.id) || !isRecipeStoveReady(view, r.id)) return false;
       const c = Math.max(counts[r.id] ?? 0, cookedSet.has(r.id) ? 1 : 0);
-      return c < 8;
+      return c < MASTERY_GOLD_CAP[r.rarity];
     });
     if (candidates.length > 0) {
       const target = candidates[Math.floor(rng() * candidates.length)];
-      return { kind: 'mastery_note', recipeId: target.id, pots: 3 };
+      return { kind: 'mastery_note', recipeId: target.id, pots: 5 };
     }
-    return { kind: 'mastery_note', pots: 3 };
+    return { kind: 'mastery_note', pots: 5 };
   }
   if (roll < 0.80) {
     if (MASTER_PICKLE_FOODS.length && rng() < 0.36) {

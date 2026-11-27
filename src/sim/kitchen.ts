@@ -42,7 +42,7 @@ import {
 } from './dex';
 import { mulberry32, rngWeighted } from './rng';
 import { MARKETS } from './destinations';
-import { rarityRank } from './rarity';
+import { rarityRank, type Rarity } from './rarity';
 import { PICKLE_ITEM_IDS, marketFoodIds } from './items';
 import {
   RECIPE_GACHA_COST,
@@ -72,11 +72,13 @@ import {
   RECIPES,
   TABLE_UNLOCKS,
   isRecipeId,
+  isRecipeStoveReady,
   isRecipeUnlocked,
   migrateRecipeId,
   pickRecipeFoods,
   recipeById,
   recipeCookCount,
+  recipeMinStoveLv,
   recipeUnlockView,
   type RecipeId,
 } from './recipes';
@@ -89,7 +91,12 @@ export {
   recipeXp,
   pickRecipeFoods,
   isRecipeUnlocked,
+  isRecipeStoveReady,
+  recipeMinTableLevel,
+  recipeMinStoveLv,
   unlockedRecipes,
+  cookableUnlockedRecipes,
+  newlyCookableByTableUpgrade,
   unlockedIngredients,
   recipeRarity,
   tallyNeeds,
@@ -373,7 +380,30 @@ export const DAILY_AD_LIMITS: Record<DailyAdLimitKey, number> = {
   unpack_vip: 3,
 };
 
-export const RECIPE_MASTERY_NEEDS = [1, 5, 15] as const;
+/** 按菜谱品阶差异化的铜勺 / 银勺 / 金勺累计下锅门槛：品质越高所需锅数越精炼，低阶家常菜需长期掌勺积累。 */
+export const RECIPE_MASTERY_BY_RARITY: Record<Rarity, readonly [number, number, number]> = {
+  common: [12, 36, 90],
+  rare: [8, 25, 60],
+  epic: [5, 16, 38],
+  legendary: [3, 9, 20],
+};
+
+export const RECIPE_MASTERY_NEEDS = RECIPE_MASTERY_BY_RARITY.common;
+
+export function recipeMasteryNeeds(idOrRarity: RecipeId | Rarity = 'common'): readonly [number, number, number] {
+  if (idOrRarity === 'common' || idOrRarity === 'rare' || idOrRarity === 'epic' || idOrRarity === 'legendary') {
+    return RECIPE_MASTERY_BY_RARITY[idOrRarity];
+  }
+  const rec = recipeById(idOrRarity);
+  return RECIPE_MASTERY_BY_RARITY[rec?.rarity ?? 'common'];
+}
+
+/** 烹饪台每升 1 级带来的成菜基础售价火候加成（+2%/级，内部 14 级即界面 15 级满级 +28%）。 */
+export const STOVE_PRICE_STEP = 0.02;
+
+export function stovePriceMul(tableLevel: number): number {
+  return 1 + clampFurnLevel(tableLevel) * STOVE_PRICE_STEP;
+}
 
 export function dailyAdUsed(save: KitchenSave, key: DailyAdLimitKey, now = Date.now()): number {
   const rec = save.dailyAdCounts?.[key];
@@ -428,17 +458,25 @@ export function recipeTotalCooked(
   return save.recipesCooked.includes(recipeId) ? 1 : 0;
 }
 
-export function recipeMasteryStars(cooked: number): 0 | 1 | 2 | 3 {
-  if (cooked >= RECIPE_MASTERY_NEEDS[2]) return 3;
-  if (cooked >= RECIPE_MASTERY_NEEDS[1]) return 2;
-  if (cooked >= RECIPE_MASTERY_NEEDS[0]) return 1;
+export function recipeMasteryStars(
+  cooked: number,
+  idOrRarity: RecipeId | Rarity = 'common',
+): 0 | 1 | 2 | 3 {
+  const needs = recipeMasteryNeeds(idOrRarity);
+  if (cooked >= needs[2]) return 3;
+  if (cooked >= needs[1]) return 2;
+  if (cooked >= needs[0]) return 1;
   return 0;
 }
 
-export function recipeMasteryMul(cooked: number): number {
-  const stars = recipeMasteryStars(cooked);
+export function recipeMasteryMul(
+  cooked: number,
+  idOrRarity: RecipeId | Rarity = 'common',
+): number {
+  const stars = recipeMasteryStars(cooked, idOrRarity);
   if (stars >= 3) return 1.2;
   if (stars >= 2) return 1.1;
+  if (stars >= 1) return 1.05;
   return 1;
 }
 
@@ -453,7 +491,8 @@ export function recipeMasteryView(
   bonusText: string;
 } {
   const cooked = recipeTotalCooked(save, recipeId);
-  const stars = recipeMasteryStars(cooked);
+  const needs = recipeMasteryNeeds(recipeId);
+  const stars = recipeMasteryStars(cooked, recipeId);
   if (stars >= 3) {
     return { cooked, stars: 3, nextNeed: null, title: '金勺招牌', bonusText: '售价 +20%' };
   }
@@ -461,26 +500,26 @@ export function recipeMasteryView(
     return {
       cooked,
       stars: 2,
-      nextNeed: RECIPE_MASTERY_NEEDS[2],
+      nextNeed: needs[2],
       title: '银勺拿手',
-      bonusText: `售价 +10%（再做 ${RECIPE_MASTERY_NEEDS[2] - cooked} 锅升金勺送菜谱券）`,
+      bonusText: `售价 +10%（再做 ${needs[2] - cooked} 锅升金勺送菜谱券）`,
     };
   }
   if (stars === 1) {
     return {
       cooked,
       stars: 1,
-      nextNeed: RECIPE_MASTERY_NEEDS[1],
+      nextNeed: needs[1],
       title: '铜勺初通',
-      bonusText: `再做 ${RECIPE_MASTERY_NEEDS[1] - cooked} 锅升银勺（售价 +10%）`,
+      bonusText: `售价 +5%（再做 ${needs[1] - cooked} 锅升银勺 +10%）`,
     };
   }
   return {
-    cooked: 0,
+    cooked,
     stars: 0,
-    nextNeed: RECIPE_MASTERY_NEEDS[0],
-    title: '未开锅',
-    bonusText: '做 1 锅点亮铜勺',
+    nextNeed: needs[0],
+    title: cooked > 0 ? '初试火候' : '未开锅',
+    bonusText: `再做 ${needs[0] - cooked} 锅点亮铜勺（售价 +5%）`,
   };
 }
 
@@ -1422,6 +1461,9 @@ function cookRecipeOnce(
   if (!recipe) return { save, error: '未知菜谱' };
   const view = recipeUnlockView(save);
   if (!isRecipeUnlocked(view, recipeId)) return { save, error: '还不会这道菜' };
+  if (!isRecipeStoveReady(view, recipeId)) {
+    return { save, error: `需升至 ${recipeMinStoveLv(recipeId)} 级烹饪台才能做这道菜` };
+  }
   const items = uids?.length
     ? pickRecipeFoods({ ...view, fridge: save.fridge.filter((it) => uids.includes(it.uid)) }, recipeId)
     : pickRecipeFoods(view, recipeId);
@@ -1429,7 +1471,11 @@ function cookRecipeOnce(
   if (items.some((it) => it.quality === 'rotten')) return { save, error: '坏了，不能下锅' };
   if (!recipe.match(items)) return { save, error: `材料不对：${recipe.desc}` };
   const prevCooked = recipeTotalCooked(save, recipeId);
-  const value = Math.round(recipe.cook(items) * recipeMasteryMul(prevCooked));
+  const value = Math.round(
+    recipe.cook(items)
+    * recipeMasteryMul(prevCooked, recipe.rarity)
+    * stovePriceMul(furnLevel(save, 'table')),
+  );
   const dish: FridgeItem = {
     uid: nextUid('d'),
     kind: 'dish',
@@ -1464,7 +1510,8 @@ function cookRecipeOnce(
   };
   let recipeMasteryClaimed = save.recipeMasteryClaimed ?? [];
   let masteryTicket = 0;
-  if (newCooked >= RECIPE_MASTERY_NEEDS[2] && !recipeMasteryClaimed.includes(recipeId)) {
+  const goldNeed = recipeMasteryNeeds(recipe.rarity)[2];
+  if (newCooked >= goldNeed && !recipeMasteryClaimed.includes(recipeId)) {
     recipeMasteryClaimed = [...recipeMasteryClaimed, recipeId];
     masteryTicket = 1;
   }
@@ -2023,8 +2070,9 @@ export function drawRecipeGacha(
         ? next.recipesCooked
         : [...next.recipesCooked, prize.recipeId];
       const claimed = next.recipeMasteryClaimed ?? [];
-      const hitGold = prevCooked < RECIPE_MASTERY_NEEDS[2]
-        && afterCooked >= RECIPE_MASTERY_NEEDS[2]
+      const goldNeed = recipeMasteryNeeds(prize.recipeId)[2];
+      const hitGold = prevCooked < goldNeed
+        && afterCooked >= goldNeed
         && !claimed.includes(prize.recipeId);
       next = {
         ...next,
@@ -2127,12 +2175,15 @@ export function drawRecipeGacha(
       ? next.recipesFound
       : [...next.recipesFound, recipeId],
   };
+  const stoveHint = !isRecipeStoveReady(view, recipeId)
+    ? `（升至 ${recipeMinStoveLv(recipeId)} 级灶台可下锅）`
+    : '';
   return {
     save: next,
     recipeId,
     duplicate: false,
     gold: 0,
-    toast: `开了一本${name}`,
+    toast: `开了一本${name}${stoveHint}`,
     recipeUnlock: recipeId,
     foodFolded: false,
     foldGold: 0,

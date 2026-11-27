@@ -71,6 +71,9 @@ import {
   fridgeOwnCap,
   foamWetCols,
   foamWetRows,
+  newlyCookableByTableUpgrade,
+  recipeUnlockView,
+  stovePriceMul,
   tableUnlockNext,
   computeFridgeSlip,
   computeKitchenSlip,
@@ -371,6 +374,14 @@ export class KitchenScene implements Scene {
     this._viewClip.eventMode = 'none';
     this._world.mask = this._viewClip;
     this._fridge.onChange = () => this._scheduleRelayout();
+    const openStoveUpgrade = () => {
+      this._upgradePick = 'table';
+      this._dirtyUnderOverlay = true;
+      this._scheduleRelayout();
+    };
+    this._cook.onUpgradeStove = openStoveUpgrade;
+    this._orders.onUpgradeStove = openStoveUpgrade;
+    this._daily.onUpgradeStove = openStoveUpgrade;
     this._daily.onCook = (recipeId) => {
       this._daily.close();
       this._cook.open(recipeId);
@@ -2495,7 +2506,7 @@ export class KitchenScene implements Scene {
     const state = furnUpgradeState(save, id);
     const rect = this._furnSpriteRect(id);
     const w = Game.designWidth;
-    const cardW = 340;
+    const cardW = id === 'table' ? 372 : 340;
     const cardH = 208;
     let x = rect.x + rect.w / 2 + this._pan.x - cardW / 2;
     let y = rect.y + this._pan.y - cardH - 58;
@@ -2547,8 +2558,13 @@ export class KitchenScene implements Scene {
         return `干货容量  ${bagDryCols(lv)}×${bagRows(lv)} → ${bagDryCols(lv + 1)}×${bagRows(lv + 1)}`;
       }
       if (id === 'table') {
-        const unlocks = tableUnlockNext(lv);
-        return unlocks > 0 ? `${nextShown}级解锁 ${unlocks} 道新菜谱` : `升至 ${nextShown} 级灶台`;
+        const curPct = Math.round((stovePriceMul(lv) - 1) * 100);
+        const nextPct = Math.round((stovePriceMul(lv + 1) - 1) * 100);
+        const newly = newlyCookableByTableUpgrade(recipeUnlockView(save), lv, lv + 1);
+        if (newly.length > 0) {
+          return `售价+${nextPct}% · 开炒《${newly[0].name}》${newly.length > 1 ? `等${newly.length}道` : ''}`;
+        }
+        return `火候精进 · 成菜售价 +${curPct}% → +${nextPct}%`;
       }
       return `升至 ${nextShown} 级`;
     })();

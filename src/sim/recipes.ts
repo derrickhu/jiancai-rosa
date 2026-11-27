@@ -1,5 +1,5 @@
-import type { MarketId } from './destinations';
-import { getItem, sellPrice, type Quality } from './items';
+import { MARKETS, type MarketId } from './destinations';
+import { GOD_PICK, PICKLE_ITEM_IDS, getItem, marketFoodIds, sellPrice, type Quality } from './items';
 import type { Rarity } from './rarity';
 
 export type RecipeId =
@@ -477,6 +477,149 @@ export interface RecipeUnlockView {
   fridge: RecipeFood[];
 }
 
+/** 固定特调菜谱的内部灶台等级门槛（0 对应界面 1 级灶台，依此类推）。 */
+const SPECIAL_RECIPE_MIN_TABLE: Partial<Record<RecipeId, number>> = {
+  crispy_cucumber_egg: 3, // 4级灶台
+  jade_garlic_tofu: 5,    // 6级灶台
+  sauerkraut_fish: 6,     // 7级灶台
+  chopped_chili_fish: 9,  // 10级灶台
+  wild_fish_soup: 6,      // 7级灶台
+};
+
+const _ingMinMarketLevelCache = new Map<string, number>();
+function ingredientMinMarketUnlockLevel(defId: string): number {
+  const hit = _ingMinMarketLevelCache.get(defId);
+  if (hit !== undefined) return hit;
+  if (defId === GOD_PICK.id) {
+    _ingMinMarketLevelCache.set(defId, 9);
+    return 9;
+  }
+  if (PICKLE_ITEM_IDS.has(defId)) {
+    _ingMinMarketLevelCache.set(defId, 5);
+    return 5;
+  }
+  if (defId === 'chicken_wing') {
+    _ingMinMarketLevelCache.set(defId, 16);
+    return 16;
+  }
+  let best = 99;
+  for (const m of MARKETS) {
+    if (marketFoodIds(m.id).includes(defId)) {
+      if (m.unlockLevel < best) best = m.unlockLevel;
+    }
+  }
+  const resolved = best === 99 ? 1 : best;
+  _ingMinMarketLevelCache.set(defId, resolved);
+  return resolved;
+}
+
+/** 将主料所属菜场解锁厨艺等级映射为基础内部灶台等级（严格不超过该厨艺等级可升到的灶台上限）。 */
+function baseTableLevelFromMarketUnlock(unlockLv: number): number {
+  if (unlockLv <= 1) return 0;  // 巷口 → 1级灶台
+  if (unlockLv <= 3) return 1;  // 河沿 → 2级灶台
+  if (unlockLv <= 5) return 2;  // 桥头 → 3级灶台
+  if (unlockLv <= 7) return 4;  // 山坞 → 5级灶台
+  if (unlockLv <= 9) return 5;  // 江边 → 6级灶台
+  if (unlockLv <= 11) return 6; // 南市 → 7级灶台
+  if (unlockLv <= 12) return 7; // 老城 → 8级灶台
+  if (unlockLv <= 13) return 8; // 渡口 → 9级灶台
+  if (unlockLv <= 14) return 8; // 山珍 → 9级灶台
+  if (unlockLv <= 16) return 9; // 果园 → 10级灶台
+  if (unlockLv <= 19) return 10; // 田头 → 11级灶台
+  return 11;                    // 埠头 → 12级灶台
+}
+
+const RARITY_MIN_TABLE: Record<Rarity, number> = {
+  common: 0,    // 最低 1 级灶台
+  rare: 1,      // 最低 2 级灶台（1级初始煤气灶需先升1次才能炒良品菜）
+  epic: 5,      // 最低 6 级灶台（精装屋岛台灶）
+  legendary: 8, // 最低 9 级灶台（雅致屋大理石岛台及以上）
+};
+
+const _recipeMinTableCache = new Map<RecipeId, number>();
+
+/**
+ * 菜谱开火所需的内部烹饪台等级（0–13，对应界面显示 Lv.1–Lv.14）：
+ * - 开局 3 道家常菜恒为 0（1 级灶台直接可做）；
+ * - 随烹饪台升级附赠的 TABLE_UNLOCKS[i] 精确对齐为 i+1（升到该级必能立即开炒）；
+ * - 其余菜谱（厨艺领悟 / 菜场拾取 / 寻味盲盒 / 老坛秘方）按「品阶保底 + 主料菜场阶段」自动推导，
+ *   且对 COOK_UNLOCK_AT 在低厨艺等级赠送的菜做上限保护，确保玩家在当前厨艺下能通过升级灶台解锁。
+ */
+export function recipeMinTableLevel(id: RecipeId): number {
+  const cached = _recipeMinTableCache.get(id);
+  if (cached !== undefined) return cached;
+
+  let res = 0;
+  if (START_RECIPES.includes(id)) {
+    res = 0;
+  } else if (SPECIAL_RECIPE_MIN_TABLE[id] !== undefined) {
+    res = SPECIAL_RECIPE_MIN_TABLE[id]!;
+  } else {
+    let tableGrantIdx = -1;
+    for (let i = 0; i < TABLE_UNLOCKS.length; i++) {
+      if (TABLE_UNLOCKS[i].includes(id)) {
+        tableGrantIdx = i;
+        break;
+      }
+    }
+    if (tableGrantIdx >= 0) {
+      res = tableGrantIdx + 1;
+    } else {
+      const rec = recipeById(id);
+      if (rec) {
+        const maxMktLv = rec.needs.reduce(
+          (mx, fid) => Math.max(mx, ingredientMinMarketUnlockLevel(fid)),
+          1,
+        );
+        let base = Math.max(RARITY_MIN_TABLE[rec.rarity], baseTableLevelFromMarketUnlock(maxMktLv));
+        if (rec.rarity === 'legendary' && maxMktLv >= 22) {
+          base = Math.max(base, 11); // 埠头终局珍品（火龙果牛肉、爆炒鱿鱼）需 12 级灶台
+        }
+        // 若为厨艺升级赠送菜谱，确保所需灶台不超过该厨艺等级可升到的灶台上限
+        for (const [lvStr, grant] of Object.entries(COOK_UNLOCK_AT)) {
+          const list = typeof grant === 'string' ? [grant] : grant;
+          if (list.includes(id)) {
+            const cookLv = Number(lvStr);
+            const reachableCap = cookLv <= 2 ? 1
+              : cookLv === 3 ? 2
+              : cookLv === 4 ? 3
+              : cookLv <= 6 ? 4
+              : cookLv <= 8 ? 5
+              : cookLv <= 10 ? 6
+              : cookLv === 11 ? 7
+              : cookLv === 12 ? 8
+              : cookLv <= 15 ? 9
+              : cookLv <= 17 ? 10
+              : cookLv <= 19 ? 11
+              : cookLv <= 21 ? 12
+              : 13;
+            base = Math.min(base, reachableCap);
+            break;
+          }
+        }
+        res = Math.max(0, Math.min(13, base));
+      }
+    }
+  }
+
+  _recipeMinTableCache.set(id, res);
+  return res;
+}
+
+/** 菜谱开火所需的界面显示灶台等级（1–14 级）。 */
+export function recipeMinStoveLv(id: RecipeId): number {
+  return recipeMinTableLevel(id) + 1;
+}
+
+/** 当前灶台等级是否已满足该菜谱的开火要求。 */
+export function isRecipeStoveReady(
+  save: Pick<RecipeUnlockView, 'tableLevel'>,
+  id: RecipeId,
+): boolean {
+  const cur = Math.max(0, Math.floor(save.tableLevel || 0));
+  return cur >= recipeMinTableLevel(id);
+}
+
 export function isRecipeUnlocked(save: RecipeUnlockView, id: RecipeId): boolean {
   if (save.recipesFound.includes(id)) return true;
   if (HIDDEN_RECIPE_IDS.has(id)) return false;
@@ -496,11 +639,47 @@ export function unlockedRecipes(save: RecipeUnlockView): RecipeDef[] {
   return RECIPES.filter((r) => isRecipeUnlocked(save, r.id));
 }
 
-/** 已解锁菜谱要用到的食材。摊上抽货靠它加权，货才跟得上菜谱。 */
+/** 已获得菜谱 且 当前烹饪台等级已满足开火条件的菜谱列表。 */
+export function cookableUnlockedRecipes(save: RecipeUnlockView): RecipeDef[] {
+  return RECIPES.filter((r) => isRecipeUnlocked(save, r.id) && isRecipeStoveReady(save, r.id));
+}
+
+/**
+ * 烹饪台从 fromTableLevel 升到 toTableLevel 后新增可开火的菜谱：
+ * 包含随台新赠的 TABLE_UNLOCKS，以及玩家此前已抽到/捡到但因灶台不足被锁住的藏谱。
+ */
+export function newlyCookableByTableUpgrade(
+  save: RecipeUnlockView,
+  fromTableLevel: number,
+  toTableLevel = fromTableLevel + 1,
+): RecipeDef[] {
+  const beforeView: RecipeUnlockView = { ...save, tableLevel: fromTableLevel };
+  const afterView: RecipeUnlockView = { ...save, tableLevel: toTableLevel };
+  return RECIPES.filter((r) => {
+    const canBefore = isRecipeUnlocked(beforeView, r.id) && isRecipeStoveReady(beforeView, r.id);
+    const canAfter = isRecipeUnlocked(afterView, r.id) && isRecipeStoveReady(afterView, r.id);
+    return !canBefore && canAfter && !HIDDEN_RECIPE_IDS.has(r.id)
+      || (!canBefore && canAfter && save.recipesFound.includes(r.id));
+  });
+}
+
+/**
+ * 已解锁且当前（或仅差 1 级灶台）可做的菜谱食材集合。
+ * 菜场摊位掉率加权仅看此集合，避免过早抽到的高阶锁谱稀释眼下能做的食材。
+ */
 export function unlockedIngredients(save: RecipeUnlockView): Set<string> {
+  const curTable = Math.max(0, Math.floor(save.tableLevel || 0));
   const out = new Set<string>();
   for (const r of unlockedRecipes(save)) {
-    for (const id of r.needs) out.add(id);
+    if (recipeMinTableLevel(r.id) <= curTable + 1) {
+      for (const id of r.needs) out.add(id);
+    }
+  }
+  if (out.size === 0) {
+    for (const sid of START_RECIPES) {
+      const sr = recipeById(sid);
+      if (sr) for (const id of sr.needs) out.add(id);
+    }
   }
   return out;
 }
@@ -550,12 +729,14 @@ export function pickRecipeFoods(save: RecipeUnlockView, recipeId: RecipeId): Rec
 }
 
 export function recipeCanCook(save: RecipeUnlockView, recipeId: RecipeId): boolean {
-  return isRecipeUnlocked(save, recipeId) && pickRecipeFoods(save, recipeId).length > 0;
+  return isRecipeUnlocked(save, recipeId)
+    && isRecipeStoveReady(save, recipeId)
+    && pickRecipeFoods(save, recipeId).length > 0;
 }
 
-/** 按冰箱现有份数，这道菜现在能连做几份。材料共用时各自独立算。 */
+/** 按冰箱现有份数，这道菜现在能连做几份（灶台等级未达标时为 0）。材料共用时各自独立算。 */
 export function recipeCookCount(save: RecipeUnlockView, recipeId: RecipeId): number {
-  if (!isRecipeUnlocked(save, recipeId)) return 0;
+  if (!isRecipeUnlocked(save, recipeId) || !isRecipeStoveReady(save, recipeId)) return 0;
   const needs = recipeNeeds(save, recipeId);
   if (!needs.length) return 0;
   return Math.min(...needs.map((row) => Math.floor(row.have / row.need)));

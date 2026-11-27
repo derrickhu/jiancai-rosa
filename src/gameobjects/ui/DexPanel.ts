@@ -27,14 +27,17 @@ import {
   isDishUnlocked,
   isFoodUnlocked,
   isRecipeId,
+  isRecipeStoveReady,
   isStampMemberUnlocked,
   itemRarity,
   rarityLabel,
   recipeById,
   recipeEatLabel,
   recipeMasteryView,
+  recipeMinStoveLv,
   recipeRarity,
   recipeSellPrice,
+  recipeUnlockView,
   sellPrice,
   stampMemberName,
   unclaimedDexInDishGroup,
@@ -1296,13 +1299,15 @@ export class DexPanel extends PIXI.Container {
 
     const mastery = recipeMasteryView(save, recipe.id);
     const sell = recipeSellPrice(recipe.id);
+    const needStove = recipeMinStoveLv(recipe.id);
+    const stoveOk = isRecipeStoveReady(recipeUnlockView(save), recipe.id);
     return {
       kind: 'dish',
       id,
       unlocked: true,
       title: recipe.name,
       subtitle: `${rarityLabel(recipe.rarity)} · ${recipe.group} · 售价 ${sell} 金`,
-      metaLine: `${mastery.title}（已掌勺 ${mastery.cooked} 锅）${extraNote ? ` · ${extraNote}` : ''}`,
+      metaLine: `${mastery.title}（${mastery.cooked}锅） · ${stoveOk ? `灶台Lv.${needStove}` : `需Lv.${needStove}灶台`}${extraNote ? ` · ${extraNote}` : ''}`,
       blurb: recipe.blurb,
       eatLine: `✦ 食用风味：${recipeEatLabel(recipe.id)}`,
       rarity: recipe.rarity,

@@ -14,6 +14,7 @@ import {
   itemRarity,
   recipeById,
   recipeEatLabel,
+  recipeMinStoveLv,
   recipeRarity,
   recipeSellPrice,
   resolveRarityTier,
@@ -116,6 +117,7 @@ export function inspectFromFridge(it: FridgeItem): ItemInspectView {
 export function inspectFromRecipe(id: RecipeId): ItemInspectView | null {
   const recipe = recipeById(id);
   if (!recipe) return null;
+  const needStove = recipeMinStoveLv(id);
   return {
     title: recipe.name,
     blurb: recipe.blurb,
@@ -126,7 +128,7 @@ export function inspectFromRecipe(id: RecipeId): ItemInspectView | null {
     unitPrice: recipeSellPrice(id),
     maxQty: 1,
     eatLabel: recipeEatLabel(id),
-    note: `${recipe.group} · 私房菜谱`,
+    note: `${recipe.group} · 灶台Lv.${needStove}`,
   };
 }
 

@@ -16,7 +16,9 @@ import {
   computeKitchenSlip,
   dailyAdLeft,
   formatChefFireRemain,
+  furnLevel,
   isChefFireActive,
+  isRecipeStoveReady,
   kitchenSlipPins,
   recipeById,
   recipeCanCook,
@@ -25,10 +27,12 @@ import {
   recipeEatLabel,
   recipeMasteryMul,
   recipeMasteryView,
+  recipeMinStoveLv,
   recipeNeeds,
   recipeSellPrice,
   recipeUnlockView,
   recipeXp,
+  stovePriceMul,
   unlockedRecipes,
   type KitchenSave,
   type RecipeDef,
@@ -144,6 +148,7 @@ const WOOD_STROKE = 0x382010;
  */
 export class CookPanel extends PIXI.Container {
   _isOpen = false;
+  onUpgradeStove: (() => void) | null = null;
   private _root = new PIXI.Container();
   private _pick: RecipeId = 'stirfry';
   private _filterTab: RecipeFilterTab = 'all';
@@ -374,6 +379,8 @@ export class CookPanel extends PIXI.Container {
     const max = recipeCookMax(save, recipe.id);
     this._cookQty = Math.max(1, Math.min(this._cookQty, Math.max(1, max)));
     const qty = max > 0 ? this._cookQty : 1;
+    const stoveOk = isRecipeStoveReady(view, recipe.id);
+    const needStoveLv = recipeMinStoveLv(recipe.id);
     const ready = recipeCanCook(view, recipe.id);
     const waiting = this._urgentRecipeIds(save).has(recipe.id);
 
@@ -438,8 +445,12 @@ export class CookPanel extends PIXI.Container {
     rSeal.position.set(upperRight - 22, 150);
     scene.addChild(rSeal);
 
-    // 售价与厨艺经验直排
-    const estPrice = Math.round(recipeSellPrice(recipe.id) * recipeMasteryMul(mastery.cooked));
+    // 售价与厨艺经验直排（计入当前三勺熟练度加成与灶台火候售价加成）
+    const estPrice = Math.round(
+      recipeSellPrice(recipe.id)
+      * recipeMasteryMul(mastery.cooked, recipe.rarity)
+      * stovePriceMul(furnLevel(save, 'table')),
+    );
     const baseXp = recipeXp(save, recipe.id);
     const fireOn = isChefFireActive(save);
     const shownXp = fireOn ? Math.round(baseXp * CHEF_FIRE_XP_MUL) : baseXp;
@@ -480,8 +491,10 @@ export class CookPanel extends PIXI.Container {
         ? '金勺售价+20%'
         : mastery.stars === 2
           ? '银勺售价+10%'
-          : `已做 ${mastery.cooked} 锅`;
-      const mTxt = makeText('caption', bonusStr, mastery.stars >= 2 ? 0xFFD984 : 0xF2DEC0, {
+          : mastery.stars === 1
+            ? '铜勺售价+5%'
+            : `已做 ${mastery.cooked}/${mastery.nextNeed ?? 1} 锅`;
+      const mTxt = makeText('caption', bonusStr, mastery.stars >= 1 ? 0xFFD984 : 0xF2DEC0, {
         size: 22,
         fontWeight: '700',
         stroke: WOOD_STROKE,
@@ -573,12 +586,12 @@ export class CookPanel extends PIXI.Container {
       scene.addChild(this._makeWoodStepper(578, buffY, qty, max));
     }
 
-    // 5. 案板下护墙板第二行：手绘旺火双倍激励钮 + 开火烹饪主按钮
+    // 5. 案板下护墙板第二行：手绘旺火双倍激励钮 + 开火烹饪主按钮（灶台不足时一键跳升级）
     const btnY = 414;
     const btnH = 62;
     if (this._inCookTut) {
       const tutW = 408;
-      const cookBtn = this._makeCookMainButton(tutW, btnH, ready, qty);
+      const cookBtn = this._makeCookMainButton(tutW, btnH, ready, qty, stoveOk, needStoveLv);
       cookBtn.position.set(Math.round((W - tutW) / 2), btnY);
       this._cookBtn = cookBtn;
       scene.addChild(cookBtn);
@@ -588,7 +601,7 @@ export class CookPanel extends PIXI.Container {
       scene.addChild(fireBtn);
 
       const cookW = 342;
-      const cookBtn = this._makeCookMainButton(cookW, btnH, ready, qty);
+      const cookBtn = this._makeCookMainButton(cookW, btnH, ready, qty, stoveOk, needStoveLv);
       cookBtn.position.set(W - 48 - cookW, btnY);
       this._cookBtn = cookBtn;
       scene.addChild(cookBtn);
@@ -708,7 +721,35 @@ export class CookPanel extends PIXI.Container {
     return btn;
   }
 
-  private _makeCookMainButton(width: number, height: number, ready: boolean, qty: number): PIXI.Container {
+  private _makeCookMainButton(
+    width: number,
+    height: number,
+    ready: boolean,
+    qty: number,
+    stoveOk = true,
+    needStoveLv = 1,
+  ): PIXI.Container {
+    if (!stoveOk) {
+      const upBtn = makeSlicedButton({
+        label: `去升 ${needStoveLv} 级灶台`,
+        width,
+        height,
+        skin: 'olive',
+        textColor: 0xFFF8F0,
+        fontSize: 26,
+        onReady: this._scheduleRelayout,
+      });
+      upBtn.on('pointertap', (e) => {
+        e.stopPropagation();
+        if (this.onUpgradeStove) {
+          this.close(true);
+          this.onUpgradeStove();
+        } else {
+          Platform.showToast(`请先在厨房将烹饪台升至 ${needStoveLv} 级`);
+        }
+      });
+      return upBtn;
+    }
     const label = ready
       ? (qty > 1 ? `开火做 ${qty} 锅` : '开火烹饪')
       : '食材不足';
@@ -916,6 +957,9 @@ export class CookPanel extends PIXI.Container {
 
     const sortReadyFirst = (list: RecipeDef[]): RecipeDef[] =>
       [...list].sort((a, b) => {
+        const sa = isRecipeStoveReady(view, a.id) ? 1 : 0;
+        const sb = isRecipeStoveReady(view, b.id) ? 1 : 0;
+        if (sa !== sb) return sb - sa;
         const ca = recipeCookCount(view, a.id) > 0 ? 1 : 0;
         const cb = recipeCookCount(view, b.id) > 0 ? 1 : 0;
         return cb - ca;
@@ -1113,6 +1157,8 @@ export class CookPanel extends PIXI.Container {
     wantedSet: Set<RecipeId>,
   ): PIXI.Container {
     const on = this._pick === recipe.id;
+    const stoveOk = isRecipeStoveReady(view, recipe.id);
+    const needStoveLv = recipeMinStoveLv(recipe.id);
     const can = recipeCookCount(view, recipe.id);
     const waiting = wantedSet.has(recipe.id);
     const needs = recipeNeeds(view, recipe.id);
@@ -1201,18 +1247,34 @@ export class CookPanel extends PIXI.Container {
     if (can === 0 && !on) needIcons.alpha = 0.82;
     row.addChild(needIcons);
 
+    const statusLabel = !stoveOk
+      ? `需${needStoveLv}级灶台`
+      : can > 0
+        ? `可做 ${can} 锅`
+        : '缺食材';
+    const statusColor = !stoveOk
+      ? 0xB85418
+      : can > 0
+        ? SCENE_INK.green
+        : SCENE_INK.red;
     const statusTxt = makeText(
       'heading',
-      can > 0 ? `可做 ${can} 锅` : '缺食材',
-      can > 0 ? SCENE_INK.green : SCENE_INK.red,
-      { size: 25 },
+      statusLabel,
+      statusColor,
+      { size: !stoveOk ? 23 : 25 },
     );
     statusTxt.anchor.set(1, 0);
     statusTxt.position.set(L.contentR, 18);
-    if (can === 0 && !on) statusTxt.alpha = 0.75;
+    if (can === 0 && stoveOk && !on) statusTxt.alpha = 0.75;
     row.addChild(statusTxt);
 
-    const priceVal = recipeSellPrice(recipe.id);
+    const save = KitchenManager.save;
+    const mastery = recipeMasteryView(save, recipe.id);
+    const priceVal = Math.round(
+      recipeSellPrice(recipe.id)
+      * recipeMasteryMul(mastery.cooked, recipe.rarity)
+      * stovePriceMul(furnLevel(save, 'table')),
+    );
     const priceTxt = makeText('number', `${priceVal}`, SCENE_INK.gold, { size: 23 });
     priceTxt.anchor.set(1, 0.5);
     priceTxt.position.set(L.contentR, 72);

@@ -7,11 +7,13 @@ import { KitchenManager } from '@/managers/KitchenManager';
 import { destroyDisplayChildren } from '@/utils/destroy';
 import {
   RARITY_STYLE,
+  isRecipeStoveReady,
   listedRecipes,
   rarityLabel,
   recipeById,
   recipeEatLabel,
   recipeMasteryView,
+  recipeMinStoveLv,
   recipeNeeds,
   recipeSellPrice,
   recipeUnlockView,
@@ -442,7 +444,9 @@ export class RecipeBookPanel extends PIXI.Container {
           seal.position.set(PAGE_W - 28, 30);
           row.addChild(seal);
         } else {
-          const freshTag = makeText('caption', '待试菜', SCENE_INK.red, { size: 22, fontWeight: '700' });
+          const stoveReady = isRecipeStoveReady(view, r.id);
+          const tagStr = stoveReady ? '待试菜' : `需${recipeMinStoveLv(r.id)}级灶`;
+          const freshTag = makeText('caption', tagStr, stoveReady ? SCENE_INK.red : 0xB85418, { size: 22, fontWeight: '700' });
           freshTag.anchor.set(1, 0.5);
           freshTag.position.set(PAGE_W - 4, 28);
           row.addChild(freshTag);
@@ -632,10 +636,12 @@ export class RecipeBookPanel extends PIXI.Container {
     rSeal.position.set(noteW - 66, 156);
     card.addChild(rSeal);
 
+    const needStove = recipeMinStoveLv(recipe.id);
+    const stoveReady = isRecipeStoveReady(view, recipe.id);
     const potTxt = makeText(
       'caption',
-      `${mastery.title} · 累计下锅 ${mastery.cooked} 次`,
-      SCENE_INK.soft,
+      `${mastery.title} · 已下锅 ${mastery.cooked} 次 · ${stoveReady ? `灶台Lv.${needStove}` : `需${needStove}级灶台`}`,
+      stoveReady ? SCENE_INK.soft : 0xB85418,
       { size: 22, fontWeight: '600' },
     );
     potTxt.position.set(infoX, 218);

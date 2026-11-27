@@ -11,6 +11,7 @@ import {
   FRIDGE_STACK,
   MARKETS,
   PICKLE_ITEM_IDS,
+  cookableUnlockedRecipes,
   fridgeCap,
   fridgeItemName,
   fridgeItemQty,
@@ -319,9 +320,9 @@ function buildInventorySnapshot(save: KitchenSave, now = Date.now()): FridgeInve
     seenShortage.add(ingId);
   }
 
-  // 3b. 已解锁常做菜谱高频原材料的 0 库存断档或仅剩 1 份预警
+  // 3b. 已解锁且当前灶台可做的常做菜谱高频原材料 0 库存断档或仅剩 1 份预警
   if (shortageList.length < 4) {
-    const unlocked = unlockedRecipes(recipeUnlockView(save));
+    const unlocked = cookableUnlockedRecipes(recipeUnlockView(save));
     const usage = new Map<string, { count: number; sampleDish: string }>();
     for (const r of unlocked) {
       if (r.id === 'wild_fish_soup') continue;
@@ -1248,29 +1249,7 @@ export class FridgePanel extends PIXI.Container {
     const visualTier = isRotten ? 'common' : fridgeSlotVisualTier(it);
     const liftY = selected ? -6 : 0;
 
-    // 隔板上的柔和半透明深色落影 + 选中态温润奶金底座指示（绝不篡改物品自身品质光色）
-    const shelfShadow = new PIXI.Graphics();
-    shelfShadow.beginFill(0x1B362E, isDish ? (selected ? 0.16 : 0.22) : (selected ? 0.13 : 0.18));
-    shelfShadow.drawEllipse(0, isDish ? 108 : 109, isDish ? 48 : 45, isDish ? 13 : 12);
-    shelfShadow.endFill();
-    if (selected) {
-      shelfShadow.lineStyle(2, 0xE6A43B, 0.88);
-      shelfShadow.beginFill(0xFFF6D6, 0.62);
-      shelfShadow.drawEllipse(0, 108, isDish ? 52 : 49, 13);
-      shelfShadow.endFill();
-      // 隔板护沿小巧铜金选中三角标
-      shelfShadow.lineStyle(1.5, FRIDGE_INK.cabinetLine, 0.9);
-      shelfShadow.beginFill(0xF2B84B, 1);
-      shelfShadow.moveTo(0, 113);
-      shelfShadow.lineTo(-7, 121);
-      shelfShadow.lineTo(7, 121);
-      shelfShadow.closePath();
-      shelfShadow.endFill();
-    }
-    shelfShadow.eventMode = 'none';
-    root.addChild(shelfShadow);
-
-    // 实物主体容器：选中时整体微抬 -6px 并轻微放大 1.06x；品质轮廓光紧贴食材/成菜自身边缘，白瓷小碟干干净净承托
+    // 实物主体容器：选中时整体微抬 -6px 并轻微放大 1.06x；品质轮廓光紧贴食材/成菜自身边缘，白瓷小碟干干净净承托（不额外绘制底部小椭圆圈）
     const body = new PIXI.Container();
     body.pivot.set(0, 78);
     body.position.set(0, 78 + liftY);
@@ -1836,18 +1815,11 @@ export class FridgePanel extends PIXI.Container {
     const goldN = unit * qty;
     const canEat = view.kind === 'dish' && !!view.eatLabel;
 
-    // 左：选中物展示（紧贴食材/成菜边缘品质轮廓光，生鲜垫干净白瓷保鲜碟，成菜放大至 126px 配柔和底影）
+    // 左：选中物展示（紧贴食材/成菜边缘品质轮廓光，生鲜保留干净白瓷保鲜碟贴图，不画手绘底部小圆）
     const plateCx = left + 58;
     const plateCy = top + 108;
     const slipTier = resolveRarityTier(view.rarity, view.quality);
     if (view.kind === 'dish') {
-      const dishShadow = new PIXI.Graphics();
-      dishShadow.beginFill(0x2A1A0E, 0.22);
-      dishShadow.drawEllipse(plateCx, plateCy + 34, 52, 15);
-      dishShadow.endFill();
-      dishShadow.eventMode = 'none';
-      scene.addChild(dishShadow);
-
       const dTex = dishTexture(view.defId);
       if (isTextureReady(dTex)) {
         const ic = new PIXI.Sprite(dTex);
@@ -1861,13 +1833,6 @@ export class FridgePanel extends PIXI.Container {
         }
       }
     } else {
-      const trayShadow = new PIXI.Graphics();
-      trayShadow.beginFill(0x2A1A0E, 0.16);
-      trayShadow.drawEllipse(plateCx, plateCy + 32, 50, 14);
-      trayShadow.endFill();
-      trayShadow.eventMode = 'none';
-      scene.addChild(trayShadow);
-
       const tray = sceneSprite(ART.tray, 130, 80);
       if (tray) {
         tray.anchor.set(0.5);

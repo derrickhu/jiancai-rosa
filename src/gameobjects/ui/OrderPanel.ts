@@ -12,10 +12,12 @@ import {
   dailyAdLeft,
   formatOrderRemain,
   fridgeDishQty,
+  isRecipeStoveReady,
   neighborNpc,
   neighborOrderReward,
   neighborRewardChips,
   recipeById,
+  recipeMinStoveLv,
   recipeNeeds,
   recipeUnlockView,
   type NeighborNpc,
@@ -89,6 +91,7 @@ interface LiveOrderTimer {
 export class OrderPanel extends PIXI.Container {
   _isOpen = false;
   onCook: ((recipeId: RecipeId) => void) | null = null;
+  onUpgradeStove: (() => void) | null = null;
   private _root = new PIXI.Container();
   private _timer: ReturnType<typeof setInterval> | null = null;
   private _liveTimers: LiveOrderTimer[] = [];
@@ -285,6 +288,8 @@ export class OrderPanel extends PIXI.Container {
     const recipe = recipeById(order.recipeId);
     const view = recipeUnlockView(save);
     const have = fridgeDishQty(save.fridge, order.recipeId);
+    const stoveOk = isRecipeStoveReady(view, order.recipeId);
+    const needStoveLv = recipeMinStoveLv(order.recipeId);
     const needs = recipeNeeds(view, order.recipeId);
     const missing = needs.filter((r) => r.have < r.need);
 
@@ -377,6 +382,21 @@ export class OrderPanel extends PIXI.Container {
       readySub.position.set(midX, 178);
       fitTextWidth(readySub, maxMidW);
       slip.addChild(readyTitle, readySub);
+    } else if (!stoveOk) {
+      const stoveTitle = makeText(
+        'heading',
+        `需升至 ${needStoveLv} 级灶台 · 升级即可开炒`,
+        0xB85418,
+        { size: 24 },
+      );
+      stoveTitle.anchor.set(0, 0.5);
+      stoveTitle.position.set(midX, 124);
+      fitTextWidth(stoveTitle, maxMidW);
+      slip.addChild(stoveTitle);
+
+      const needsRow = this._makeClickableNeeds(needs, maxMidW);
+      needsRow.position.set(midX, 176);
+      slip.addChild(needsRow);
     } else if (missing.length === 0) {
       const canCookTitle = makeText('heading', '食材齐备 · 下锅就能炒', SCENE_INK.green, { size: 25 });
       canCookTitle.anchor.set(0, 0.5);
@@ -422,8 +442,8 @@ export class OrderPanel extends PIXI.Container {
       rewardLine.addChild(inline);
 
       let totalRw = lead.width + 4 + inline.width;
-      if (reward.food?.tease) {
-        const teaseSeal = makeSealStamp('鲜货', 44, -0.1);
+      if (reward.food?.tease || order.teaseStove) {
+        const teaseSeal = makeSealStamp(reward.food?.tease ? '鲜货' : '厚赏', 44, -0.1);
         teaseSeal.position.set(totalRw + 26, 0);
         rewardLine.addChild(teaseSeal);
         totalRw += 52;
@@ -615,15 +635,22 @@ export class OrderPanel extends PIXI.Container {
       const cookW = 222;
       const subW = rightSpan - cookW - 12; // 144px
       const cookBtn = makeSlicedButton({
-        label: missing.length === 0 ? '去做菜' : '去灶台看',
+        label: !stoveOk
+          ? `去升${needStoveLv}级灶`
+          : (missing.length === 0 ? '去做菜' : '去灶台看'),
         width: cookW,
         height: btnH,
-        skin: 'terracotta',
-        fontSize: 27,
+        skin: !stoveOk ? 'olive' : 'terracotta',
+        fontSize: !stoveOk ? 25 : 27,
         onReady: this._scheduleRelayout,
       });
       cookBtn.position.set(rightStart, btnY);
       cookBtn.on('pointertap', () => {
+        if (!stoveOk && this.onUpgradeStove) {
+          this.close(true);
+          this.onUpgradeStove();
+          return;
+        }
         this.onCook?.(order.recipeId);
       });
 
